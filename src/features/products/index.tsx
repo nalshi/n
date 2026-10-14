@@ -5,7 +5,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import {
   Barcode,
@@ -24,8 +24,11 @@ import {
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useRealtimeStore } from '@/stores/realtime-store'
 import { clearAuthApiCache } from '@/lib/auth-api'
+import {
+  merchantQueryKeys,
+  useMerchantIdentity,
+} from '@/hooks/useMerchantRealtime'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -209,7 +212,7 @@ function ProductsWorkspace({
   manageCategories?: boolean
 }) {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
+  const merchantId = useMerchantIdentity()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [availabilityFilter, setAvailabilityFilter] = useState('all')
@@ -226,8 +229,6 @@ function ProductsWorkspace({
     null
   )
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase())
-  const realtimeStatus = useRealtimeStore((state) => state.status)
-
   const clearCreateShortcut = () => {
     if (create) {
       void navigate({
@@ -249,21 +250,20 @@ function ProductsWorkspace({
   }
 
   const productsQuery = useQuery({
-    queryKey: ['merchant-products'],
+    queryKey: merchantQueryKeys.products(merchantId),
     queryFn: fetchDashboardProducts,
-    refetchInterval: realtimeStatus === 'connected' ? false : 30_000,
-    refetchOnWindowFocus: true,
+    staleTime: Number.POSITIVE_INFINITY,
   })
   const categoriesQuery = useQuery({
-    queryKey: ['merchant-product-categories'],
+    queryKey: merchantQueryKeys.categories(merchantId),
     queryFn: fetchDashboardCategories,
-    staleTime: 60_000,
+    staleTime: Number.POSITIVE_INFINITY,
     retry: false,
   })
   const usernameQuery = useQuery({
-    queryKey: ['merchant-store-username'],
+    queryKey: merchantQueryKeys.username(merchantId),
     queryFn: fetchDashboardUsername,
-    staleTime: 5 * 60_000,
+    staleTime: Number.POSITIVE_INFINITY,
     retry: false,
   })
 
@@ -420,22 +420,13 @@ function ProductsWorkspace({
       }
       return saveDashboardProduct(payload)
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       toast.success(
         editingProduct ? 'تم تحديث المنتج بنجاح.' : 'تم حفظ المنتج ونشره بنجاح.'
       )
       setEditorOpen(false)
       setEditingProduct(null)
       clearCreateShortcut()
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['merchant-products'] }),
-        queryClient.invalidateQueries({
-          queryKey: ['merchant-dashboard-home'],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ['merchant-product-categories'],
-        }),
-      ])
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'تعذر حفظ المنتج.'),
@@ -444,15 +435,9 @@ function ProductsWorkspace({
   const deleteMutation = useMutation({
     mutationFn: (product: DashboardProduct) =>
       deleteDashboardProduct(product.id),
-    onSuccess: async () => {
+    onSuccess: () => {
       toast.success('تم حذف المنتج.')
       setDeleteProduct(null)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['merchant-products'] }),
-        queryClient.invalidateQueries({
-          queryKey: ['merchant-dashboard-home'],
-        }),
-      ])
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'تعذر حذف المنتج.'),
@@ -461,14 +446,8 @@ function ProductsWorkspace({
   const availabilityMutation = useMutation({
     mutationFn: (product: DashboardProduct) =>
       updateDashboardAvailability(product.id, !product.isAvailable),
-    onSuccess: async () => {
+    onSuccess: () => {
       toast.success('تم تحديث إتاحة المنتج.')
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['merchant-products'] }),
-        queryClient.invalidateQueries({
-          queryKey: ['merchant-dashboard-home'],
-        }),
-      ])
     },
     onError: (error) =>
       toast.error(
@@ -783,9 +762,7 @@ function ProductsWorkspace({
         onSave={(draft) => saveMutation.mutate(draft)}
         onCategoryAdded={(category) => {
           setCategories((current) => [...current, category])
-          void queryClient.invalidateQueries({
-            queryKey: ['merchant-product-categories'],
-          })
+          void categoriesQuery.refetch()
         }}
         onManageCategories={() => {
           setEditorOpen(false)

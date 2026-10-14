@@ -74,6 +74,8 @@ export type DashboardData = {
 export type DashboardInitialization = {
   dashboard: DashboardData
   categories: DashboardCategory[]
+  lastTimestamp: number
+  lastEventId: number
 }
 
 export type DashboardOrderSummary = {
@@ -150,6 +152,19 @@ function readNumber(value: unknown): number {
   const number =
     typeof value === 'number' ? value : Number.parseFloat(String(value))
   return Number.isFinite(number) ? number : 0
+}
+
+function readTimestamp(...values: unknown[]): string {
+  const value = values.find(
+    (candidate) =>
+      (typeof candidate === 'string' && candidate.trim()) ||
+      (typeof candidate === 'number' && Number.isFinite(candidate))
+  )
+  if (typeof value === 'number') {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString()
+  }
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function readRows(result: ApiResult, action: string): ApiRecord[] {
@@ -271,7 +286,7 @@ function normalizeProducts(result: ApiResult): DashboardProduct[] {
       costPrice: readNumber(product.cost_price),
       discount: readNumber(product.discount),
       currency: readString(product.currency) || 'YER',
-      createdAt: readString(
+      createdAt: readTimestamp(
         product.created_at,
         product.createdAt,
         product.updated_at,
@@ -306,32 +321,63 @@ function normalizeProducts(result: ApiResult): DashboardProduct[] {
 
 function normalizeOrders(result: ApiResult): DashboardOrder[] {
   return readRows(result, 'الطلبات')
-    .map((order) => ({
-      id: readIdentifier(order.id, order.ticket_id),
-      customerName:
-        readString(order.customer_name, order.customerName) || 'عميل',
-      customerPhone: readString(order.customer_phone, order.phone),
-      deliveryAddress: readString(
-        order.delivery_address_text,
-        order.delivery_address,
-        order.address
-      ),
-      deliveryMapUrl: readString(
-        order.delivery_gps_link,
-        order.delivery_map_url,
-        order.map_url
-      ),
-      total: readNumber(order.total_amount ?? order.total),
-      deliveryFee: readNumber(order.delivery_fee),
-      currency: readString(order.currency) || 'YER',
-      status: readString(order.status),
-      createdAt: readString(
-        order.created_at,
-        order.createdAt,
-        order.updated_at
-      ),
-      items: normalizeOrderItems(order.items),
-    }))
+    .map((order) => {
+      let archivedData = asRecord(order.archived_data)
+      if (!archivedData && typeof order.archived_data === 'string') {
+        try {
+          archivedData = asRecord(JSON.parse(order.archived_data) as unknown)
+        } catch {
+          throw new Error('صيغة بيانات أحد الطلبات المؤرشفة غير صالحة.')
+        }
+      }
+      let ticketData = asRecord(order.ticket_data)
+      if (!ticketData && typeof order.ticket_data === 'string') {
+        try {
+          ticketData = asRecord(JSON.parse(order.ticket_data) as unknown)
+        } catch {
+          throw new Error('صيغة بيانات أحد الطلبات النشطة غير صالحة.')
+        }
+      }
+      const orderData = ticketData || archivedData
+      const customer = asRecord(orderData?.customer)
+      const financials = asRecord(orderData?.financials)
+      return {
+        id: readIdentifier(order.id, order.ticket_id),
+        customerName:
+          readString(order.customer_name, order.customerName, customer?.name) ||
+          'عميل',
+        customerPhone: readString(
+          order.customer_phone,
+          order.phone,
+          customer?.phone
+        ),
+        deliveryAddress: readString(
+          order.delivery_address_text,
+          order.delivery_address,
+          order.address,
+          customer?.address_text
+        ),
+        deliveryMapUrl: readString(
+          order.delivery_gps_link,
+          order.delivery_map_url,
+          order.map_url,
+          customer?.gps_link
+        ),
+        total: readNumber(
+          order.total_amount ?? financials?.grand_total ?? order.total
+        ),
+        deliveryFee: readNumber(order.delivery_fee ?? financials?.delivery_fee),
+        currency: readString(order.currency, financials?.currency) || 'YER',
+        status: readString(order.status, order.final_status),
+        createdAt: readTimestamp(
+          order.created_at,
+          order.createdAt,
+          order.updated_at,
+          order.archived_at
+        ),
+        items: normalizeOrderItems(order.items ?? orderData?.items),
+      }
+    })
     .filter((order) => order.id)
     .sort(
       (left, right) =>
@@ -416,6 +462,20 @@ function getMerchantToken() {
   )
 }
 
+function getMerchantIdFromToken(token: string) {
+  try {
+    const encoded = token.split('.')[1]
+    if (!encoded) return ''
+    const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/')
+    const claims = asRecord(
+      JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')))
+    )
+    return readIdentifier(claims?.user_id, claims?.accountNo)
+  } catch {
+    return ''
+  }
+}
+
 export function fetchDashboardInitialization(
   forceRefresh = false
 ): Promise<DashboardInitialization> {
@@ -431,11 +491,12 @@ export function fetchDashboardInitialization(
   }
 
   const query = forceRefresh ? '?refresh=1' : ''
-  const request = fetch(`/api/worker/dashboard/init${query}`, {
+  const request = fetch(`/api/worker/api/merchant/bootstrap${query}`, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
+      'X-Merchant-Id': getMerchantIdFromToken(token),
     },
     cache: 'no-store',
   })
@@ -482,6 +543,8 @@ export function fetchDashboardInitialization(
           ...success,
           data: result.categories,
         }),
+        lastTimestamp: readNumber(result.lastTimestamp),
+        lastEventId: readNumber(result.lastEventId),
       }
     })
     .catch((error: unknown) => {

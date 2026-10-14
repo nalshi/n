@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearDashboardInitializationCache,
+  fetchDashboardInitialization,
   fetchDashboardCategories,
   fetchDashboardData,
   fetchDashboardProducts,
@@ -13,6 +14,7 @@ import {
   cancelDashboardOrder,
   confirmDashboardOrderDelivery,
   summarizeDashboardOrders,
+  normalizeRealtimeOrders,
 } from './dashboard-data'
 
 const { authApiRequest } = vi.hoisted(() => ({
@@ -208,9 +210,58 @@ describe('fetchDashboardData', () => {
 
     expect(fetch).toHaveBeenCalledOnce()
     expect(fetch).toHaveBeenCalledWith(
-      '/api/worker/dashboard/init',
+      '/api/worker/api/merchant/bootstrap',
       expect.objectContaining({ method: 'GET' })
     )
+  })
+
+  it('preserves the realtime cursor returned by the bootstrap endpoint', async () => {
+    mockDashboardResponse(
+      dashboardSnapshot({ lastTimestamp: 1_797_000_000_000, lastEventId: 42 })
+    )
+
+    await expect(fetchDashboardInitialization()).resolves.toMatchObject({
+      lastTimestamp: 1_797_000_000_000,
+      lastEventId: 42,
+    })
+  })
+
+  it('normalizes raw active and archived D1 rows for realtime deltas', () => {
+    const orders = normalizeRealtimeOrders([
+      {
+        ticket_id: 'active-1',
+        status: 'pending_merchant_approval',
+        created_at: '2026-10-12T10:00:00Z',
+        ticket_data: JSON.stringify({
+          customer: { name: 'عميل نشط', phone: '70000000' },
+          financials: { grand_total: 1200, currency: 'YER', delivery_fee: 100 },
+          items: [{ product_id: 'p1', product_name: 'منتج', quantity: 1 }],
+        }),
+      },
+      {
+        ticket_id: 'archived-1',
+        final_status: 'completed',
+        archived_at: 1_792_022_400_000,
+        total_amount: 900,
+        archived_data: JSON.stringify({
+          customer: { name: 'عميل مؤرشف' },
+          items: [{ product_id: 'p2', product_name: 'قديم', quantity: 2 }],
+        }),
+      },
+    ])
+
+    expect(orders.find((order) => order.id === 'active-1')).toMatchObject({
+      customerName: 'عميل نشط',
+      customerPhone: '70000000',
+      total: 1200,
+      items: [{ id: 'p1', name: 'منتج', quantity: 1 }],
+    })
+    expect(orders.find((order) => order.id === 'archived-1')).toMatchObject({
+      customerName: 'عميل مؤرشف',
+      total: 900,
+      status: 'completed',
+      items: [{ id: 'p2', name: 'قديم', quantity: 2 }],
+    })
   })
 
   it('reports API failures instead of showing empty dashboard data', async () => {

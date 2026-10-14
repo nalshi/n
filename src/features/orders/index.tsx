@@ -1,5 +1,5 @@
 import { useDeferredValue, useMemo, useState, type FormEvent } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import {
   ArrowLeft,
@@ -18,8 +18,11 @@ import {
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useRealtimeStore } from '@/stores/realtime-store'
 import { clearAuthApiCache } from '@/lib/auth-api'
+import {
+  merchantQueryKeys,
+  useMerchantIdentity,
+} from '@/hooks/useMerchantRealtime'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -401,7 +404,7 @@ function OrdersPage({
   archived?: boolean
 }) {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
+  const merchantId = useMerchantIdentity()
   const filter: OrdersFilter = archived ? 'archived' : 'active'
   const ordersPath = filter === 'archived' ? '/previous-orders' : '/orders'
   const [search, setSearch] = useState('')
@@ -418,19 +421,16 @@ function OrdersPage({
   )
   const [deliveryCode, setDeliveryCode] = useState('')
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase())
-  const realtimeStatus = useRealtimeStore((state) => state.status)
   const ordersQuery = useQuery({
-    queryKey: ['merchant-orders', filter],
+    queryKey: merchantQueryKeys.orders(merchantId, filter),
     queryFn: () => fetchDashboardOrders(filter),
-    refetchInterval: realtimeStatus === 'connected' ? false : 30_000,
-    refetchOnWindowFocus: true,
+    staleTime: Number.POSITIVE_INFINITY,
   })
   const activeQuery = useQuery({
-    queryKey: ['merchant-orders', 'active'],
+    queryKey: merchantQueryKeys.orders(merchantId, 'active'),
     queryFn: () => fetchDashboardOrders('active'),
     enabled: filter === 'archived',
-    refetchInterval: false,
-    staleTime: 15_000,
+    staleTime: Number.POSITIVE_INFINITY,
   })
   const orders = useMemo(() => ordersQuery.data || [], [ordersQuery.data])
   const filteredOrders = useMemo(() => {
@@ -443,12 +443,6 @@ function OrdersPage({
     )
   }, [deferredSearch, orders])
 
-  const invalidateOrders = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['merchant-orders'] }),
-      queryClient.invalidateQueries({ queryKey: ['merchant-dashboard-home'] }),
-    ])
-  }
   const statusMutation = useMutation({
     mutationFn: ({
       order,
@@ -457,7 +451,7 @@ function OrdersPage({
       order: DashboardOrder
       status: 'confirmed_by_store' | 'out_for_delivery'
     }) => updateDashboardOrderStatus(order.id, status),
-    onSuccess: async (message, variables) => {
+    onSuccess: (message, variables) => {
       toast.success(
         message ||
           (variables.status === 'confirmed_by_store'
@@ -474,7 +468,6 @@ function OrdersPage({
         search: { orderId: nextOrderId || undefined },
       })
       setConfirmAction(null)
-      await invalidateOrders()
     },
     onError: (error) =>
       toast.error(
@@ -483,7 +476,7 @@ function OrdersPage({
   })
   const cancelMutation = useMutation({
     mutationFn: (order: DashboardOrder) => cancelDashboardOrder(order.id),
-    onSuccess: async (message, order) => {
+    onSuccess: (message, order) => {
       toast.success(message || 'تم إلغاء الطلب بنجاح.')
       const nextOrderId = nextPendingOrderId(filteredOrders, order.id)
       setSelectedOrderId(nextOrderId)
@@ -492,7 +485,6 @@ function OrdersPage({
         search: { orderId: nextOrderId || undefined },
       })
       setConfirmAction(null)
-      await invalidateOrders()
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'تعذر إلغاء الطلب.'),
@@ -505,7 +497,7 @@ function OrdersPage({
         deliveryCode.trim()
       )
     },
-    onSuccess: async (message) => {
+    onSuccess: (message) => {
       toast.success(message || 'تم تأكيد تسليم الطلب بنجاح.')
       setDeliveryOrder(null)
       setDeliveryCode('')
@@ -514,7 +506,6 @@ function OrdersPage({
         to: ordersPath,
         search: { orderId: undefined },
       })
-      await invalidateOrders()
     },
     onError: (error) =>
       toast.error(
