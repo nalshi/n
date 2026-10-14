@@ -108,7 +108,7 @@ describe('merchant realtime synchronization', () => {
       'fetch',
       vi.fn((input: RequestInfo | URL) => {
         const url = String(input)
-        if (url.includes('/dashboard/init')) {
+        if (url.includes('/api/merchant/bootstrap')) {
           return Promise.resolve(
             makeDashboardResponse(url.includes('refresh=1'))
           )
@@ -145,7 +145,7 @@ describe('merchant realtime synchronization', () => {
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
 
     expect(fetch).toHaveBeenCalledWith(
-      '/api/worker/dashboard/init',
+      '/api/worker/api/merchant/bootstrap',
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
@@ -233,7 +233,7 @@ describe('merchant realtime synchronization', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL) =>
-        String(input).includes('/dashboard/init')
+        String(input).includes('/api/merchant/bootstrap')
           ? Promise.resolve(makeDashboardResponse())
           : Promise.reject(new Error('offline'))
       )
@@ -309,7 +309,7 @@ describe('merchant realtime synchronization', () => {
       ])
     )
     expect(fetch).toHaveBeenCalledWith(
-      '/api/worker/dashboard/init?refresh=1',
+      '/api/worker/api/merchant/bootstrap?refresh=1',
       expect.objectContaining({ method: 'GET' })
     )
   })
