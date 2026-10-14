@@ -145,7 +145,7 @@ describe('merchant realtime synchronization', () => {
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
 
     expect(fetch).toHaveBeenCalledWith(
-      '/api/worker/api/merchant/bootstrap',
+      '/api/work/api/merchant/bootstrap',
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
@@ -309,7 +309,7 @@ describe('merchant realtime synchronization', () => {
       ])
     )
     expect(fetch).toHaveBeenCalledWith(
-      '/api/worker/api/merchant/bootstrap?refresh=1',
+      '/api/work/api/merchant/bootstrap?refresh=1',
       expect.objectContaining({ method: 'GET' })
     )
   })

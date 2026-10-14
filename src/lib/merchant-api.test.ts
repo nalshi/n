@@ -38,7 +38,7 @@ describe('merchant API transport', () => {
     await apiRequest('list_products', { page: 1 }, csrfToken)
 
     const [url, options] = mockedFetch.mock.calls[0]
-    expect(url).toBe('/api/worker/')
+    expect(url).toBe('/api/work/')
     expect(options?.credentials).toBe('omit')
     expect(new Headers(options?.headers).get('Authorization')).toBe(
       'Bearer merchant-token'

@@ -491,7 +491,7 @@ export function fetchDashboardInitialization(
   }
 
   const query = forceRefresh ? '?refresh=1' : ''
-  const request = fetch(`/api/worker/api/merchant/bootstrap${query}`, {
+  const request = fetch(`/api/work/api/merchant/bootstrap${query}`, {
     method: 'GET',
     headers: {
       Accept: 'application/json',

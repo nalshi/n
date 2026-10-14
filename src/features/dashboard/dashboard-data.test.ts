@@ -210,7 +210,7 @@ describe('fetchDashboardData', () => {
 
     expect(fetch).toHaveBeenCalledOnce()
     expect(fetch).toHaveBeenCalledWith(
-      '/api/worker/api/merchant/bootstrap',
+      '/api/work/api/merchant/bootstrap',
       expect.objectContaining({ method: 'GET' })
     )
   })

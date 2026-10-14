@@ -72,24 +72,24 @@ function getApiUrl() {
 }
 
 function getWorkerApiUrl() {
-  if (typeof window === 'undefined') return '/api/worker/'
+  if (typeof window === 'undefined') return '/api/work/'
   const configured =
     window.WORKER_API_URL ||
     window.CF_WORKER_URL ||
     window.CLOUDFLARE_WORKER_URL
   if (typeof configured !== 'string' || !configured.trim()) {
-    return '/api/worker/'
+    return '/api/work/'
   }
 
   const value = configured.trim()
-  if (value === '/api/worker' || value === '/api/worker/') {
-    return '/api/worker/'
+  if (value === '/api/work' || value === '/api/work/') {
+    return '/api/work/'
   }
   if (value.includes('://')) {
     const normalized = value.replace(/\/$/, '')
-    return normalized.endsWith('/api/worker')
+    return normalized.endsWith('/api/work')
       ? `${normalized}/`
-      : `${normalized}/api/worker/`
+      : `${normalized}/api/work/`
   }
   return value.endsWith('/') ? value : `${value}/`
 }

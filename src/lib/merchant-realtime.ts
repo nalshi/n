@@ -334,7 +334,7 @@ export function startMerchantRealtime(
   }
 
   async function fetchTicket() {
-    const response = await fetch('/api/worker/ws/ticket', {
+    const response = await fetch('/api/work/ws/ticket', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -349,8 +349,8 @@ export function startMerchantRealtime(
 
   function buildSocketUrl(ticket: string) {
     return ticket
-      ? `${socketOrigin}/api/worker/ws?ticket=${encodeURIComponent(ticket)}&m=${encodeURIComponent(merchantId)}`
-      : `${socketOrigin}/api/worker/ws?merchant_id=${encodeURIComponent(merchantId)}&token=${encodeURIComponent(token)}`
+      ? `${socketOrigin}/api/work/ws?ticket=${encodeURIComponent(ticket)}&m=${encodeURIComponent(merchantId)}`
+      : `${socketOrigin}/api/work/ws?merchant_id=${encodeURIComponent(merchantId)}&token=${encodeURIComponent(token)}`
   }
 
   function connectSharedWorker() {
