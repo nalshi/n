@@ -92,7 +92,10 @@ function makeDashboardResponse(refresh = false) {
       categories: [{ id: 4, name: 'فئة', parent_id: 0 }],
       settings: { store_name: 'المتجر', username: 'shop' },
     }),
-    { status: 200 }
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }
   )
 }
 
