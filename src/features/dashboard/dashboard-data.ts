@@ -501,6 +501,13 @@ export function fetchDashboardInitialization(
     cache: 'no-store',
   })
     .then(async (response) => {
+      const contentType = response.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        throw new Error(
+          'مسار API أعاد صفحة الموقع بدل بيانات اللوحة. تأكد من نشر Cloudflare Pages Function لمسار /api/work/* وضبط WORKER_URL وPROXY_SECRET.'
+        )
+      }
+
       let payload: unknown
       try {
         payload = await response.json()

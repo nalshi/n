@@ -270,6 +270,22 @@ describe('fetchDashboardData', () => {
     await expect(fetchDashboardData()).rejects.toThrow('انتهت الجلسة')
   })
 
+  it('explains when the site fallback serves HTML instead of the dashboard API', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response('<!doctype html><html></html>', {
+          status: 200,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        })
+      )
+    )
+
+    await expect(fetchDashboardInitialization()).rejects.toThrow(
+      'Cloudflare Pages Function لمسار /api/work/*'
+    )
+  })
+
   it('loads complete product fields and normalizes variant stock and images', async () => {
     mockDashboardResponse(
       dashboardSnapshot({
