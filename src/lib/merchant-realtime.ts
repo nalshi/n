@@ -334,23 +334,26 @@ export function startMerchantRealtime(
   }
 
   async function fetchTicket() {
-    const response = await fetch('/api/work/ws/ticket', {
+    const response = await fetch('/api/worker/ws/ticket', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     })
-    if (!response.ok) return ''
+    if (!response.ok) {
+      throw new Error(`تعذر إصدار تذكرة الاتصال (${response.status}).`)
+    }
     const result: unknown = await response.json()
     const ticket = readRecord(result)?.ticket
-    return typeof ticket === 'string' ? ticket : ''
+    if (typeof ticket !== 'string' || !ticket) {
+      throw new Error('استجابة تذكرة الاتصال غير صالحة.')
+    }
+    return ticket
   }
 
   function buildSocketUrl(ticket: string) {
-    return ticket
-      ? `${socketOrigin}/api/work/ws?ticket=${encodeURIComponent(ticket)}&m=${encodeURIComponent(merchantId)}`
-      : `${socketOrigin}/api/work/ws?merchant_id=${encodeURIComponent(merchantId)}&token=${encodeURIComponent(token)}`
+    return `${socketOrigin}/api/worker/ws?ticket=${encodeURIComponent(ticket)}&m=${encodeURIComponent(merchantId)}`
   }
 
   function connectSharedWorker() {
@@ -428,7 +431,6 @@ export function startMerchantRealtime(
       })
 
       void fetchTicket()
-        .catch(() => '')
         .then((ticket) => {
           if (stopped || sharedPort !== port) return
           port.postMessage({
@@ -446,6 +448,14 @@ export function startMerchantRealtime(
               void connect()
             }
           }, 12_000)
+        })
+        .catch((error: unknown) => {
+          if (stopped || sharedPort !== port) return
+          setStatus(
+            'disconnected',
+            error instanceof Error ? error.message : 'تعذر إصدار تذكرة الاتصال.'
+          )
+          scheduleReconnect()
         })
 
       return true
@@ -471,12 +481,7 @@ export function startMerchantRealtime(
 
     setStatus('connecting', 'جاري إنشاء الاتصال اللحظي...')
     try {
-      let ticket = ''
-      try {
-        ticket = await fetchTicket()
-      } catch {
-        ticket = ''
-      }
+      const ticket = await fetchTicket()
       if (stopped) return
 
       const nextSocket = new WebSocket(buildSocketUrl(ticket))

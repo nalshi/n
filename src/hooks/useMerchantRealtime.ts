@@ -290,7 +290,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         sessionStorage.getItem('merchant_token') ||
         ''
       if (!token) throw new Error('انتهت الجلسة. يرجى تسجيل الدخول مجدداً.')
-      const response = await fetch('/api/work/ws/ticket', {
+      const response = await fetch('/api/worker/ws/ticket', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -470,9 +470,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         if (stopped) return
         const currentCursor = cursor()
         const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        const url = new URL(
-          `${scheme}//${window.location.host}/api/work/api/live`
-        )
+        const url = new URL(`${scheme}//${window.location.host}/api/worker/ws`)
         url.searchParams.set('ticket', ticket)
         url.searchParams.set('m', merchantId)
         url.searchParams.set('since', String(currentCursor.timestamp))

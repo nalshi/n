@@ -153,6 +153,10 @@ describe('merchant realtime synchronization', () => {
         }),
       })
     )
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/worker/ws/ticket',
+      expect.objectContaining({ method: 'POST' })
+    )
     expect(queryClient.getQueryData(['merchant-products'])).toMatchObject([
       { id: '9', name: 'منتج', price: 15 },
     ])
@@ -161,6 +165,7 @@ describe('merchant realtime synchronization', () => {
     ).toMatchObject([{ id: '11', customerName: 'عميل' }])
 
     const socket = FakeWebSocket.instances[0]
+    expect(socket.url).toContain('/api/worker/ws?ticket=')
     expect(socket.url).toContain('ticket=short-ticket')
     expect(socket.url).toContain('&m=42')
     expect(socket.url).not.toContain(makeToken())
@@ -229,7 +234,7 @@ describe('merchant realtime synchronization', () => {
     })
   })
 
-  it('falls back to the legacy token URL when ticket provisioning fails', async () => {
+  it('does not expose the token in a WebSocket URL when ticket provisioning fails', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL) =>
@@ -239,12 +244,11 @@ describe('merchant realtime synchronization', () => {
       )
     )
     cleanup = startMerchantRealtime(queryClient)
-    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
-
-    expect(FakeWebSocket.instances[0].url).toContain('merchant_id=42')
-    expect(FakeWebSocket.instances[0].url).toContain(
-      encodeURIComponent(makeToken())
+    await vi.waitFor(() =>
+      expect(useRealtimeStore.getState().status).toBe('disconnected')
     )
+
+    expect(FakeWebSocket.instances).toHaveLength(0)
   })
 
   it('reuses the shared worker and applies incremental events', async () => {
