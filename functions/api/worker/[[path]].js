@@ -41,8 +41,8 @@ export async function onRequest(context) {
   }
 
   const originalUrl = new URL(request.url);
-  // استخراج المسار الفرعي بعد /api/worker لتمريره بدقة للـ Worker (مثل /ws أو /stores/...)
-  const subpath = originalUrl.pathname.replace(/^\/api\/worker\/?/, '');
+  // Extract the Worker route suffix after /api/work or /api/worker (for example /ws or /stores/...).
+  const subpath = originalUrl.pathname.replace(/^\/api\/(?:work|worker)\/?/, '');
   const cleanSubpath = subpath ? (subpath.startsWith('/') ? subpath : '/' + subpath) : '';
   const targetUrl = env.WORKER_URL.replace(/\/$/, '') + cleanSubpath + originalUrl.search;
 
