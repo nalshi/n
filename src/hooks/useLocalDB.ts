@@ -189,14 +189,9 @@ export function useLocalDashboardStats() {
       totalRevenue: 0,
       totalOrders: 0,
       pendingCount: 0,
-      activeCount: 0,
       completedCount: 0,
       productsCount: 0,
     }
   )
 }
-      completedCount: 0,
-      productsCount: 0,
-    }
-  )
-}
+
