@@ -15,6 +15,24 @@ import {
   type DashboardOrder,
   type DashboardProduct,
 } from '@/features/dashboard/dashboard-data'
+import {
+  localDB,
+  injectOrder,
+  removeOrder,
+  injectProduct,
+  removeProduct,
+  writeSyncCursor,
+  readSyncCursor,
+  hydrateFromSnapshot,
+} from '@/lib/db'
+
+// ─── قناة البث المحلي بين التبويبات (BroadcastChannel) ───────────────────
+// تُستخدم لإعلام التبويبات الثانوية بالتحديثات دون أي طلب شبكة إضافي.
+// التبويب القائد يكتب في Dexie ثم يبث عبر هذه القناة → التبويبات الأخرى
+// تقرأ من Dexie محلياً (0 HTTP requests).
+const _localBus = typeof BroadcastChannel !== 'undefined'
+  ? new BroadcastChannel('merchant_tab_mesh_v1')
+  : null
 
 export const merchantBootstrapKey = (merchantId: string) =>
   ['merchant-bootstrap', merchantId] as const
@@ -94,7 +112,26 @@ function writeSnapshotQueries(
     dashboard.username
   )
   queryClient.setQueryData(merchantQueryKeys.categories(merchantId), categories)
+
+  // ─── حقن Snapshot في Dexie IndexedDB بشكل غير متزامن ────────────────
+  // نستخدم void لأن هذا الحقن لا يحتاج أن يُكمل قبل تحديث الـ UI.
+  // الـ UI يتحدث فوراً من TanStack Query، بينما Dexie تُحدَّث في الخلفية
+  // لضمان المخزن الدائم (Offline-First persistence).
+  void hydrateFromSnapshot({
+    merchantId,
+    orders: [
+      ...dashboard.activeOrders,
+      ...dashboard.archivedOrders,
+    ],
+    products: dashboard.products,
+    categories,
+    lastEventId: snapshot.lastEventId ?? 0,
+    lastTimestamp: snapshot.lastTimestamp ?? 0,
+  }).catch((err) => {
+    console.warn('[db] فشل حفظ Snapshot في IndexedDB:', err)
+  })
 }
+
 
 function upsertProduct(
   products: DashboardProduct[],
@@ -156,9 +193,27 @@ function applyMerchantEvent(
           }
         : snapshot
     )
+
+    // ─── حقن التغيير في Dexie بالتوازي (غير مُعلِّق للـ UI) ──────────
+    if (event.action === 'deleted') {
+      void removeProduct(productId).catch((err) =>
+        console.warn('[db] فشل حذف المنتج من IndexedDB:', err)
+      )
+    } else {
+      const [product] = normalizeRealtimeProducts([event.data])
+      if (product) {
+        void injectProduct(product).catch((err) =>
+          console.warn('[db] فشل حفظ المنتج في IndexedDB:', err)
+        )
+      }
+    }
+
+    // إعلام التبويبات الأخرى محلياً (0 طلبات شبكة)
+    _localBus?.postMessage({ type: 'PRODUCT_MUTATED', productId, merchantId })
     return
   }
 
+  // ─── معالجة أحداث الطلبات ─────────────────────────────────────────────
   const active =
     queryClient.getQueryData<DashboardOrder[]>([
       'merchant-orders',
@@ -179,12 +234,17 @@ function applyMerchantEvent(
 
   let nextActive = active
   let nextArchived = archived
+
   if (event.action === 'deleted') {
     if (event.scope === 'archived') {
       nextArchived = archived.filter((order) => order.id !== orderId)
     } else {
       nextActive = active.filter((order) => order.id !== orderId)
     }
+    // حذف من Dexie
+    void removeOrder(orderId).catch((err) =>
+      console.warn('[db] فشل حذف الطلب من IndexedDB:', err)
+    )
   } else {
     const [order] = normalizeRealtimeOrders([event.data])
     if (order) {
@@ -197,6 +257,10 @@ function applyMerchantEvent(
         nextActive = upsertOrder(active, order)
         nextArchived = archived.filter((item) => item.id !== order.id)
       }
+      // حقن في Dexie
+      void injectOrder(order).catch((err) =>
+        console.warn('[db] فشل حفظ الطلب في IndexedDB:', err)
+      )
     }
   }
 
@@ -231,7 +295,16 @@ function applyMerchantEvent(
         }
       : snapshot
   )
+
+  // إعلام التبويبات الأخرى محلياً (0 طلبات شبكة)
+  _localBus?.postMessage({
+    type: 'ORDER_MUTATED',
+    orderId,
+    merchantId,
+    action: event.action,
+  })
 }
+
 
 export function useMerchantData(merchantId: string) {
   const queryClient = useQueryClient()
@@ -272,15 +345,65 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
     let reconnectAttempt = 0
     let reconnectTimer: number | undefined
     let gapTimer: number | undefined
+    let lockReleaser: (() => void) | null = null
     const setStatus = useRealtimeStore.getState().setStatus
 
-    const cursor = () => {
+    // ─── استماع التبويبات الثانوية لإشعارات القائد ──────────────────────
+    // التبويبات التي لم تفز بالقفل تستمع للـ BroadcastChannel فقط.
+    // عند وصول إشعار، تقرأ البيانات من Dexie محلياً (0 HTTP).
+    const handleBusMessage = (ev: MessageEvent<unknown>) => {
+      const msg = ev.data as Record<string, unknown>
+      if (!msg || typeof msg !== 'object') return
+      // التبويب الثانوي يُعيد بناء الـ cache من Dexie بشكل lazy
+      if (msg.type === 'ORDER_MUTATED' && msg.merchantId === merchantId) {
+        void localDB.orders.toArray().then((orders) => {
+          const active = orders.filter(
+            (o) => o.status !== 'completed' && o.status !== 'cancelled'
+          )
+          const archived = orders.filter(
+            (o) => o.status === 'completed' || o.status === 'cancelled'
+          )
+          queryClient.setQueryData(
+            merchantQueryKeys.orders(merchantId, 'active'),
+            active
+          )
+          queryClient.setQueryData(
+            merchantQueryKeys.orders(merchantId, 'archived'),
+            archived
+          )
+        })
+      }
+      if (msg.type === 'PRODUCT_MUTATED' && msg.merchantId === merchantId) {
+        void localDB.products.toArray().then((products) => {
+          queryClient.setQueryData(
+            merchantQueryKeys.products(merchantId),
+            products
+          )
+          queryClient.setQueryData(
+            merchantQueryKeys.dashboardProducts(merchantId),
+            products
+          )
+        })
+      }
+    }
+    _localBus?.addEventListener('message', handleBusMessage)
+
+    // ─── دالة cursor: تقرأ من TanStack Query أولاً ثم من Dexie fallback ──
+    const cursor = async () => {
       const snapshot = queryClient.getQueryData<DashboardInitialization>(
         merchantBootstrapKey(merchantId)
       )
+      if (snapshot?.lastTimestamp) {
+        return {
+          timestamp: snapshot.lastTimestamp,
+          eventId: snapshot.lastEventId || 0,
+        }
+      }
+      // fallback: اقرأ من Dexie (ما بعد إعادة تحميل الصفحة)
+      const local = await readSyncCursor()
       return {
-        timestamp: snapshot?.lastTimestamp || 0,
-        eventId: snapshot?.lastEventId || 0,
+        timestamp: local.lastTimestamp,
+        eventId: local.lastEventId,
       }
     }
 
@@ -362,6 +485,13 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         )
       }
 
+      // ─── تحديث Dexie cursor بعد كل دفعة من الأحداث (غير مُعلِّق) ────
+      if (appliedEvents.length > 0) {
+        void writeSyncCursor(merchantId, lastEventId, lastTimestamp).catch(
+          (err) => console.warn('[db] فشل تحديث sync cursor:', err)
+        )
+      }
+
       if (pendingEvents.current.size && gapTimer === undefined) {
         gapTimer = window.setTimeout(() => {
           gapTimer = undefined
@@ -375,6 +505,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
       }
       return appliedEvents
     }
+
 
     const handleMessage = (raw: unknown) => {
       if (typeof raw !== 'string') return
@@ -469,7 +600,8 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
       try {
         const ticket = await requestTicket()
         if (stopped) return
-        const currentCursor = cursor()
+        // ─── قراءة الـ Cursor من Dexie (Delta Sync) ──────────────────
+        const currentCursor = await cursor()
         const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         const url = new URL(`${scheme}//${window.location.host}/api/worker/ws`)
         url.searchParams.set('ticket', ticket)
@@ -519,10 +651,33 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
     const onOffline = () => setStatus('offline', 'لا يوجد اتصال بالإنترنت')
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)
-    void connect()
+
+    // ─── Leader Election عبر Web Locks API ───────────────────────────────
+    // التبويب الأول الذي يحصل على القفل يصبح "القائد" ويفتح الاتصال.
+    // التبويبات الأخرى تبقى في طابور الانتظار على القفل.
+    // إذا أُغلق القائد، يحصل التبويب التالي في الطابور على القفل تلقائياً.
+    if ('locks' in navigator) {
+      const lockName = `merchant_ws_leader_${merchantId}`
+      void navigator.locks.request(lockName, async (lock) => {
+        if (!lock || stopped) return
+        // هذا التبويب هو القائد — يفتح الاتصال الحقيقي
+        void connect()
+        // إبقاء القفل مُمسَكاً حتى يتوقف الـ effect
+        return new Promise<void>((resolve) => {
+          lockReleaser = resolve
+        })
+      })
+    } else {
+      // fallback للمتصفحات القديمة: اتصال مباشر بدون Leader Election
+      void connect()
+    }
 
     return () => {
       stopped = true
+      // تحرير القفل لإتاحة الفرصة للتبويب التالي يصير قائداً
+      lockReleaser?.()
+      lockReleaser = null
+      _localBus?.removeEventListener('message', handleBusMessage)
       window.removeEventListener('online', onOnline)
       window.removeEventListener('offline', onOffline)
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
