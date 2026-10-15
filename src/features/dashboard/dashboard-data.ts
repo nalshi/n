@@ -509,9 +509,14 @@ export function fetchDashboardInitialization(
       }
 
       let payload: unknown
+      let rawText = ''
       try {
-        payload = await response.json()
+        rawText = await response.text()
+        payload = JSON.parse(rawText)
       } catch {
+        if (!response.ok) {
+          throw new Error(`تعذر الاتصال بالخادم (${response.status}).`)
+        }
         throw new Error('أعاد الخادم استجابة غير صالحة لبيانات لوحة التحكم.')
       }
 
