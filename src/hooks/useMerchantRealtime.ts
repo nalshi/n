@@ -356,12 +356,12 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
       if (!msg || typeof msg !== 'object') return
       // التبويب الثانوي يُعيد بناء الـ cache من Dexie بشكل lazy
       if (msg.type === 'ORDER_MUTATED' && msg.merchantId === merchantId) {
-        void localDB.orders.toArray().then((orders) => {
+        void localDB.orders.toArray().then((orders: DashboardOrder[]) => {
           const active = orders.filter(
-            (o) => o.status !== 'completed' && o.status !== 'cancelled'
+            (o: DashboardOrder) => o.status !== 'completed' && o.status !== 'cancelled'
           )
           const archived = orders.filter(
-            (o) => o.status === 'completed' || o.status === 'cancelled'
+            (o: DashboardOrder) => o.status === 'completed' || o.status === 'cancelled'
           )
           queryClient.setQueryData(
             merchantQueryKeys.orders(merchantId, 'active'),
@@ -374,7 +374,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         })
       }
       if (msg.type === 'PRODUCT_MUTATED' && msg.merchantId === merchantId) {
-        void localDB.products.toArray().then((products) => {
+        void localDB.products.toArray().then((products: DashboardProduct[]) => {
           queryClient.setQueryData(
             merchantQueryKeys.products(merchantId),
             products
@@ -385,6 +385,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
           )
         })
       }
+
     }
     _localBus?.addEventListener('message', handleBusMessage)
 
