@@ -47,9 +47,15 @@ export function useLocalActiveOrders(): DashboardOrder[] {
   return useLiveQuery(
     () =>
       localDB.orders
-        .filter((o) => ACTIVE_STATUSES.includes(o.status as (typeof ACTIVE_STATUSES)[number]))
+        .filter((o: DashboardOrder) =>
+          ACTIVE_STATUSES.includes(o.status as (typeof ACTIVE_STATUSES)[number])
+        )
         .toArray()
-        .then((arr) => arr.sort((a, b) => b.createdAt.localeCompare(a.createdAt))),
+        .then((arr: DashboardOrder[]) =>
+          arr.sort((a: DashboardOrder, b: DashboardOrder) =>
+            b.createdAt.localeCompare(a.createdAt)
+          )
+        ),
     [],
     []
   )
@@ -62,9 +68,15 @@ export function useLocalArchivedOrders(): DashboardOrder[] {
   return useLiveQuery(
     () =>
       localDB.orders
-        .filter((o) => ARCHIVED_STATUSES.includes(o.status as (typeof ARCHIVED_STATUSES)[number]))
+        .filter((o: DashboardOrder) =>
+          ARCHIVED_STATUSES.includes(o.status as (typeof ARCHIVED_STATUSES)[number])
+        )
         .toArray()
-        .then((arr) => arr.sort((a, b) => b.createdAt.localeCompare(a.createdAt))),
+        .then((arr: DashboardOrder[]) =>
+          arr.sort((a: DashboardOrder, b: DashboardOrder) =>
+            b.createdAt.localeCompare(a.createdAt)
+          )
+        ),
     [],
     []
   )
@@ -117,7 +129,7 @@ export function useLocalAvailableProducts(): DashboardProduct[] {
   return useLiveQuery(
     () =>
       localDB.products
-        .filter((p) => p.isAvailable === true)
+        .filter((p: DashboardProduct) => p.isAvailable === true)
         .toArray(),
     [],
     []
@@ -150,17 +162,17 @@ export function useLocalDashboardStats() {
       ])
 
       const totalRevenue = allOrders.reduce(
-        (sum, o) => sum + (Number(o.total) || 0),
+        (sum: number, o: DashboardOrder) => sum + (Number(o.total) || 0),
         0
       )
       const pendingCount = allOrders.filter(
-        (o) => o.status === 'pending_merchant_approval'
+        (o: DashboardOrder) => o.status === 'pending_merchant_approval'
       ).length
-      const activeCount = allOrders.filter((o) =>
+      const activeCount = allOrders.filter((o: DashboardOrder) =>
         ACTIVE_STATUSES.includes(o.status as (typeof ACTIVE_STATUSES)[number])
       ).length
       const completedCount = allOrders.filter(
-        (o) => o.status === 'completed'
+        (o: DashboardOrder) => o.status === 'completed'
       ).length
 
       return {
@@ -178,6 +190,11 @@ export function useLocalDashboardStats() {
       totalOrders: 0,
       pendingCount: 0,
       activeCount: 0,
+      completedCount: 0,
+      productsCount: 0,
+    }
+  )
+}
       completedCount: 0,
       productsCount: 0,
     }
