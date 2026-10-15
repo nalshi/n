@@ -226,6 +226,34 @@ describe('fetchDashboardData', () => {
     })
   })
 
+  it('loads bootstrap data wrapped in a success envelope', async () => {
+    mockDashboardResponse({
+      status: 'success',
+      data: dashboardSnapshot({
+        settings: { store_name: 'متجري داخل الغلاف', username: 'wrapped_shop' },
+      }),
+    })
+
+    await expect(fetchDashboardInitialization()).resolves.toMatchObject({
+      dashboard: {
+        storeName: 'متجري داخل الغلاف',
+        username: 'wrapped_shop',
+        products: [],
+        activeOrders: [],
+        archivedOrders: [],
+      },
+      categories: [],
+    })
+  })
+
+  it('explains when the API worker returns its generic GET response', async () => {
+    mockDashboardResponse({ status: 'ok' })
+
+    await expect(fetchDashboardInitialization()).rejects.toThrow(
+      'انشر أحدث نسخة من عامل API'
+    )
+  })
+
   it('normalizes raw active and archived D1 rows for realtime deltas', () => {
     const orders = normalizeRealtimeOrders([
       {

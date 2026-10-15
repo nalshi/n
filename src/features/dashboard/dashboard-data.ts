@@ -509,9 +509,8 @@ export function fetchDashboardInitialization(
       }
 
       let payload: unknown
-      let rawText = ''
       try {
-        rawText = await response.text()
+        const rawText = await response.text()
         payload = JSON.parse(rawText)
       } catch {
         if (!response.ok) {
@@ -520,13 +519,21 @@ export function fetchDashboardInitialization(
         throw new Error('أعاد الخادم استجابة غير صالحة لبيانات لوحة التحكم.')
       }
 
-      const result = asRecord(payload)
+      const envelope = asRecord(payload)
+      const nestedData = asRecord(envelope?.data)
+      const result =
+        envelope?.status === 'success' && nestedData ? nestedData : envelope
       if (!response.ok || !result) {
         const message =
           typeof result?.message === 'string'
             ? result.message
             : 'تعذر تحميل بيانات لوحة التحكم.'
         throw new Error(message)
+      }
+      if (result.status === 'ok') {
+        throw new Error(
+          'يرد خادم تهيئة اللوحة بردّ عام بدل بيانات التاجر. انشر أحدث نسخة من عامل API وتأكد من توجيه /api/merchant/bootstrap إليه.'
+        )
       }
       if (
         !Array.isArray(result.products) ||
