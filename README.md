@@ -67,6 +67,36 @@ If you want to update components using the Shadcn CLI (e.g., `npx shadcn@latest 
 
 **Authentication:** Merchant API
 
+## Merchant data synchronization
+
+The authenticated dashboard restores its TanStack Query cache from IndexedDB and
+uses a single bootstrap request when that merchant has no persisted snapshot.
+While the dashboard is open, D1-backed order and product changes are delivered
+over a hibernating Durable Object WebSocket and applied to the local cache.
+Reconnects replay the merchant's event journal from the saved cursor.
+
+Before deploying the Worker, apply its D1 migration from `work-surs`:
+
+```bash
+cd work-surs
+pnpm dlx wrangler d1 migrations apply nalsh-db --remote --config src/wrangler.toml
+```
+
+The dashboard bootstrap and realtime endpoints also require the Cloudflare Pages
+Function in `functions/api/work/[[path]].js`. Deploy the Pages Function together
+with the site (a static-only `dist` upload does not deploy Functions), and set
+`WORKER_URL` and `PROXY_SECRET` as server-side Pages environment variables.
+`WORKER_URL` must point to the deployed API Worker, and `PROXY_SECRET` must match
+the Worker's gateway secret. A successful bootstrap request should return JSON;
+if `/api/work/api/merchant/bootstrap` returns the site's HTML page, the Pages
+Function route is not active in that deployment.
+
+The event journal supports replay while its rows are retained; it currently has
+no pruning policy. IndexedDB persistence is local to each browser profile and
+does not synchronize offline changes back to the server. Free-tier usage depends
+on actual bootstrap, mutation, and concurrent-WebSocket volume, so it cannot be
+guaranteed by the client-cache design alone.
+
 ## Run Locally
 
 Clone the project

@@ -340,6 +340,7 @@ export function startMerchantRealtime(
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
+      body: '{}',
     })
     if (!response.ok) {
       throw new Error(`تعذر إصدار تذكرة الاتصال (${response.status}).`)

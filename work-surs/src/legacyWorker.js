@@ -1,3 +1,4 @@
+// Existing action API and gateway retained behind the new typed Worker entry.
 import { actionRegistry } from './router.js';
 import { verifyJWT, timingSafeEqual } from './security/auth.js';
 import { assertAllowed, HttpError } from './security/rbac.js';
@@ -12,10 +13,75 @@ import { ROLES } from './config/constants.js';
 // والصلاحية والمدخلات، ثم يفوّض التنفيذ للـ controller المناسب
 // عبر جدول الأفعال (router.js). لا يوجد منطق عمل هنا إطلاقاً.
 // ========================================================
-// ========================================================
-// 🚪 تصدير كائنات Durable Objects
-// ========================================================
-export { MerchantSession } from './durableObjects/MerchantSession.js';
+function scheduleMerchantCatchUp(env, ctx, stub, merchantId, url, connectionId) {
+  const since = Number(url.searchParams.get('since') || 0);
+  const lastEventId = Number(url.searchParams.get('lastEventId') || 0);
+  if (
+    !Number.isSafeInteger(since) ||
+    since < 0 ||
+    !Number.isSafeInteger(lastEventId) ||
+    lastEventId < 0
+  ) {
+    console.error('Invalid merchant event cursor on WebSocket connection');
+    return;
+  }
+
+  const task = (async () => {
+    let cursorTimestamp = since;
+    let cursorEventId = lastEventId;
+    const pageSize = 250;
+
+    while (true) {
+      const result = await env.DB.prepare(
+        `SELECT event_id, occurred_at, entity_type, action, entity_id, scope, payload_json
+         FROM sync_events
+         WHERE merchant_id = ?
+           AND (occurred_at > ? OR (occurred_at = ? AND event_id > ?))
+         ORDER BY occurred_at ASC, event_id ASC
+         LIMIT ?`
+      )
+        .bind(merchantId, cursorTimestamp, cursorTimestamp, cursorEventId, pageSize)
+        .all();
+
+      const rows = result.results || [];
+      if (!rows.length) return;
+
+      const events = [];
+      for (const row of rows) {
+        let data;
+        try {
+          data = JSON.parse(row.payload_json);
+        } catch (error) {
+          console.error('Invalid merchant event payload during catch-up:', error);
+          cursorTimestamp = Number(row.occurred_at);
+          cursorEventId = Number(row.event_id);
+          continue;
+        }
+        events.push({
+          eventId: Number(row.event_id),
+          timestamp: Number(row.occurred_at),
+          type: row.entity_type,
+          action: row.action,
+          entityId: String(row.entity_id),
+          scope: row.scope,
+          data,
+        });
+      }
+      if (events.length) await stub.pushEvents(events, connectionId);
+
+      const lastRow = rows[rows.length - 1];
+      cursorTimestamp = Number(lastRow.occurred_at);
+      cursorEventId = Number(lastRow.event_id);
+      if (rows.length < pageSize) return;
+    }
+  })();
+
+  ctx.waitUntil(
+    task.catch((error) => {
+      console.error('Merchant WebSocket catch-up failed:', error);
+    })
+  );
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -112,8 +178,20 @@ export default {
           }
           const doId = env.MERCHANT_SESSION.idFromName(`merchant_${merchantHint}`);
           const doStub = env.MERCHANT_SESSION.get(doId);
-          const doResponse = await doStub.fetch(request);
+          const connectionId = crypto.randomUUID();
+          const doUrl = new URL(request.url);
+          doUrl.searchParams.set('connectionId', connectionId);
+          const doRequest = new Request(doUrl, request);
+          const doResponse = await doStub.fetch(doRequest);
           if (doResponse.status === 101) {
+            scheduleMerchantCatchUp(
+              env,
+              ctx,
+              doStub,
+              merchantHint,
+              url,
+              connectionId
+            );
             if (doResponse.webSocket) {
               return new Response(null, { status: 101, webSocket: doResponse.webSocket });
             }
@@ -147,9 +225,19 @@ export default {
         const doId = env.MERCHANT_SESSION.idFromName(`merchant_${merchantId}`);
         const doStub = env.MERCHANT_SESSION.get(doId);
         
-        // تمرير الطلب للـ Durable Object
-        const doResponse = await doStub.fetch(request);
+        const connectionId = crypto.randomUUID();
+        const doUrl = new URL(request.url);
+        doUrl.searchParams.set('connectionId', connectionId);
+        const doResponse = await doStub.fetch(new Request(doUrl, request));
         if (doResponse.status === 101) {
+          scheduleMerchantCatchUp(
+            env,
+            ctx,
+            doStub,
+            merchantId,
+            url,
+            connectionId
+          );
           if (doResponse.webSocket) {
             return new Response(null, { status: 101, webSocket: doResponse.webSocket });
           }
@@ -325,7 +413,11 @@ async function parseRequestBody(request) {
       }
     }
   } else {
-    body = await request.json();
+    try {
+      body = await request.json();
+    } catch {
+      body = {};
+    }
   }
   return { body, uploadedImageFile };
 }

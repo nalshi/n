@@ -1,76 +1,27 @@
 import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
-import { AxiosError } from 'axios'
-import {
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
-} from '@tanstack/react-query'
+import { useIsRestoring } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
-import { toast } from 'sonner'
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { useAuthStore } from '@/stores/auth-store'
-import { handleServerError } from '@/lib/handle-server-error'
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
 import { ThemeProvider } from './context/theme-provider'
+import { createQueryClient, queryPersistOptions } from './queryClient'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
 // Styles
 import './styles/index.css'
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: (failureCount, error) => {
-        // eslint-disable-next-line no-console
-        if (import.meta.env.DEV) console.log({ failureCount, error })
-
-        if (failureCount >= 0 && import.meta.env.DEV) return false
-        if (failureCount > 3 && import.meta.env.PROD) return false
-
-        return !(
-          error instanceof AxiosError &&
-          [401, 403].includes(error.response?.status ?? 0)
-        )
-      },
-      refetchOnWindowFocus: import.meta.env.PROD,
-      staleTime: 5 * 60_000,
-      gcTime: 30 * 60_000,
-    },
-    mutations: {
-      onError: (error) => {
-        handleServerError(error)
-
-        if (error instanceof AxiosError) {
-          if (error.response?.status === 304) {
-            toast.error('Content not modified!')
-          }
-        }
-      },
-    },
+const queryClient = createQueryClient({
+  onUnauthorized: () => {
+    useAuthStore.getState().auth.reset()
+    const redirect = `${router.history.location.href}`
+    void router.navigate({ to: '/sign-in', search: { redirect } })
   },
-  queryCache: new QueryCache({
-    onError: (error) => {
-      if (error instanceof AxiosError) {
-        if (error.response?.status === 401) {
-          toast.error('Session expired!')
-          useAuthStore.getState().auth.reset()
-          const redirect = `${router.history.location.href}`
-          router.navigate({ to: '/sign-in', search: { redirect } })
-        }
-        if (error.response?.status === 500) {
-          toast.error('Internal Server Error!')
-          // Only navigate to error page in production to avoid disrupting HMR in development
-          if (import.meta.env.PROD) {
-            router.navigate({ to: '/500' })
-          }
-        }
-        if (error.response?.status === 403) {
-          // router.navigate("/forbidden", { replace: true });
-        }
-      }
-    },
-  }),
+  onInternalServerError: () => {
+    void router.navigate({ to: '/500' })
+  },
 })
 
 // Create a new router instance
@@ -88,21 +39,33 @@ declare module '@tanstack/react-router' {
   }
 }
 
+function PersistedApplication() {
+  const isRestoring = useIsRestoring()
+  if (isRestoring) return null
+
+  return (
+    <ThemeProvider>
+      <FontProvider>
+        <DirectionProvider>
+          <RouterProvider router={router} />
+        </DirectionProvider>
+      </FontProvider>
+    </ThemeProvider>
+  )
+}
+
 // Render the app
 const rootElement = document.getElementById('root')!
 if (!rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement)
   root.render(
     <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <FontProvider>
-            <DirectionProvider>
-              <RouterProvider router={router} />
-            </DirectionProvider>
-          </FontProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={queryPersistOptions}
+      >
+        <PersistedApplication />
+      </PersistQueryClientProvider>
     </StrictMode>
   )
 }

@@ -1,0 +1,234 @@
+[
+  {
+    "id": "starlit_aurora",
+    "name": "شفق النجوم",
+    "category": "خيال ونجوم",
+    "description": "بنفسجي كوني مع ومضات سماوية، بهدوء مريح للعينين في الوضعين الفاتح والداكن.",
+    "light": {
+      "primary": "#6D28D9",
+      "primaryHover": "#5B21B6",
+      "gradientEnd": "#22D3EE",
+      "accent": "#0891B2",
+      "body": "#F7F4FF",
+      "surface": "#EDE9FE",
+      "textMain": "#24114A",
+      "textMuted": "#5B3A8A",
+      "border": "#DDD6FE"
+    },
+    "dark": {
+      "primary": "#C4B5FD",
+      "primaryHover": "#DDD6FE",
+      "gradientEnd": "#22D3EE",
+      "accent": "#67E8F9",
+      "body": "#10091F",
+      "card": "#1C1233",
+      "surface": "#2D1B4E",
+      "textMain": "#F5F3FF",
+      "textMuted": "#D8CCF5",
+      "border": "#5B3C86"
+    }
+  },
+  {
+    "id": "moonlit_amethyst",
+    "name": "جمشت قمري",
+    "category": "سحر وأحجار كريمة",
+    "description": "ليلكي مخملي ولمسات فوشيا مضيئة لمتجر أنيق بلمسة ساحرة.",
+    "light": {
+      "primary": "#7E22CE",
+      "primaryHover": "#6B21A8",
+      "gradientEnd": "#E879F9",
+      "accent": "#C026D3",
+      "body": "#FCF7FF",
+      "surface": "#F3E8FF",
+      "textMain": "#3B0764",
+      "textMuted": "#6B3A87",
+      "border": "#E9D5FF"
+    },
+    "dark": {
+      "primary": "#D8B4FE",
+      "primaryHover": "#E9D5FF",
+      "gradientEnd": "#E879F9",
+      "accent": "#F0ABFC",
+      "body": "#170B20",
+      "card": "#291436",
+      "surface": "#3B1C4C",
+      "textMain": "#FDF4FF",
+      "textMuted": "#E9D5FF",
+      "border": "#713A86"
+    }
+  },
+  {
+    "id": "enchanted_emerald",
+    "name": "زمردة مسحورة",
+    "category": "غابات وأحجار كريمة",
+    "description": "أخضر زمردي غني مع بريق ذهبي يليق بالمنتجات الطبيعية والفاخرة.",
+    "light": {
+      "primary": "#047857",
+      "primaryHover": "#065F46",
+      "gradientEnd": "#A3E635",
+      "accent": "#B7791F",
+      "body": "#F2FBF5",
+      "surface": "#DCFCE7",
+      "textMain": "#123526",
+      "textMuted": "#35664D",
+      "border": "#BBF7D0"
+    },
+    "dark": {
+      "primary": "#6EE7B7",
+      "primaryHover": "#A7F3D0",
+      "gradientEnd": "#A3E635",
+      "accent": "#FCD34D",
+      "body": "#071A13",
+      "card": "#10291E",
+      "surface": "#193D2C",
+      "textMain": "#ECFDF5",
+      "textMuted": "#BBF7D0",
+      "border": "#287653"
+    }
+  },
+  {
+    "id": "nebula_sapphire",
+    "name": "سديم الياقوت",
+    "category": "فضاء وتقنية",
+    "description": "أزرق ياقوتي عميق يتدرج إلى البنفسجي، مناسب لمتاجر التقنية والمنتجات العصرية.",
+    "light": {
+      "primary": "#1D4ED8",
+      "primaryHover": "#1E40AF",
+      "gradientEnd": "#8B5CF6",
+      "accent": "#7C3AED",
+      "body": "#F2F7FF",
+      "surface": "#DBEAFE",
+      "textMain": "#14264B",
+      "textMuted": "#405C8C",
+      "border": "#BFDBFE"
+    },
+    "dark": {
+      "primary": "#93C5FD",
+      "primaryHover": "#BFDBFE",
+      "gradientEnd": "#C4B5FD",
+      "accent": "#C4B5FD",
+      "body": "#081326",
+      "card": "#10213D",
+      "surface": "#19345A",
+      "textMain": "#EFF6FF",
+      "textMuted": "#BFDBFE",
+      "border": "#345D9A"
+    }
+  },
+  {
+    "id": "dragonfire_ruby",
+    "name": "ياقوتة التنين",
+    "category": "نار وجرأة",
+    "description": "أحمر ياقوتي متوهج بوهج مرجاني دافئ يمنح المتجر حضوراً جريئاً.",
+    "light": {
+      "primary": "#BE123C",
+      "primaryHover": "#9F1239",
+      "gradientEnd": "#FB923C",
+      "accent": "#EA580C",
+      "body": "#FFF7F5",
+      "surface": "#FFE4E6",
+      "textMain": "#3F1020",
+      "textMuted": "#7F3345",
+      "border": "#FECDD3"
+    },
+    "dark": {
+      "primary": "#FDA4AF",
+      "primaryHover": "#FECDD3",
+      "gradientEnd": "#FB923C",
+      "accent": "#FDBA74",
+      "body": "#1D0A10",
+      "card": "#34131D",
+      "surface": "#4B1C2A",
+      "textMain": "#FFF1F2",
+      "textMuted": "#FECDD3",
+      "border": "#8D3347"
+    }
+  },
+  {
+    "id": "faerie_rose",
+    "name": "وردة الجنيات",
+    "category": "خيال وزهور",
+    "description": "وردي ناعم مع لمسات بنفسجية منعشة لتجربة لطيفة وأنيقة.",
+    "light": {
+      "primary": "#BE185D",
+      "primaryHover": "#9D174D",
+      "gradientEnd": "#A78BFA",
+      "accent": "#7C3AED",
+      "body": "#FFF7FB",
+      "surface": "#FCE7F3",
+      "textMain": "#45152E",
+      "textMuted": "#80385F",
+      "border": "#FBCFE8"
+    },
+    "dark": {
+      "primary": "#F9A8D4",
+      "primaryHover": "#FBCFE8",
+      "gradientEnd": "#C4B5FD",
+      "accent": "#C4B5FD",
+      "body": "#1E0B17",
+      "card": "#351528",
+      "surface": "#4C1E39",
+      "textMain": "#FFF1F8",
+      "textMuted": "#FBCFE8",
+      "border": "#873B68"
+    }
+  },
+  {
+    "id": "celestial_saffron",
+    "name": "شمس سماوية",
+    "category": "شمس ودفء",
+    "description": "ذهبي مشرق يلتقي بالتركواز في واجهة دافئة مناسبة للهدايا والضيافة.",
+    "light": {
+      "primary": "#A16207",
+      "primaryHover": "#854D0E",
+      "gradientEnd": "#FB7185",
+      "accent": "#0F766E",
+      "body": "#FFFCF2",
+      "surface": "#FEF3C7",
+      "textMain": "#38240A",
+      "textMuted": "#77531C",
+      "border": "#FDE68A"
+    },
+    "dark": {
+      "primary": "#FCD34D",
+      "primaryHover": "#FDE68A",
+      "gradientEnd": "#FB7185",
+      "accent": "#5EEAD4",
+      "body": "#1B1407",
+      "card": "#30240D",
+      "surface": "#493711",
+      "textMain": "#FFFBEB",
+      "textMuted": "#FDE68A",
+      "border": "#8A681E"
+    }
+  },
+  {
+    "id": "oceanic_mirage",
+    "name": "سراب المحيط",
+    "category": "محيط ونسيم",
+    "description": "فيروزي بحري منعش مع عمق نيلي يمنح تجربة هادئة وواضحة.",
+    "light": {
+      "primary": "#0F766E",
+      "primaryHover": "#115E59",
+      "gradientEnd": "#38BDF8",
+      "accent": "#2563EB",
+      "body": "#F0FDFA",
+      "surface": "#CCFBF1",
+      "textMain": "#123B3A",
+      "textMuted": "#326B68",
+      "border": "#99F6E4"
+    },
+    "dark": {
+      "primary": "#5EEAD4",
+      "primaryHover": "#99F6E4",
+      "gradientEnd": "#60A5FA",
+      "accent": "#93C5FD",
+      "body": "#061816",
+      "card": "#0D2926",
+      "surface": "#14413D",
+      "textMain": "#ECFEFF",
+      "textMuted": "#A7F3D0",
+      "border": "#26756C"
+    }
+  }
+]

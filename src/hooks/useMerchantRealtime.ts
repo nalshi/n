@@ -296,6 +296,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        body: '{}',
       })
       if (!response.ok) {
         throw new Error(`تعذر إصدار تذكرة الاتصال (${response.status}).`)
