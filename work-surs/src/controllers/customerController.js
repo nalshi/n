@@ -1,6 +1,7 @@
 import { HttpError } from '../security/rbac.js';
 import { syncCatalogToStorefront } from '../services/catalog/catalogSyncService.js';
 import { syncOrderTracking } from '../services/realtime/realtimeSyncService.js';
+import { signalNewOrderToFirebase } from '../services/realtime/providers/firebaseSignalProvider.js';
 import { sendFcmNotification } from '../services/notifications/providers/fcmProvider.js';
 import { extractCoordsFromUrl, calculateDistance, calculateDeliveryFee } from '../services/geo/geoUtils.js';
 import { syncNewOrderToLegacyApi } from '../services/legacySync/tidbSyncService.js';
@@ -876,6 +877,17 @@ async function deductStockAndNotify(env, tick) {
             body: JSON.stringify({ order: orderObj })
           });
         }
+      }
+
+      // ⭐ إشارة Firebase RTDB (10 bytes فقط — رقم عداد بدون أي بيانات شخصية)
+      // تعمل كبديل/مكمّل للـ Durable Object WebSocket إذا كان التاجر يستخدم
+      // EventSource بدلاً من WebSocket في لوحة التحكم.
+      {
+        const seqRow = await env.DB.prepare(
+          'SELECT count(*) as total FROM live_tickets WHERE merchant_id = ?'
+        ).bind(tick.merchant_id).first().catch(() => null);
+        const seq = seqRow?.total ? Number(seqRow.total) : Date.now();
+        await signalNewOrderToFirebase(env, tick.merchant_id, seq);
       }
     } catch (e) {
       console.error('Realtime sync failed:', e);

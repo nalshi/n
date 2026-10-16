@@ -4,7 +4,8 @@ import { assertAllowed, HttpError } from './security/rbac.js';
 import { validateAction } from './security/validate.js';
 import { buildCorsHeaders, successResponse, errorResponse } from './core/response.js';
 import { ROLES } from './config/constants.js';
-import { handleWhatsappWebhookVerify, handleWhatsappWebhookEvent } from './controllers/whatsappController.js'; // ⭐ إضافة: ربط واتساب
+import { handleWhatsappWebhookVerify, handleWhatsappWebhookEvent } from './controllers/whatsappController.js';
+import { createFirebaseCustomToken } from './services/realtime/providers/firebaseSignalProvider.js';
 
 // ========================================================
 // 🚪 نقطة الدخول الرئيسية للـ Worker
@@ -32,6 +33,36 @@ export default {
       if (request.method === 'GET') return handleWhatsappWebhookVerify(url, env);
       if (request.method === 'POST') return handleWhatsappWebhookEvent(request, env, ctx);
       return new Response('Method Not Allowed', { status: 405 });
+    }
+
+    // ⭐ مسار Firebase Custom Token — يُصدر للتاجر توكن قراءة محدود الصلاحية (ساعة)
+    if (url.pathname === '/api/firebase/token' || url.pathname === '/firebase/token') {
+      const authHeader = request.headers.get('Authorization') || '';
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+      if (!token) {
+        return new Response(JSON.stringify({ status: 'error', message: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      try {
+        const user = await verifyJWT(token, env.APP_SECRET_KEY);
+        if (!user) throw new Error('invalid token');
+        const firebaseToken = await createFirebaseCustomToken(env, user.user_id);
+        return new Response(JSON.stringify({
+          status: 'success',
+          token: firebaseToken,
+          expiresIn: 3600,
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } catch {
+        return new Response(JSON.stringify({ status: 'error', message: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // ⭐ مسار استخراج تذكرة اتصال WebSocket (يدعم التوافق مع المتصفحات القديمة)
