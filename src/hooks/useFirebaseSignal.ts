@@ -32,7 +32,12 @@ import {
   type DashboardOrder,
 } from '@/features/dashboard/dashboard-data'
 import { authApiRequest } from '@/lib/auth-api'
+import { useRealtimeStore } from '@/stores/realtime-store'
 import { merchantQueryKeys } from './useMerchantRealtime'
+
+const _localBus = typeof BroadcastChannel !== 'undefined'
+  ? new BroadcastChannel('merchant_tab_mesh_v1')
+  : null
 
 // ─── ثوابت ───────────────────────────────────────────────────────────────────
 const FIREBASE_DB_URL =
@@ -102,6 +107,13 @@ async function fetchAndInjectMissingOrders(
         // صوت + إشعار
         toast.info(`🛍️ وصل ${normalized.length} طلب جديد!`, { duration: 8_000 })
 
+        // بث محلي لبقية التبويبات (0 طلبات شبكة)
+        _localBus?.postMessage({
+          type: 'ORDER_MUTATED',
+          merchantId,
+          action: 'created',
+        })
+
         // inject كل طلب منفرداً لضمان تحديث الـ cache الدقيق
         for (const order of normalized) await injectOrder(order)
       }
@@ -125,29 +137,38 @@ export function useFirebaseSignal(merchantId: string, enabled: boolean) {
     if (!enabled || !merchantId || !FIREBASE_DB_URL) return
 
     let stopped = false
+    const setStatus = useRealtimeStore.getState().setStatus
 
     // ─── تجديد التوكن دورياً ──────────────────────────────────────────
     async function refreshToken() {
       const t = await fetchFirebaseToken()
-      if (stopped) return
+      if (stopped) return null
       tokenRef.current = t
       return t
     }
 
     // ─── فتح اتصال SSE مع Firebase RTDB ──────────────────────────────
     async function startListening() {
+      if (stopped) return
+      setStatus('connecting', 'جاري إنشاء الاتصال اللحظي بجوجل...')
+
       const token = await refreshToken()
-      if (stopped || !token) return
+      if (stopped) return
 
       // أغلق الاتصال القديم إن وُجد
       esRef.current?.close()
 
       const path = `merchants/${merchantId}/new_order_signal`
       const base = FIREBASE_DB_URL!.replace(/\/$/, '')
-      const url  = `${base}/${path}.json?auth=${token}`
+      const url  = token ? `${base}/${path}.json?auth=${token}` : `${base}/${path}.json`
 
       const es = new EventSource(url)
       esRef.current = es
+
+      es.onopen = () => {
+        if (stopped) return
+        setStatus('connected', 'متصل لحظياً (Google Firebase)')
+      }
 
       es.addEventListener('put', async (event: MessageEvent) => {
         if (stopped) return
@@ -170,17 +191,18 @@ export function useFirebaseSignal(merchantId: string, enabled: boolean) {
 
       es.onerror = () => {
         if (stopped) return
-        // EventSource يعيد الاتصال تلقائياً — لا نحتاج أي كود هنا
-        console.warn('[firebase-signal] انقطع الاتصال، إعادة المحاولة تلقائياً...')
+        setStatus('disconnected', 'جاري إعادة الاتصال بجوجل...')
       }
 
       // جدوِل تجديد التوكن قبل انتهاء صلاحيته
-      if (refreshTimer.current) window.clearTimeout(refreshTimer.current)
-      refreshTimer.current = window.setTimeout(async () => {
-        if (stopped) return
-        console.log('[firebase-signal] تجديد Firebase Custom Token...')
-        await startListening() // يُعيد الاتصال بتوكن جديد
-      }, TOKEN_TTL_MS - TOKEN_REFRESH_BUFFER_MS)
+      if (token) {
+        if (refreshTimer.current) window.clearTimeout(refreshTimer.current)
+        refreshTimer.current = window.setTimeout(async () => {
+          if (stopped) return
+          console.log('[firebase-signal] تجديد Firebase Custom Token...')
+          await startListening() // يُعيد الاتصال بتوكن جديد
+        }, TOKEN_TTL_MS - TOKEN_REFRESH_BUFFER_MS)
+      }
     }
 
     void startListening()
@@ -190,6 +212,7 @@ export function useFirebaseSignal(merchantId: string, enabled: boolean) {
       if (refreshTimer.current) window.clearTimeout(refreshTimer.current)
       esRef.current?.close()
       esRef.current = null
+      setStatus('disconnected', 'تم قطع الاتصال')
     }
   }, [enabled, merchantId, queryClient])
 }

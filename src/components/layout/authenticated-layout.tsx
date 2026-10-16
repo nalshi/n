@@ -7,7 +7,6 @@ import { SearchProvider } from '@/context/search-provider'
 import {
   useMerchantData,
   useMerchantIdentity,
-  useRealtimeSync,
 } from '@/hooks/useMerchantRealtime'
 import { useFirebaseSignal } from '@/hooks/useFirebaseSignal'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -21,7 +20,7 @@ type AuthenticatedLayoutProps = {
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const merchantId = useMerchantIdentity()
   const dashboardQuery = useMerchantData(merchantId)
-  useRealtimeSync(merchantId, dashboardQuery.cacheReady)
+  // الاتصال اللحظي يعمل بالكامل ومباشرة عبر Google Firebase RTDB
   useFirebaseSignal(merchantId, dashboardQuery.cacheReady)
   const realtimeStatus = useRealtimeStore((state) => state.status)
   const realtimeDetail = useRealtimeStore((state) => state.detail)
