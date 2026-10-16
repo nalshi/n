@@ -25,7 +25,6 @@ import {
   readSyncCursor,
   hydrateFromSnapshot,
 } from '@/lib/db'
-import { checkSyncBeacon } from '@/lib/beacon-checker'
 
 // ─── قناة البث المحلي بين التبويبات (BroadcastChannel) ───────────────────
 // تُستخدم لإعلام التبويبات الثانوية بالتحديثات دون أي طلب شبكة إضافي.
@@ -356,14 +355,6 @@ export function useMerchantData(merchantId: string) {
     writeSnapshotQueries(queryClient, merchantId, query.data)
   }, [merchantId, query.data, queryClient])
 
-  // فحص منارة التزامن المشفرة عند فتح اللوحة (صفر استعلامات D1 إذا لم تكن هناك طلبات جديدة)
-  useEffect(() => {
-    if (!merchantId) return
-    void checkSyncBeacon(merchantId).catch((err) => {
-      console.warn('[beacon-checker] تعذر فحص منارة التزامن:', err)
-    })
-  }, [merchantId])
-
   return {
     data: query.data,
     error: query.error,
@@ -692,11 +683,6 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
     const onOnline = () => {
       reconnectAttempt = 0
       void connect()
-
-      // ─── فحص منارة التزامن المشفرة عند عودة الإنترنت (0 D1 queries إذا لم تكن هناك طلبات جديدة) ───
-      void checkSyncBeacon(merchantId).catch((err) => {
-        console.warn('[beacon-checker] تعذر فحص منارة التزامن عند عودة النت:', err)
-      })
     }
     const onOffline = () => setStatus('offline', 'لا يوجد اتصال بالإنترنت')
     window.addEventListener('online', onOnline)
