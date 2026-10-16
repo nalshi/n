@@ -388,6 +388,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
     let reconnectAttempt = 0
     let reconnectTimer: number | undefined
     let gapTimer: number | undefined
+    let pingTimer: number | undefined
     let lockReleaser: (() => void) | null = null
     const setStatus = useRealtimeStore.getState().setStatus
 
@@ -661,6 +662,16 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
           }
           reconnectAttempt = 0
           setStatus('connected', 'متصل لحظيًا')
+
+          // نبض حياة خفيف جداً كل 35 ثانية لمنع انقطاع الاتصال عند الخمول الطويل
+          if (pingTimer !== undefined) window.clearInterval(pingTimer)
+          pingTimer = window.setInterval(() => {
+            if (socket.readyState === WebSocket.OPEN) {
+              try {
+                socket.send(JSON.stringify({ type: 'ping' }))
+              } catch (_) {}
+            }
+          }, 35_000)
         })
         socket.addEventListener('message', (event) => {
           if (socketRef.current === socket) handleMessage(event.data)
@@ -671,6 +682,10 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
           }
         })
         socket.addEventListener('close', (event) => {
+          if (pingTimer !== undefined) {
+            window.clearInterval(pingTimer)
+            pingTimer = undefined
+          }
           if (socketRef.current !== socket) return
           socketRef.current = null
           setStatus(
@@ -732,6 +747,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
       window.removeEventListener('offline', onOffline)
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
       if (gapTimer !== undefined) window.clearTimeout(gapTimer)
+      if (pingTimer !== undefined) window.clearInterval(pingTimer)
       socketRef.current?.close(1000, 'Dashboard unmounted')
       socketRef.current = null
     }
