@@ -34,6 +34,22 @@ export default {
       return new Response('Method Not Allowed', { status: 405 });
     }
 
+    // ⭐ مسار استخراج تذكرة اتصال WebSocket (يدعم التوافق مع المتصفحات القديمة)
+    if (url.pathname.endsWith('/ws/ticket')) {
+      const authHeader = request.headers.get('Authorization') || '';
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+      if (!token) {
+        return new Response(JSON.stringify({ status: 'error', message: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ status: 'success', ticket: token }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // ⭐ بوابة الأمان (Auth Gate) لاتصالات الـ WebSocket لـ Durable Object
     if (url.pathname.endsWith('/ws') || request.headers.get('Upgrade') === 'websocket') {
       const origin = request.headers.get('Origin') || '';
@@ -47,8 +63,8 @@ export default {
 
       // السماح بتمرير التوكن عبر الـ Header أو Query Params (لأن المتصفح لا يدعم Headers في WebSockets مباشرة)
       const authHeader = request.headers.get('Authorization') || '';
-      const token = authHeader.replace('Bearer ', '') || url.searchParams.get('token');
-      const merchantId = request.headers.get('X-Merchant-ID') || url.searchParams.get('merchant_id');
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim() || url.searchParams.get('token') || url.searchParams.get('ticket');
+      const merchantId = request.headers.get('X-Merchant-ID') || url.searchParams.get('merchant_id') || url.searchParams.get('m');
 
       if (!token || !merchantId) {
         return new Response('Unauthorized: Missing Token or Merchant ID', { status: 401 });
