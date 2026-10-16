@@ -41,9 +41,8 @@ export async function onRequest(context) {
   }
 
   const originalUrl = new URL(request.url);
-  // Extract the Worker route suffix after /api/worker or /api/work (for example /ws or /stores/...).
-  // IMPORTANT: worker MUST come before work in the alternation to prevent stripping /api/work and leaving 'er/...'
-  const subpath = originalUrl.pathname.replace(/^\/api\/(?:worker|work)(?:\/|$)/, '');
+  // استخراج المسار الفرعي بعد /api/worker لتمريره بدقة للـ Worker (مثل /ws أو /stores/...)
+  const subpath = originalUrl.pathname.replace(/^\/api\/worker\/?/, '');
   const cleanSubpath = subpath ? (subpath.startsWith('/') ? subpath : '/' + subpath) : '';
   const targetUrl = env.WORKER_URL.replace(/\/$/, '') + cleanSubpath + originalUrl.search;
 
