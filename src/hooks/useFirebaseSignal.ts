@@ -35,7 +35,9 @@ import { authApiRequest } from '@/lib/auth-api'
 import { merchantQueryKeys } from './useMerchantRealtime'
 
 // ─── ثوابت ───────────────────────────────────────────────────────────────────
-const FIREBASE_DB_URL = import.meta.env.VITE_FIREBASE_DB_URL as string | undefined
+const FIREBASE_DB_URL =
+  (import.meta.env.VITE_FIREBASE_DB_URL as string | undefined) ||
+  'https://shiban-a2757-default-rtdb.europe-west1.firebasedatabase.app'
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000  // تجديد قبل 5 دقائق من انتهاء الصلاحية
 const TOKEN_TTL_MS            = 55 * 60 * 1000  // نجدد كل 55 دقيقة (قبل انتهاء الساعة)
 

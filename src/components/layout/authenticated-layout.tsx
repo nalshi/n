@@ -9,6 +9,7 @@ import {
   useMerchantIdentity,
   useRealtimeSync,
 } from '@/hooks/useMerchantRealtime'
+import { useFirebaseSignal } from '@/hooks/useFirebaseSignal'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { SkipToMain } from '@/components/skip-to-main'
@@ -21,6 +22,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const merchantId = useMerchantIdentity()
   const dashboardQuery = useMerchantData(merchantId)
   useRealtimeSync(merchantId, dashboardQuery.cacheReady)
+  useFirebaseSignal(merchantId, dashboardQuery.cacheReady)
   const realtimeStatus = useRealtimeStore((state) => state.status)
   const realtimeDetail = useRealtimeStore((state) => state.detail)
   const dashboardInitialized = dashboardQuery.cacheReady
