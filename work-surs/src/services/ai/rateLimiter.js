@@ -1,32 +1,39 @@
 import { HttpError } from '../../security/rbac.js';
 
 // ========================================================
-// 🚦 تحديد معدل الطلبات لمسار الدردشة (ai_chat)
-// يمنع استنزاف رصيد Workers AI أو هجمات إغراق بسيطة على نفس المتجر.
+// 🚦 تحديد معدل الطلبات للمساعد الذكي
+// تُحدّ الطلبات على مستوى عنوان العميل وعنوان العميل+التاجر لمنع تجاوز
+// الحصة بتبديل merchant_id.
 //
 // الأسلوب الأساسي: Cloudflare Rate Limiting Binding (سريع، بلا كتابة
 // على D1، يُضبط في wrangler.toml - راجع ملف wrangler.toml.txt المرفق).
 // في حال عدم توفر الـ binding (مثلاً أثناء التطوير المحلي)، نسقط تلقائياً
-// إلى فحص احتياطي مبنى على D1 حتى لا ينكسر المسار بالكامل.
+// إلى عدّاد ذري في D1. إذا لم يتوفر أي منهما نرفض الطلب بدلاً من تعطيل الحماية.
 // ========================================================
 
 const FALLBACK_WINDOW_MS = 60 * 1000; // نافذة دقيقة واحدة
-const FALLBACK_MAX_REQUESTS = 10; // 10 رسائل بالدقيقة لكل مفتاح (تاجر+عميل)
+const FALLBACK_MAX_REQUESTS = 10; // 10 رسائل بالدقيقة لكل نطاق تحديد
 
 export async function assertRateLimitOk(env, { merchantId, clientIp }) {
-  const key = `ai_chat:${merchantId}:${clientIp || 'unknown'}`;
+  const ipKey = `ai_chat:ip:${clientIp || 'unknown'}`;
+  const merchantKey = `ai_chat:merchant:${merchantId}:${clientIp || 'unknown'}`;
+  const keys = [ipKey, merchantKey];
 
   // --- الأسلوب الأساسي: binding مخصص لتحديد المعدل ---
   if (env.AI_CHAT_RATE_LIMITER && typeof env.AI_CHAT_RATE_LIMITER.limit === 'function') {
-    const { success } = await env.AI_CHAT_RATE_LIMITER.limit({ key });
-    if (!success) {
-      throw new HttpError('عدد الرسائل تجاوز الحد المسموح، حاول بعد قليل.', 429);
+    for (const key of keys) {
+      const { success } = await env.AI_CHAT_RATE_LIMITER.limit({ key });
+      if (!success) {
+        throw new HttpError('عدد الرسائل تجاوز الحد المسموح، حاول بعد قليل.', 429);
+      }
     }
     return;
   }
 
   // --- الأسلوب الاحتياطي: عدّاد بسيط في D1 ---
-  if (!env.DB) return; // لا يوجد DB متاح (لا يجب أن يحدث بالإنتاج) - نمرّر بدون حظر
+  if (!env.DB) {
+    throw new HttpError('خدمة المساعد الذكي غير متاحة حالياً.', 503);
+  }
 
   const now = Date.now();
   const windowStart = now - FALLBACK_WINDOW_MS;
@@ -39,27 +46,29 @@ export async function assertRateLimitOk(env, { merchantId, clientIp }) {
     )`
   ).run();
 
-  const row = await env.DB.prepare(`SELECT request_count, window_started_at FROM ai_chat_rate_limit WHERE rate_key = ?`)
-    .bind(key)
-    .first();
-
-  if (!row || row.window_started_at < windowStart) {
-    // نافذة جديدة
-    await env.DB.prepare(
+  for (const key of keys) {
+    const row = await env.DB.prepare(
       `INSERT INTO ai_chat_rate_limit (rate_key, request_count, window_started_at)
        VALUES (?, 1, ?)
-       ON CONFLICT(rate_key) DO UPDATE SET request_count = 1, window_started_at = excluded.window_started_at`
+       ON CONFLICT(rate_key) DO UPDATE SET
+         request_count = CASE
+           WHEN ai_chat_rate_limit.window_started_at <= ? THEN 1
+           ELSE ai_chat_rate_limit.request_count + 1
+         END,
+         window_started_at = CASE
+           WHEN ai_chat_rate_limit.window_started_at <= ? THEN excluded.window_started_at
+           ELSE ai_chat_rate_limit.window_started_at
+         END
+       RETURNING request_count`
     )
-      .bind(key, now)
-      .run();
-    return;
-  }
+      .bind(key, now, windowStart, windowStart)
+      .first();
 
-  if (row.request_count >= FALLBACK_MAX_REQUESTS) {
-    throw new HttpError('عدد الرسائل تجاوز الحد المسموح، حاول بعد قليل.', 429);
+    if (!row || row.request_count > FALLBACK_MAX_REQUESTS) {
+      if (!row) {
+        throw new HttpError('تعذر التحقق من حد استخدام المساعد الذكي.', 503);
+      }
+      throw new HttpError('عدد الرسائل تجاوز الحد المسموح، حاول بعد قليل.', 429);
+    }
   }
-
-  await env.DB.prepare(`UPDATE ai_chat_rate_limit SET request_count = request_count + 1 WHERE rate_key = ?`)
-    .bind(key)
-    .run();
 }

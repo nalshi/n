@@ -4,10 +4,6 @@ import { ROLES } from '../config/constants.js';
 import { syncStoreInfoToStorefront } from '../services/store/storeInfoSyncService.js';
 import { syncCatalogToStorefront } from '../services/catalog/catalogSyncService.js';
 import { timingSafeEqual } from '../security/auth.js';
-import {
-  createOrderEventInsertStatement,
-  publishStoredMerchantEvent,
-} from '../services/realtime/merchantEvents.js';
 
 // ⭐ إصلاح أمني: التحقق من X-Internal-Key كان بمقارنة `!==` العادية
 // (غير ثابتة الزمن) - نستخدم نفس المقارنة الآمنة المستخدمة أصلاً بتوقيع
@@ -124,42 +120,15 @@ export async function syncCustomer({ env, body, request }) {
 // النظام القديم) إلى D1، حتى لا تبقى التذكرة في D1 بحالتها القديمة (pending) وتُعتبر
 // "تذكرة قائمة" قابلة للدمج مع طلب جديد لاحق لنفس العميل/التاجر — وهو ما كان يُعيد
 // إحياء طلبات مُلغاة/مكتملة بالخطأ في MySQL بعد كل طلب جديد.
-export async function syncTicketStatus({ env, ctx, body, request }) {
+export async function syncTicketStatus({ env, body, request }) {
   assertInternalKey(request, env);
   if (!body.ticket_id || !body.status) {
     throw new HttpError('ticket_id و status مطلوبان', 400);
   }
 
-  const existingTicket = await env.DB.prepare(
-    `SELECT merchant_id FROM live_tickets WHERE ticket_id = ?`
-  )
-    .bind(body.ticket_id)
-    .first();
-  if (existingTicket) {
-    const [updateResult, eventResult] = await env.DB.batch([
-      env.DB.prepare(
-        `UPDATE live_tickets SET status = ? WHERE ticket_id = ? AND merchant_id = ?`
-      ).bind(body.status, body.ticket_id, existingTicket.merchant_id),
-      createOrderEventInsertStatement(
-        env.DB,
-        existingTicket.merchant_id,
-        body.ticket_id,
-        'updated'
-      ),
-    ]);
-    if (updateResult.meta?.changes) {
-      const event = eventResult.results?.[0];
-      if (!event) {
-        throw new Error('Ticket status changed without an associated sync event');
-      }
-      publishStoredMerchantEvent(
-        env,
-        ctx,
-        existingTicket.merchant_id,
-        event
-      );
-    }
-  }
+  await env.DB.prepare(`UPDATE live_tickets SET status = ? WHERE ticket_id = ?`)
+    .bind(body.status, body.ticket_id)
+    .run();
 
   return { message: 'تمت مزامنة حالة التذكرة' };
 }

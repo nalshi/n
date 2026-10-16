@@ -33,6 +33,7 @@ export const actionRegistry = {
 
   // 📦 الطلبات (تاجر فقط)
   get_merchant_orders: { handler: orderController.getMerchantOrders, roles: [ROLES.MERCHANT] },
+  get_orders_delta: { handler: orderController.getOrdersDelta, roles: [ROLES.MERCHANT] },
   update_order_status: { handler: orderController.updateOrderStatus, roles: [ROLES.MERCHANT] },
   // ⭐ إضافة: نقل دورة حياة الطلب كاملة إلى الـ Worker (بدل merchant_approve_order /
   // merchant_update_order_status / merchant_cancel_order / merchant_confirm_delivery_code
@@ -55,7 +56,7 @@ export const actionRegistry = {
   // 🤖 المساعد الذكي الخاص بكل تاجر (⭐ إضافة جديدة)
   // - get/save_ai_assistant_config: للتاجر فقط، عبر لوحة التاجر (JWT + دور MERCHANT)
   // - ai_chat: عام (public) - يستخدمه عميل المتجر من ودجت الدردشة بدون تسجيل دخول،
-  //   ومحمي بدلاً من ذلك بتحديد المعدل (rate limiting) داخل الـ controller نفسه.
+  //   ومحمي بحدود معدل على مستوى عنوان العميل والتاجر داخل الـ controller نفسه.
   get_ai_assistant_config: { handler: aiAssistantController.getAiAssistantConfig, roles: [ROLES.MERCHANT] },
   save_ai_assistant_config: { handler: aiAssistantController.saveAiAssistantConfig, roles: [ROLES.MERCHANT] },
   ai_chat: { handler: aiAssistantController.aiChat, roles: [], public: true },
@@ -71,7 +72,6 @@ export const actionRegistry = {
   save_storefront_config: { handler: storefrontBuilderController.saveStorefrontConfig, roles: [ROLES.MERCHANT] },
   update_theme_config_file: { handler: storefrontBuilderController.saveStorefrontConfig, roles: [ROLES.MERCHANT] },
   get_storefront_themes: { handler: storefrontBuilderController.getStorefrontThemes, roles: [], public: true },
-  save_storefront_selection: { handler: storefrontBuilderController.saveStorefrontSelection, roles: [ROLES.MERCHANT] },
 
   // 🔄 عام / مزامنة
   sync_user: { handler: syncController.syncUser, roles: [], public: true },

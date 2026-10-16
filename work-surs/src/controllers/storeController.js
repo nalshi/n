@@ -92,5 +92,31 @@ export async function saveMerchantSettings({ env, ctx, user, body }) {
     })
   );
 
+  // ⭐ تحديث الـ Durable Object للإعدادات
+  if (env.MERCHANT_SESSION) {
+    try {
+      const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
+      const doStub = env.MERCHANT_SESSION.get(doId);
+      ctx.waitUntil(
+        doStub.fetch('http://internal/sync-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            settings: {
+              id: user.user_id,
+              username: user.username,
+              store_name: storeName,
+              phone: finalSettings.phone,
+              store_type: finalStoreType,
+              settings: finalSettings,
+            },
+          })
+        })
+      );
+    } catch (err) {
+      console.error('Failed to sync settings to DO:', err);
+    }
+  }
+
   return { message: 'تم حفظ الإعدادات وتحديث المتجر بنجاح ✅', updated_settings: finalSettings };
 }

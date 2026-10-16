@@ -4,8 +4,6 @@
 // وتوافق كامل 100% مع استوديو المصمم ومحرك عرض المتجر.
 // ========================================================
 
-import PREMIUM_THEME_PALETTES from './theme-palettes.json' with { type: 'json' };
-
 export const STORE_TIERS = {
   FREE: 'free',
   PRO: 'pro',
@@ -36,54 +34,6 @@ export const ALLOWED_BLOCK_TYPES = [
   'contact',
   'newsletter',
 ];
-
-function createThemeColors(baseColors, palette, mode) {
-  const isDark = mode === 'dark';
-  const colors = isDark ? palette.dark : palette.light;
-  const background = isDark ? colors.card : '#FFFFFF';
-  const overlay = isDark ? 'rgba(0, 0, 0, 0.85)' : `rgba(${hexToRgb(colors.textMain)}, 0.6)`;
-
-  return {
-    ...baseColors,
-    primary: colors.primary,
-    primary_hover: colors.primaryHover,
-    primary_gradient_start: colors.primary,
-    primary_gradient_end: colors.gradientEnd,
-    accent: colors.accent,
-    bg_body: colors.body,
-    bg_card: background,
-    bg_surface: colors.surface,
-    text_main: colors.textMain,
-    text_muted: colors.textMuted,
-    border: colors.border,
-    navbar_bg: background,
-    navbar_text: colors.textMain,
-    bottom_bar_bg: background,
-    bottom_bar_active: colors.primary,
-    bottom_bar_inactive: colors.textMuted,
-    card_bg: background,
-    card_border: colors.border,
-    card_title: colors.textMain,
-    price_color: colors.primary,
-    old_price_color: colors.textMuted,
-    section_title: colors.textMain,
-    category_chip_bg: colors.surface,
-    category_chip_active: colors.primary,
-    category_chip_text: colors.textMain,
-    modal_bg: background,
-    modal_overlay: overlay,
-    modal_handle: colors.border,
-    btn_primary_bg: colors.primary,
-    btn_primary_text: isDark ? colors.body : '#FFFFFF',
-    chatbot_btn_bg: colors.primary,
-  };
-}
-
-function hexToRgb(hex) {
-  const normalized = hex.replace(/^#/, '');
-  const value = Number.parseInt(normalized, 16);
-  return `${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}`;
-}
 
 export const TIER_LIMITS = {
   [STORE_TIERS.FREE]: {
@@ -161,7 +111,7 @@ function normalizeTopBarSettings(settings = {}) {
 export const DEFAULT_STOREFRONT_CONFIG = {
   version: '4.0',
   theme_version: '4.0',
-  theme_name: 'starlit_aurora',
+  theme_name: 'nalsh_indigo',
   default_theme_mode: 'light',
   store_identity: {
     store_name: 'متجري الإلكتروني',
@@ -173,7 +123,7 @@ export const DEFAULT_STOREFRONT_CONFIG = {
     announcement_bar: {
       enabled: true,
       text: '🎉 عروض حصرية وتوصيل سريع لكافة المناطق!',
-      bg_color: '#6D28D9',
+      bg_color: '#4F46E5',
       text_color: '#FFFFFF',
     },
   },
@@ -436,26 +386,10 @@ export const DEFAULT_STOREFRONT_CONFIG = {
   },
 };
 
-const defaultThemePalette = PREMIUM_THEME_PALETTES.find(palette => palette.id === 'starlit_aurora');
-if (!defaultThemePalette) {
-  throw new Error('الثيم الافتراضي شفق النجوم مطلوب لإعداد المتجر');
-}
-DEFAULT_STOREFRONT_CONFIG.light_theme.colors = createThemeColors(
-  DEFAULT_STOREFRONT_CONFIG.light_theme.colors,
-  defaultThemePalette,
-  'light',
-);
-DEFAULT_STOREFRONT_CONFIG.dark_theme.colors = createThemeColors(
-  DEFAULT_STOREFRONT_CONFIG.dark_theme.colors,
-  defaultThemePalette,
-  'dark',
-);
-DEFAULT_STOREFRONT_CONFIG.store_identity.announcement_bar.bg_color = defaultThemePalette.light.primary;
-
 // ========================================================
 // 🎨 ثيمات جاهزة احترافية (Preset Themes)
 // ========================================================
-const LEGACY_THEME_PRESETS = [
+export const THEME_PRESETS = [
   {
     id: 'nalsh_indigo',
     name: 'بنفسجي نالش العصري',
@@ -535,23 +469,6 @@ const LEGACY_THEME_PRESETS = [
     shapes: { card_radius: '14px', button_radius: '8px', button_style: 'rounded', card_style: 'bordered' },
   },
 ];
-
-const themeBasePreset = LEGACY_THEME_PRESETS[0];
-export const THEME_PRESETS = PREMIUM_THEME_PALETTES.map(palette => ({
-  ...themeBasePreset,
-  id: palette.id,
-  name: palette.name,
-  category: palette.category,
-  description: palette.description,
-  light_theme: {
-    ...themeBasePreset.light_theme,
-    colors: createThemeColors(themeBasePreset.light_theme.colors, palette, 'light'),
-  },
-  dark_theme: {
-    ...themeBasePreset.dark_theme,
-    colors: createThemeColors(themeBasePreset.dark_theme.colors, palette, 'dark'),
-  },
-}));
 
 // ========================================================
 // 🛡️ دوال التنقية والتحقق الصارم (Security Helpers)
@@ -798,7 +715,7 @@ export function sanitizeStorefrontConfig(inputConfig = {}, userTier = STORE_TIER
   };
 
   const topLevelExtras = preserveFutureFields(raw, [
-    'version', 'theme_version', 'theme_name', 'theme_display_name', 'default_theme_mode',
+    'version', 'theme_version', 'theme_name', 'default_theme_mode',
     'store_identity', 'products_settings', 'messages', 'layout_blocks',
     'modals_customization', 'light_theme', 'dark_theme', 'modes',
     'typography', 'shapes', 'animations', 'marketing', 'navigation_settings', 'updated_at'

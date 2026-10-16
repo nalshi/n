@@ -12,15 +12,22 @@ export function buildCorsHeaders(request, env) {
     .map((s) => s.trim())
     .filter(Boolean);
 
-  const allowOrigin =
-    allowed.length === 0 ? '*' : allowed.includes(origin) ? origin : allowed[0];
-
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
+  const headers = {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Internal-Key',
     Vary: 'Origin',
   };
+
+  if (allowed.length === 0) {
+    headers['Access-Control-Allow-Origin'] = '*';
+    return headers;
+  }
+
+  if (allowed.includes(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+
+  return headers;
 }
 
 export function jsonResponse(data, status, corsHeaders) {

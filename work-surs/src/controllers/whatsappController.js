@@ -410,4 +410,22 @@ async function processIncomingWhatsappMessage({ env, msg, settingsRow, phoneNumb
     console.error('❌ [whatsapp] فشل إرسال الرد عبر Graph API:', error && error.message, error);
   }
 
+  if (env.MERCHANT_SESSION) {
+    const doId = env.MERCHANT_SESSION.idFromName(`merchant_${merchantId}`);
+    const doStub = env.MERCHANT_SESSION.get(doId);
+    await doStub.fetch('http://internal/sync-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: {
+          channel: 'whatsapp',
+          customer_id: customerWaId,
+          customer_name: msg?.profile?.name || customerWaId,
+          text: customerMessage,
+          reply,
+          created_at: Date.now(),
+        },
+      }),
+    });
+  }
 }

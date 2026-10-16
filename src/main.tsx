@@ -69,3 +69,17 @@ if (!rootElement.innerHTML) {
     </StrictMode>
   )
 }
+
+// ─── تسجيل ساعي البريد الصامت في الخلفية (Service Worker) ─────────────────
+if ('serviceWorker' in navigator && typeof window !== 'undefined') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        console.log('✅ ساعي البريد الصامت في الخلفية جاهز (Service Worker Registered)', reg.scope)
+      })
+      .catch((err) => {
+        console.warn('تعذر تسجيل Service Worker:', err)
+      })
+  })
+}

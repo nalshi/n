@@ -1,5 +1,5 @@
 name = "api"
-main = "index.ts"
+main = "src/index.js"
 compatibility_date = "2026-07-21"
 
 # ========================================================
@@ -9,7 +9,6 @@ compatibility_date = "2026-07-21"
 # ========================================================
 [[d1_databases]]
 binding = "DB"
-migrations_dir = "../migrations"
 # ⚠️ لسا لازم تحطها إنت: نفّذ أولاً
 #   wrangler d1 create merchant-db
 # وانسخ الاسم والـ id من نتيجة الأمر (أو من `wrangler d1 list`) هنا:
@@ -36,6 +35,7 @@ FCM_SENDER_ID = "45283310547"
 FCM_APP_ID = "1:45283310547:web:8470fdc9e635e74bd30d26"
 FCM_VAPID_KEY = "BMLWrq3yDRYQvrwJybVidHXUNP6AcE6O5RNmSR9kSl-wfpfbtKwr6a6vXG2HfFye10xXRPT08iDjrtPbDGemD-c"
 
+FIREBASE_DB_URL = "https://shiban-a2757-default-rtdb.europe-west1.firebasedatabase.app/"
 
 # رابط الـ api.php القديم على Render (لمزامنة إعدادات التاجر مع النظام الموروث)
 # ⚠️ حط هنا رابط سيرفس Render الفعلي (مثال: https://your-service.onrender.com/api.php)
@@ -93,4 +93,5 @@ class_name = "MerchantSession"
 
 [[migrations]]
 tag = "v1_merchant_session"
-new_sqlite_classes = ["MerchantSession"]
+new_classes = ["MerchantSession"]
+

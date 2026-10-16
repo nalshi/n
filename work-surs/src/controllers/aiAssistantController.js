@@ -320,11 +320,22 @@ export async function generateAiReplyForMerchant({ env, merchantId, customerMess
 // مسار الدردشة العام الذي يستخدمه عملاء المتجر (بدون تسجيل دخول)
 // --------------------------------------------------------
 export async function aiChat({ request, env, ctx, body }) {
-  const merchantId = String(body.merchant_id || '');
+  const merchantId =
+    typeof body.merchant_id === 'string'
+      ? body.merchant_id.trim()
+      : typeof body.merchant_id === 'number' && Number.isFinite(body.merchant_id)
+        ? String(body.merchant_id)
+        : '';
   if (!merchantId) throw new HttpError('معرّف المتجر مطلوب', 400);
+  if (merchantId.length > 128) throw new HttpError('معرّف المتجر غير صالح', 400);
 
   // 🚦 تحديد المعدل أولاً وقبل أي استعلام آخر - أرخص عملية ونوقف الهجوم مبكراً
-  const clientIp = request.headers.get('CF-Connecting-IP') || '';
+  // Cloudflare Pages proxy removes CF-Connecting-IP and replaces it with
+  // X-Forwarded-For using the edge-provided client IP.
+  const clientIp =
+    request.headers.get('X-Forwarded-For')?.split(',')[0].trim() ||
+    request.headers.get('CF-Connecting-IP') ||
+    '';
   await assertRateLimitOk(env, { merchantId, clientIp });
 
   // 🧼 تعقيم رسالة العميل قبل أي استخدام لها

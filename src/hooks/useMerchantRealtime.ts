@@ -25,6 +25,7 @@ import {
   readSyncCursor,
   hydrateFromSnapshot,
 } from '@/lib/db'
+import { checkSyncBeacon } from '@/lib/beacon-checker'
 
 // ─── قناة البث المحلي بين التبويبات (BroadcastChannel) ───────────────────
 // تُستخدم لإعلام التبويبات الثانوية بالتحديثات دون أي طلب شبكة إضافي.
@@ -310,7 +311,40 @@ export function useMerchantData(merchantId: string) {
   const queryClient = useQueryClient()
   const query = useQuery({
     queryKey: merchantBootstrapKey(merchantId),
-    queryFn: () => fetchDashboardInitialization(true),
+    queryFn: async (): Promise<DashboardInitialization> => {
+      // 1. تحقق من ذاكرة التاجر المحلية أولاً (Zero-Fetch on Refresh)
+      const localProductsCount = await localDB.products.count()
+      if (localProductsCount > 0) {
+        // البيانات موجودة بالفعل في ذاكرة التاجر! عرض فوري بدون أي استدعاء للسيرفر
+        const [products, orders, categories] = await Promise.all([
+          localDB.products.toArray(),
+          localDB.orders.toArray(),
+          localDB.categories.toArray(),
+        ])
+        const activeOrders = orders.filter(
+          (o) => o.status !== 'completed' && o.status !== 'cancelled'
+        )
+        const archivedOrders = orders.filter(
+          (o) => o.status === 'completed' || o.status === 'cancelled'
+        )
+        return {
+          dashboard: {
+            products,
+            activeOrders,
+            archivedOrders,
+            storeName: localStorage.getItem('merchant_store_name') || 'متجري',
+            username: localStorage.getItem('merchant_username') || '',
+            phone: localStorage.getItem('merchant_phone') || '',
+          },
+          categories,
+          lastTimestamp: Date.now(),
+          lastEventId: 0,
+        }
+      }
+
+      // 2. إذا كانت الذاكرة فارغة تماماً (أول تسجيل دخول على هذا المتصفح فقط):
+      return fetchDashboardInitialization(true)
+    },
     enabled: Boolean(merchantId),
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: Number.POSITIVE_INFINITY,
@@ -322,6 +356,14 @@ export function useMerchantData(merchantId: string) {
     writeSnapshotQueries(queryClient, merchantId, query.data)
   }, [merchantId, query.data, queryClient])
 
+  // فحص منارة التزامن المشفرة عند فتح اللوحة (صفر استعلامات D1 إذا لم تكن هناك طلبات جديدة)
+  useEffect(() => {
+    if (!merchantId) return
+    void checkSyncBeacon(merchantId).catch((err) => {
+      console.warn('[beacon-checker] تعذر فحص منارة التزامن:', err)
+    })
+  }, [merchantId])
+
   return {
     data: query.data,
     error: query.error,
@@ -332,6 +374,7 @@ export function useMerchantData(merchantId: string) {
     cacheReady: Boolean(merchantId && query.data),
   }
 }
+
 
 export function useRealtimeSync(merchantId: string, enabled: boolean) {
   const queryClient = useQueryClient()
@@ -648,10 +691,16 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
     const onOnline = () => {
       reconnectAttempt = 0
       void connect()
+
+      // ─── فحص منارة التزامن المشفرة عند عودة الإنترنت (0 D1 queries إذا لم تكن هناك طلبات جديدة) ───
+      void checkSyncBeacon(merchantId).catch((err) => {
+        console.warn('[beacon-checker] تعذر فحص منارة التزامن عند عودة النت:', err)
+      })
     }
     const onOffline = () => setStatus('offline', 'لا يوجد اتصال بالإنترنت')
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)
+
 
     // ─── Leader Election عبر Web Locks API ───────────────────────────────
     // التبويب الأول الذي يحصل على القفل يصبح "القائد" ويفتح الاتصال.

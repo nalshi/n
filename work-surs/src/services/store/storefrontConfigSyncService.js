@@ -10,39 +10,11 @@ import { assertSafePathSegment } from '../../core/pathSafety.js';
 // تحديث manifest.json و info.json تلقائياً لضمان الانعكاس الفوري.
 // ========================================================
 
-function createSelectionPayload(selectionRecord, timestamp) {
-  return {
-    version: 1,
-    updated_at: timestamp,
-    theme_id: selectionRecord.theme_id || selectionRecord.selections?.theme || '',
-    theme_name: selectionRecord.theme_name || selectionRecord.theme_display_name || selectionRecord.theme_id || '',
-    theme_display_name: selectionRecord.theme_display_name || '',
-    theme_selections: selectionRecord.theme_selections || {},
-    selections: selectionRecord.selections || {},
-  };
+export async function syncStorefrontConfigToGitHub(env, username, config, storeInfo = null) {
+  return enqueueSync(() => runStorefrontConfigSync(env, username, config, storeInfo));
 }
 
-export async function syncStorefrontConfigToGitHub(env, username, config, storeInfo = null, selectionRecord = null) {
-  return enqueueSync(() => runStorefrontConfigSync(env, username, config, storeInfo, selectionRecord));
-}
-
-export async function syncStorefrontSelectionToGitHub(env, username, selection) {
-  return enqueueSync(async () => {
-    if (!username) return;
-    assertSafePathSegment(username, 'اسم المتجر');
-    const timestamp = Date.now();
-    const selectionRecord = selection?.selections
-      ? selection
-      : { selections: selection };
-    await commitMultipleFiles(env, [{
-      path: `stores/${username}/storefront_selection.json`,
-      content: JSON.stringify(createSelectionPayload(selectionRecord, timestamp), null, 2),
-    }], `🎨 Update storefront theme selection [${username}]`);
-    await purgeCloudflareCache(env);
-  });
-}
-
-async function runStorefrontConfigSync(env, username, config, storeInfo, selectionRecord) {
+async function runStorefrontConfigSync(env, username, config, storeInfo) {
   try {
     if (!username) return;
     assertSafePathSegment(username, 'اسم المتجر');
@@ -57,32 +29,11 @@ async function runStorefrontConfigSync(env, username, config, storeInfo, selecti
         content: JSON.stringify(config, null, 2),
       },
     ];
-    if (selectionRecord) {
-      files.push({
-        path: `stores/${username}/storefront_selection.json`,
-        content: JSON.stringify(createSelectionPayload(selectionRecord, timestamp), null, 2),
-      });
-    }
 
     // 🔄 تحديث المانيفست لرفع رقم الإصدار لكي تكتشف واجهة المتجر التحديث فوراً (Live Sync)
     const manifestData = {
       version: timestamp,
       last_updated: new Date(timestamp).toISOString(),
-      theme: {
-        id: config?.theme_name || '',
-        name: config?.theme_display_name || config?.theme_name || '',
-        display_name: config?.theme_display_name || config?.theme_name || '',
-      },
-      themes: {
-        light: {
-          id: config?.theme_selection?.light || config?.theme_name || '',
-          name: config?.theme_display_names?.light || config?.theme_display_name || config?.theme_name || '',
-        },
-        dark: {
-          id: config?.theme_selection?.dark || config?.theme_name || '',
-          name: config?.theme_display_names?.dark || config?.theme_display_name || config?.theme_name || '',
-        },
-      },
       files: {
         storefront_config: timestamp,
       },
@@ -104,19 +55,6 @@ async function runStorefrontConfigSync(env, username, config, storeInfo, selecti
           store_name: config?.store_identity?.store_name || storeInfo?.store_name || '',
           store_type: storeInfo?.store_type || null,
           phone: config?.marketing?.whatsapp_floating?.phone || storeInfo?.phone || null,
-          theme_id: config?.theme_name || '',
-          theme_name: config?.theme_display_name || config?.theme_name || '',
-          theme_display_name: config?.theme_display_name || config?.theme_name || '',
-          theme_selections: {
-            light: {
-              id: config?.theme_selection?.light || config?.theme_name || '',
-              name: config?.theme_display_names?.light || config?.theme_display_name || config?.theme_name || '',
-            },
-            dark: {
-              id: config?.theme_selection?.dark || config?.theme_name || '',
-              name: config?.theme_display_names?.dark || config?.theme_display_name || config?.theme_name || '',
-            },
-          },
           settings: {
             ...(storeInfo?.settings || {}),
             welcome_message: config?.store_identity?.welcome_message || '',

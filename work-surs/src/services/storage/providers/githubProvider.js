@@ -15,27 +15,6 @@ function githubHeaders(env) {
   };
 }
 
-export async function getRepositoryJsonFile(env, path) {
-  const owner = env.GITHUB_OWNER;
-  const repo = env.GITHUB_REPO;
-  const response = await fetch(
-    `${GITHUB_API}/repos/${owner}/${repo}/contents/${path}`,
-    { headers: githubHeaders(env) }
-  );
-  if (response.status === 404) return null;
-  if (!response.ok) {
-    throw new Error(`فشل قراءة ملف الكتالوج من GitHub: ${await response.text()}`);
-  }
-
-  const file = await response.json();
-  if (typeof file.content !== 'string' || file.encoding !== 'base64') {
-    throw new Error(`صيغة ملف GitHub غير مدعومة: ${path}`);
-  }
-  const binary = atob(file.content.replace(/\s/g, ''));
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  return JSON.parse(new TextDecoder().decode(bytes));
-}
-
 // رفع/تحديث ملف واحد عبر Contents API (مناسب للصور)
 export async function putSingleFile(env, path, base64Content, commitMessage) {
   const owner = env.GITHUB_OWNER;

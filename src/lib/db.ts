@@ -23,16 +23,19 @@ import type {
 
 // ─── أنواع التخزين المحلي ──────────────────────────────────────────────────
 
-/** حالة المزامنة: يحفظ آخر eventId مُطبَّق لضمان Delta Sync دون ازدواجية */
 export interface LocalSyncState {
-  /** المفتاح الثابت: 'cursor' */
+  /** المفتاح: 'cursor' أو 'last_order_seq' */
   key: string
   /** آخر eventId استُقبل وطُبِّق على قاعدة البيانات المحلية */
-  lastEventId: number
+  lastEventId?: number
   /** آخر timestamp للحدث (بالمللي ثانية) */
-  lastTimestamp: number
+  lastTimestamp?: number
   /** معرّف التاجر المُسجَّل حالياً */
-  merchantId: string
+  merchantId?: string
+  /** القيمة العامة أو العداد */
+  value?: unknown
+  /** رقم تسلسلي للمنارة (Beacon sequence counter) */
+  seq?: number
 }
 
 // ─── تعريف قاعدة البيانات ─────────────────────────────────────────────────

@@ -6,48 +6,11 @@ import {
   STORE_TIERS,
   sanitizeStorefrontConfig,
 } from '../config/storefrontConfigSchema.js';
-import { syncStorefrontConfigToGitHub, syncStorefrontSelectionToGitHub } from '../services/store/storefrontConfigSyncService.js';
+import { syncStorefrontConfigToGitHub } from '../services/store/storefrontConfigSyncService.js';
 
 // ========================================================
 // 🎨 تحكم مصمم المتجر (Storefront Builder Controller)
 // ========================================================
-
-function parseSettings(value) {
-  try {
-    const settings = typeof value === 'string' ? JSON.parse(value) : value;
-    return settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {};
-  } catch {
-    return {};
-  }
-}
-
-function getThemePair(selection, fallbackThemeId) {
-  const lightId = selection?.light || fallbackThemeId;
-  const darkId = selection?.dark || fallbackThemeId;
-  const lightTheme = THEME_PRESETS.find((theme) => theme.id === lightId);
-  const darkTheme = THEME_PRESETS.find((theme) => theme.id === darkId);
-  if (!lightTheme || !darkTheme) {
-    throw new HttpError('يجب تحديد ثيم فاتح وثيم داكن صالحين.', 400);
-  }
-  return { lightTheme, darkTheme };
-}
-
-function createThemeSelectionRecord(lightTheme, darkTheme) {
-  return {
-    theme_id: lightTheme.id,
-    theme_name: lightTheme.name,
-    theme_display_name: lightTheme.name,
-    theme_selections: {
-      light: { id: lightTheme.id, name: lightTheme.name },
-      dark: { id: darkTheme.id, name: darkTheme.name },
-    },
-    selections: {
-      theme: lightTheme.id,
-      light_theme: lightTheme.id,
-      dark_theme: darkTheme.id,
-    },
-  };
-}
 
 /**
  * جلب تكوين المتجر المخصص
@@ -93,11 +56,14 @@ export async function getStorefrontConfig({ env, user, body }) {
 
   let userTier = STORE_TIERS.FREE;
   let savedConfig = null;
-  let settingsObj = {};
-  let selectedTheme = null;
 
   if (row) {
-    settingsObj = parseSettings(row.settings);
+    let settingsObj = {};
+    try {
+      settingsObj = row.settings ? JSON.parse(row.settings) : {};
+    } catch (e) {
+      settingsObj = {};
+    }
 
     userTier = row.plan_type || settingsObj.plan_type || settingsObj.tier || STORE_TIERS.FREE;
 
@@ -109,62 +75,12 @@ export async function getStorefrontConfig({ env, user, body }) {
       } catch (e) {
         savedConfig = null;
       }
-    } else if (settingsObj.storefront_config) {
-      try {
-        savedConfig = typeof settingsObj.storefront_config === 'string'
-          ? JSON.parse(settingsObj.storefront_config)
-          : settingsObj.storefront_config;
-      } catch (e) {
-        savedConfig = null;
-      }
     }
-
-    const storedSelection = settingsObj.storefront_selection || {};
-    const legacyThemeId = storedSelection.theme_id
-      || storedSelection.selections?.theme
-      || storedSelection.theme
-      || storedSelection.theme_name;
-    const lightThemeId = storedSelection.selections?.light_theme
-      || storedSelection.theme_selections?.light?.id
-      || legacyThemeId;
-    const darkThemeId = storedSelection.selections?.dark_theme
-      || storedSelection.theme_selections?.dark?.id
-      || legacyThemeId;
-    selectedTheme = {
-      light: THEME_PRESETS.find((theme) => theme.id === lightThemeId || theme.name === lightThemeId) || null,
-      dark: THEME_PRESETS.find((theme) => theme.id === darkThemeId || theme.name === darkThemeId) || null,
-    };
   }
 
   // دمج التكوين المحفوظ مع الافتراضي لضمان اكتمال كل الحقول
-  let activeConfig = savedConfig || DEFAULT_STOREFRONT_CONFIG;
-  if (selectedTheme?.light && selectedTheme?.dark &&
-      (!savedConfig ||
-       savedConfig.theme_selection?.light !== selectedTheme.light.id ||
-       savedConfig.theme_selection?.dark !== selectedTheme.dark.id)) {
-    activeConfig = {
-      ...activeConfig,
-      theme_name: selectedTheme.light.id,
-      theme_selection: { light: selectedTheme.light.id, dark: selectedTheme.dark.id },
-      theme_display_names: { light: selectedTheme.light.name, dark: selectedTheme.dark.name },
-      light_theme: selectedTheme.light.light_theme,
-      dark_theme: selectedTheme.dark.dark_theme,
-    };
-  }
+  const activeConfig = savedConfig || DEFAULT_STOREFRONT_CONFIG;
   const { sanitizedConfig } = sanitizeStorefrontConfig(activeConfig, userTier);
-  const configLightTheme = THEME_PRESETS.find((theme) => theme.id === sanitizedConfig.theme_selection?.light)
-    || THEME_PRESETS.find((theme) => theme.id === sanitizedConfig.theme_name);
-  const configDarkTheme = THEME_PRESETS.find((theme) => theme.id === sanitizedConfig.theme_selection?.dark)
-    || configLightTheme;
-  sanitizedConfig.theme_selection = {
-    light: configLightTheme?.id || sanitizedConfig.theme_name,
-    dark: configDarkTheme?.id || sanitizedConfig.theme_name,
-  };
-  sanitizedConfig.theme_display_names = {
-    light: configLightTheme?.name || sanitizedConfig.theme_name,
-    dark: configDarkTheme?.name || sanitizedConfig.theme_name,
-  };
-  sanitizedConfig.theme_display_name = configLightTheme?.name || sanitizedConfig.theme_name;
 
   // الحفاظ على updated_at الأصلي المحفوظ في D1 (sanitizeStorefrontConfig يولّد توقيتاً جديداً نتجنّبه هنا)
   if (activeConfig.updated_at) {
@@ -215,35 +131,23 @@ export async function saveStorefrontConfig({ env, ctx, user, body }) {
     throw new HttpError('المستخدم غير موجود', 404);
   }
 
-  const settingsObj = parseSettings(userRow.settings);
+  let settingsObj = {};
+  try {
+    settingsObj = userRow.settings ? JSON.parse(userRow.settings) : {};
+  } catch (e) {
+    settingsObj = {};
+  }
 
   const userTier = userRow.plan_type || settingsObj.plan_type || settingsObj.tier || STORE_TIERS.FREE;
 
   // فحص وتنقية التكوين وتطبيق قواعد الباقة
   const { sanitizedConfig, notices } = sanitizeStorefrontConfig(rawConfig, userTier);
-  const { lightTheme, darkTheme } = getThemePair(sanitizedConfig.theme_selection, sanitizedConfig.theme_name);
-  sanitizedConfig.theme_name = lightTheme.id;
-  sanitizedConfig.theme_selection = { light: lightTheme.id, dark: darkTheme.id };
-  sanitizedConfig.theme_display_names = { light: lightTheme.name, dark: darkTheme.name };
-  sanitizedConfig.theme_display_name = lightTheme.name;
-  sanitizedConfig.light_theme = lightTheme.light_theme;
-  sanitizedConfig.dark_theme = darkTheme.dark_theme;
-  sanitizedConfig.modes = {
-    light: { colors: lightTheme.light_theme.colors },
-    dark: { colors: darkTheme.dark_theme.colors },
-  };
   const configJson = JSON.stringify(sanitizedConfig);
-  const selectionRecord = createThemeSelectionRecord(lightTheme, darkTheme);
-  settingsObj.storefront_selection = selectionRecord;
 
   // تحديث قاعدة البيانات D1
   try {
-    const update = selectionRecord
-      ? env.DB.prepare(`UPDATE users SET storefront_config = ?, settings = ? WHERE id = ?`)
-        .bind(configJson, JSON.stringify(settingsObj), user.user_id)
-      : env.DB.prepare(`UPDATE users SET storefront_config = ? WHERE id = ?`)
-        .bind(configJson, user.user_id);
-    await update
+    await env.DB.prepare(`UPDATE users SET storefront_config = ? WHERE id = ?`)
+      .bind(configJson, user.user_id)
       .run();
   } catch (dbErr) {
     // إذا لم يكن العمود موجوداً بعد، نخزنه مؤقتاً داخل حقل settings كـ fallback آمن
@@ -263,13 +167,7 @@ export async function saveStorefrontConfig({ env, ctx, user, body }) {
   }
 
   // مزامنة GitHub و Cloudflare Cache والمانيفست
-  const syncPromise = syncStorefrontConfigToGitHub(
-    env,
-    userRow.username,
-    sanitizedConfig,
-    userRow,
-    selectionRecord
-  );
+  const syncPromise = syncStorefrontConfigToGitHub(env, userRow.username, sanitizedConfig, userRow);
   if (ctx && ctx.waitUntil) {
     ctx.waitUntil(syncPromise);
   } else {
@@ -298,61 +196,5 @@ export async function getStorefrontThemes() {
     data: {
       themes: THEME_PRESETS,
     },
-  };
-}
-
-export async function saveStorefrontSelection({ env, ctx, user, body }) {
-  if (!user || !user.user_id) throw new HttpError('غير مصرح', 401);
-  const selection = body?.selections;
-  if (!selection || typeof selection !== 'object' || Array.isArray(selection)) {
-    throw new HttpError('اختيارات القالب غير صالحة.', 400);
-  }
-  const selectionKeys = Object.keys(selection);
-  if (selectionKeys.length === 0 || selectionKeys.length > 6 ||
-      !['theme', 'light_theme', 'dark_theme'].some((key) => Object.prototype.hasOwnProperty.call(selection, key))) {
-    throw new HttpError('يجب تحديد ثيم فاتح وثيم داكن قبل النشر.', 400);
-  }
-  const allowedKeys = new Set(['theme', 'light_theme', 'dark_theme', 'font', 'layout', 'navigation', 'bot']);
-  const cleanSelection = {};
-  for (const key of selectionKeys) {
-    const value = selection[key];
-    if (!allowedKeys.has(key) || typeof value !== 'string' || value.length > 80 || !/^[a-z0-9_-]+$/i.test(value)) {
-      throw new HttpError('اختيار قالب غير صالح.', 400);
-    }
-    cleanSelection[key] = value;
-  }
-  const fallbackTheme = cleanSelection.theme || cleanSelection.light_theme || cleanSelection.dark_theme;
-  const { lightTheme, darkTheme } = getThemePair({
-    light: cleanSelection.light_theme || fallbackTheme,
-    dark: cleanSelection.dark_theme || fallbackTheme,
-  }, fallbackTheme);
-  const selectionRecord = createThemeSelectionRecord(lightTheme, darkTheme);
-  Object.assign(selectionRecord.selections, cleanSelection);
-  const row = await env.DB.prepare('SELECT id, username, settings FROM users WHERE id = ?').bind(user.user_id).first();
-  if (!row) throw new HttpError('المستخدم غير موجود', 404);
-  const settings = parseSettings(row.settings);
-  settings.storefront_selection = selectionRecord;
-  const settingsJson = JSON.stringify(settings);
-  if (settingsJson.length > 256 * 1024) {
-    throw new HttpError('تعذر حفظ اختيار الثيم بسبب تجاوز حجم إعدادات المتجر.', 413);
-  }
-  await env.DB.prepare('UPDATE users SET settings = ? WHERE id = ?').bind(settingsJson, user.user_id).run();
-  const syncPromise = syncStorefrontSelectionToGitHub(env, row.username, selectionRecord);
-  if (ctx?.waitUntil) {
-    ctx.waitUntil(syncPromise.catch((error) => {
-      console.error(`Storefront selection sync failed for ${row.username}:`, error);
-    }));
-  } else {
-    await syncPromise;
-  }
-  return {
-    status: 'success',
-    message: 'تم حفظ الثيمين الفاتح والداكن وسيظهران على المتجر بعد اكتمال النشر.',
-    selections: selectionRecord.selections,
-    themes: {
-      light: { id: lightTheme.id, name: lightTheme.name },
-      dark: { id: darkTheme.id, name: darkTheme.name },
-    },
-    sync: 'queued',
   };
 }

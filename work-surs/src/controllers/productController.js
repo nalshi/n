@@ -1,13 +1,8 @@
 import { resolveCategoryChain } from '../services/categories/categoryService.js';
 import { uploadProductImage } from '../services/images/imageService.js';
-import { syncSingleProductToStorefront } from '../services/catalog/catalogSyncService.js';
+import { syncCatalogToStorefront } from '../services/catalog/catalogSyncService.js';
 import { HttpError } from '../security/rbac.js';
 import { ACTIVE_ORDER_STATUSES } from '../config/constants.js';
-import {
-  createDeletedProductEventInsertStatement,
-  createProductEventInsertStatement,
-  publishStoredMerchantEvent,
-} from '../services/realtime/merchantEvents.js';
 
 // ========================================================
 // 🏪 تحكم المنتجات (تاجر فقط)
@@ -22,9 +17,8 @@ import {
 const PRODUCT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 export async function saveProduct({ env, ctx, user, body, uploadedImageFile }) {
-  const isNewProduct = !body.id;
   let pid;
-  if (!isNewProduct) {
+  if (body.id) {
     if (!PRODUCT_ID_PATTERN.test(String(body.id))) {
       throw new HttpError('معرّف المنتج غير صالح.', 400);
     }
@@ -71,7 +65,7 @@ export async function saveProduct({ env, ctx, user, body, uploadedImageFile }) {
   const safeDiscount = Math.min(100, Math.max(0, parseFloat(body.discount) || 0));
   const safeQuantity = Math.max(0, parseInt(body.quantity, 10) || 0);
 
-  const mutation = env.DB.prepare(
+  const result = await env.DB.prepare(
     `INSERT INTO products (id, merchant_id, name, description, price, cost_price, discount, image, quantity, quantity_type, currency, category_id, options, is_available, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
@@ -97,51 +91,50 @@ export async function saveProduct({ env, ctx, user, body, uploadedImageFile }) {
       body.sizes || JSON.stringify(body.options || []),
       body.isAvailable === '0' ? 0 : 1,
       Date.now()
-    );
-
-  const [result, eventResult] = await env.DB.batch([
-    mutation,
-    createProductEventInsertStatement(
-      env.DB,
-      user.user_id,
-      pid,
-      isNewProduct ? 'created' : 'updated'
-    ),
-  ]);
+    )
+    .run();
 
   if (!result.meta || result.meta.changes === 0) {
     throw new HttpError('لا يمكنك تعديل منتج لا يخصك.', 403);
   }
-  const savedEvent = eventResult.results?.[0];
-  if (!savedEvent) {
-    throw new Error('Product saved without an associated sync event');
-  }
 
-  const updatedProduct = await env.DB.prepare(
+  // ⭐ تحسين أداء/موارد: كانت SELECT * تجلب كل الأعمدة (بما فيها cost_price
+  // الحساس وmerchant_id/updated_at غير المستخدمين هنا) لكل منتج، رغم أن
+  // syncCatalogToStorefront (راجع catalogSyncService.js) يقرأ فقط 13 عمود
+  // محدد. لا يقلل هذا "rows_read" المحسوبة بفوترة D1 (نفس عدد الصفوف)، لكنه
+  // يقلل حجم البيانات المنقولة من D1 وحجم JSON الذي يعالجه الـ Worker لكل
+  // صف - أهم شيء بخطة مجانية سقفها 10ms وقت معالج لكامل الطلب.
+  const allProducts = await env.DB.prepare(
     `SELECT id, name, description, price, discount, image, category_id, options, features,
             quantity, quantity_type, is_available, currency
-     FROM products WHERE merchant_id = ? AND id = ?`
+     FROM products WHERE merchant_id = ? AND is_available = 1`
   )
-    .bind(user.user_id, pid)
-    .first();
-  if (!updatedProduct) {
-    throw new Error('Saved product could not be loaded for storefront synchronization');
-  }
+    .bind(user.user_id)
+    .all();
+  ctx.waitUntil(syncCatalogToStorefront(env, user.username, user.user_id, allProducts.results));
 
-  ctx.waitUntil(
-    syncSingleProductToStorefront(
-      env,
-      user.username,
-      user.user_id,
-      updatedProduct
-    )
-  );
-  publishStoredMerchantEvent(
-    env,
-    ctx,
-    user.user_id,
-    savedEvent
-  );
+  // ⭐ تحديث الـ Durable Object (In-Memory Cache) وبث التحديث لحظياً للداشبورد
+  try {
+    const savedProduct = await env.DB.prepare(
+      `SELECT * FROM products WHERE id = ? AND merchant_id = ?`
+    ).bind(pid, user.user_id).first();
+    
+    if (savedProduct && env.MERCHANT_SESSION) {
+      const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
+      const doStub = env.MERCHANT_SESSION.get(doId);
+      
+      // لا نستخدم await لتجنب تأخير الرد على العميل
+      ctx.waitUntil(
+        doStub.fetch('http://internal/sync-product', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product: savedProduct })
+        })
+      );
+    }
+  } catch (err) {
+    console.error('Failed to sync product to DO:', err);
+  }
 
   return {
     message: 'تم حفظ المنتج بنجاح (وجاري تحديث المتجر للزبائن)',
@@ -170,29 +163,47 @@ export async function listProducts({ env, user }) {
 
 export async function deleteProduct({ env, ctx, user, body }) {
   const pid = body.id;
+
+  // ⭐ إصلاح: كان الفحص (هل ضمن طلب نشط؟) والحذف عبارة عن خطوتين منفصلتين
+  // (SELECT ثم DELETE)، وبينهما نافذة زمنية يقدر فيها زبون يُنشئ طلب جديد
+  // لنفس المنتج (create_order) بعد ما ينجح الفحص وقبل ما يُنفَّذ الحذف
+  // فعلياً — فيُحذف منتج أصبح للتو ضمن طلب نشط، رغم "نجاح" الفحص الأمني.
+  // الحل: ندمج الفحص داخل جملة DELETE نفسها عبر NOT EXISTS، فتصير عملية
+  // واحدة ذرّية على مستوى قاعدة البيانات ولا توجد نافذة تصادم إطلاقاً.
+  //
+  // ⭐ إصلاح ثانٍ (2026-07-26): كان الفحص يستخدم
+  // `ticket_data LIKE '%"product_id":"<pid>"%'` - لكن D1 يفرض حد صارم:
+  // أقصى طول لنمط LIKE/GLOB هو 50 بايت فقط (راجع حدود D1 الرسمية). بما
+  // أن pid وحده ("PROD-" + UUID) طوله ~41 حرف، النمط الكامل يتجاوز الـ 50
+  // بايت بسهولة فيطلع خطأ "LIKE or GLOB pattern too complex" عند كل
+  // عملية حذف. الحل: نستبدل LIKE بمطابقة دقيقة عبر دوال JSON (json_each/
+  // json_extract) المتوفرة في D1 - ما فيها هذا الحد، وهي أدق لأنها تطابق
+  // قيمة product_id كاملة داخل مصفوفة items وليس نص فرعي عشوائي.
   const statusList = ACTIVE_ORDER_STATUSES.map((s) => `'${s}'`).join(',');
+  const deleteResult = await env.DB.prepare(
+    `DELETE FROM products
+     WHERE id = ? AND merchant_id = ?
+     AND NOT EXISTS (
+       SELECT 1 FROM live_tickets, json_each(json_extract(live_tickets.ticket_data, '$.items')) AS item
+       WHERE live_tickets.merchant_id = ?
+       AND live_tickets.status IN (${statusList})
+       AND json_extract(item.value, '$.product_id') = ?
+     )`
+  )
+    .bind(pid, user.user_id, user.user_id, pid)
+    .run();
 
-  const [deleteResult, eventResult] = await env.DB.batch([
-    env.DB.prepare(
-      `DELETE FROM products
-       WHERE id = ? AND merchant_id = ?
-       AND NOT EXISTS (
-         SELECT 1 FROM live_tickets, json_each(json_extract(live_tickets.ticket_data, '$.items')) AS item
-         WHERE live_tickets.merchant_id = ?
-         AND live_tickets.status IN (${statusList})
-         AND json_extract(item.value, '$.product_id') = ?
-       )`
-    ).bind(pid, user.user_id, user.user_id, pid),
-    createDeletedProductEventInsertStatement(env.DB, user.user_id, pid),
-  ]);
+  const deleted = (deleteResult.meta && deleteResult.meta.changes) || 0;
 
-  const deletedInBatch = (deleteResult.meta && deleteResult.meta.changes) || 0;
-  if (deletedInBatch === 0) {
-    const stillExists = await env.DB.prepare(
-      'SELECT id FROM products WHERE id = ? AND merchant_id = ?'
-    )
+  if (deleted === 0) {
+    // لم يُحذف شيء: إما أن المنتج غير موجود أصلاً لهذا التاجر، أو أنه
+    // ضمن طلب نشط حالياً (بما فيه طلب استجد بعد الفحص الأول). نميّز
+    // بينهما فقط لأجل رسالة واضحة للتاجر - هذا الفحص هنا للعرض فقط
+    // ولا يؤثر على ذرّية الحذف نفسه أعلاه.
+    const stillExists = await env.DB.prepare(`SELECT id FROM products WHERE id = ? AND merchant_id = ?`)
       .bind(pid, user.user_id)
       .first();
+
     if (stillExists) {
       throw new HttpError(
         'لا يمكنك حذف هذا المنتج حالياً لأنه ضمن طلب نشط لزبون. أنهِ الطلب أو ألغِه أولاً.',
@@ -201,26 +212,27 @@ export async function deleteProduct({ env, ctx, user, body }) {
     }
     throw new HttpError('المنتج غير موجود.', 404);
   }
-  const deletedEvent = eventResult.results?.[0];
-  if (!deletedEvent) {
-    throw new Error('Product deleted without an associated sync event');
+
+  if (env.MERCHANT_SESSION) {
+    const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
+    const doStub = env.MERCHANT_SESSION.get(doId);
+    ctx.waitUntil(
+      doStub.fetch('http://internal/sync-product-removed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: pid }),
+      })
+    );
   }
 
-  publishStoredMerchantEvent(
-    env,
-    ctx,
-    user.user_id,
-    deletedEvent
-  );
-  ctx.waitUntil(
-    syncSingleProductToStorefront(
-      env,
-      user.username,
-      user.user_id,
-      { id: pid },
-      { deleted: true }
-    )
-  );
+  const remainingProducts = await env.DB.prepare(
+    `SELECT id, name, description, price, discount, image, category_id, options, features,
+            quantity, quantity_type, is_available, currency
+     FROM products WHERE merchant_id = ? AND is_available = 1`
+  )
+    .bind(user.user_id)
+    .all();
+  ctx.waitUntil(syncCatalogToStorefront(env, user.username, user.user_id, remainingProducts.results));
 
   return { message: 'تم حذف المنتج نهائياً بنجاح' };
 }
@@ -229,44 +241,37 @@ export async function toggleAvailability({ env, ctx, user, body }) {
   const pid = body.id;
   const reqStatus = parseInt(body.isAvailable) ? 1 : 0;
 
-  const [updateResult, eventResult] = await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE products SET is_available = ?, updated_at = ? WHERE id = ? AND merchant_id = ?`
-    ).bind(reqStatus, Date.now(), pid, user.user_id),
-    createProductEventInsertStatement(env.DB, user.user_id, pid, 'updated'),
-  ]);
-  if (!updateResult.meta || updateResult.meta.changes === 0) {
-    throw new HttpError('المنتج غير موجود.', 404);
-  }
-  const updatedEvent = eventResult.results?.[0];
-  if (!updatedEvent) {
-    throw new Error('Product updated without an associated sync event');
-  }
-  const updatedProduct = await env.DB.prepare(
+  await env.DB.prepare(
+    `UPDATE products SET is_available = ?, updated_at = ? WHERE id = ? AND merchant_id = ?`
+  )
+    .bind(reqStatus, Date.now(), pid, user.user_id)
+    .run();
+
+  const visibleProducts = await env.DB.prepare(
     `SELECT id, name, description, price, discount, image, category_id, options, features,
             quantity, quantity_type, is_available, currency
-     FROM products WHERE merchant_id = ? AND id = ?`
+     FROM products WHERE merchant_id = ? AND is_available = 1`
   )
-    .bind(user.user_id, pid)
-    .first();
-  if (!updatedProduct) {
-    throw new Error('Updated product could not be loaded for storefront synchronization');
-  }
+    .bind(user.user_id)
+    .all();
+  ctx.waitUntil(syncCatalogToStorefront(env, user.username, user.user_id, visibleProducts.results));
 
-  ctx.waitUntil(
-    syncSingleProductToStorefront(
-      env,
-      user.username,
-      user.user_id,
-      updatedProduct
-    )
-  );
-  publishStoredMerchantEvent(
-    env,
-    ctx,
-    user.user_id,
-    updatedEvent
-  );
+  if (env.MERCHANT_SESSION) {
+    const updatedProduct = await env.DB.prepare(
+      `SELECT * FROM products WHERE id = ? AND merchant_id = ?`
+    ).bind(pid, user.user_id).first();
+    if (updatedProduct) {
+      const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
+      const doStub = env.MERCHANT_SESSION.get(doId);
+      ctx.waitUntil(
+        doStub.fetch('http://internal/sync-product', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product: updatedProduct }),
+        })
+      );
+    }
+  }
 
   return { message: 'تم تحديث حالة عرض المنتج (إخفاء/إظهار) بنجاح' };
 }

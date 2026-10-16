@@ -91,6 +91,24 @@ the Worker's gateway secret. A successful bootstrap request should return JSON;
 if `/api/work/api/merchant/bootstrap` returns the site's HTML page, the Pages
 Function route is not active in that deployment.
 
+Deploy the API Worker containing the bootstrap route from `work-surs`:
+
+```bash
+cd work-surs
+pnpm dlx wrangler deploy --config src/wrangler.toml
+```
+
+Run the worker bootstrap endpoint tests from the app root before deployment:
+
+```bash
+pnpm test:worker
+```
+
+After deployment, verify that `/api/work/api/merchant/bootstrap` returns an
+object with `products`, `orders`, `archivedOrders`, `categories`, and `settings`.
+A response containing only `{"status":"ok"}` means the request is reaching an
+older or differently routed Worker instead of the bootstrap handler.
+
 The event journal supports replay while its rows are retained; it currently has
 no pruning policy. IndexedDB persistence is local to each browser profile and
 does not synchronize offline changes back to the server. Free-tier usage depends

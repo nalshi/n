@@ -1,17 +1,12 @@
+import { syncOrderTracking } from '../services/realtime/realtimeSyncService.js';
 import {
   notifyOrderStatusUpdate,
   notifyMerchantOrderUpdate,
   notifyOrderCompleted,
 } from '../services/notifications/notificationService.js';
 import { HttpError } from '../security/rbac.js';
-import { syncSingleProductToStorefront } from '../services/catalog/catalogSyncService.js';
+import { syncCatalogToStorefront } from '../services/catalog/catalogSyncService.js';
 import { ORDER_STATUSES } from '../config/constants.js';
-import {
-  createArchivedOrderEventInsertStatement,
-  createOrderEventInsertStatement,
-  createProductEventInsertStatement,
-  publishStoredMerchantEvent,
-} from '../services/realtime/merchantEvents.js';
 
 const VALID_ORDER_STATUSES = Object.values(ORDER_STATUSES);
 
@@ -116,29 +111,61 @@ export async function updateOrderStatus({ env, ctx, user, body }) {
     throw new HttpError('قيمة status غير معروفة.', 400);
   }
 
-  const [updateResult, eventResult] = await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE live_tickets SET status = ? WHERE ticket_id = ? AND merchant_id = ? RETURNING *`
-    ).bind(body.status, body.ticket_id, user.user_id),
-    createOrderEventInsertStatement(
-      env.DB,
-      user.user_id,
-      body.ticket_id,
-      'updated'
-    ),
-  ]);
-  const order = updateResult.results?.[0];
+  const result = await env.DB.prepare(`UPDATE live_tickets SET status = ? WHERE ticket_id = ? AND merchant_id = ?`)
+    .bind(body.status, body.ticket_id, user.user_id)
+    .run();
 
-  if (!order) {
+  if (!result.meta || result.meta.changes === 0) {
     throw new HttpError('الطلب غير موجود أو لا يخصك.', 404);
   }
-  const event = eventResult.results?.[0];
-  if (!event) throw new Error('Order status changed without an associated sync event');
 
-  ctx.waitUntil(notifyOrderStatusUpdate(env, order.customer_id, body.status, body.ticket_id));
-  ctx.waitUntil(notifyMerchantOrderUpdate(env, user.user_id, body.status, body.ticket_id));
+  const order = await env.DB.prepare(
+    `SELECT * FROM live_tickets WHERE ticket_id = ? AND merchant_id = ?`
+  )
+    .bind(body.ticket_id, user.user_id)
+    .first();
 
-  publishStoredMerchantEvent(env, ctx, user.user_id, event);
+  if (order) {
+    ctx.waitUntil(syncOrderTracking(env, body.ticket_id, body.status, user.username));
+    ctx.waitUntil(notifyOrderStatusUpdate(env, order.customer_id, body.status, body.ticket_id));
+    ctx.waitUntil(notifyMerchantOrderUpdate(env, user.user_id, body.status, body.ticket_id));
+
+    if (env.MERCHANT_SESSION) {
+      try {
+        const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
+        const doStub = env.MERCHANT_SESSION.get(doId);
+        let data = {};
+        try { data = JSON.parse(order.ticket_data || '{}'); } catch (e) { data = {}; }
+        const cust = data.customer || {};
+        const fin = data.financials || {};
+        
+        const orderObj = {
+          id: order.ticket_id,
+          order_group_id: order.order_group_id,
+          total_amount: fin.grand_total ?? 0,
+          currency: fin.currency || 'YER',
+          delivery_fee: fin.delivery_fee ?? 0,
+          delivery_address_text: cust.address_text || 'عنوان غير محدد',
+          delivery_gps_link: cust.gps_link || '',
+          status: order.status,
+          created_at: order.created_at,
+          delivery_code: order.delivery_code || '',
+          customer_name: cust.name || 'عميل',
+          customer_phone: cust.phone || '',
+          items: data.items || [],
+          is_agent_assigned: order.delivery_agent_id !== null && order.delivery_agent_id !== undefined,
+        };
+        
+        ctx.waitUntil(
+          doStub.fetch('http://internal/sync-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order: orderObj })
+          })
+        );
+      } catch (e) { console.error('DO sync error:', e); }
+    }
+  }
 
   return { message: 'تم تحديث حالة الطلب' };
 }
@@ -161,26 +188,15 @@ export async function cancelOrder({ env, ctx, user, body }) {
   // الاثنان يجتازان الفحص أعلاه (لم تُحذف التذكرة بعد) وتُعاد كل الكمية
   // للمخزون مرتين. الحل: "نطالب" بالتذكرة أولاً بحذف شرطي ذري - فقط أول
   // طلب ينجح، والثاني يفشل بوضوح بدل تكرار إعادة المخزون بصمت.
-  const [claim, deleteEventResult] = await env.DB.batch([
-    env.DB.prepare(
-      `DELETE FROM live_tickets WHERE ticket_id = ? AND merchant_id = ?`
-    ).bind(body.ticket_id, user.user_id),
-    createOrderEventInsertStatement(
-      env.DB,
-      user.user_id,
-      body.ticket_id,
-      'deleted'
-    ),
-  ]);
+  const claim = await env.DB.prepare(
+    `DELETE FROM live_tickets WHERE ticket_id = ? AND merchant_id = ?`
+  )
+    .bind(body.ticket_id, user.user_id)
+    .run();
 
   if (!claim.meta || claim.meta.changes === 0) {
     throw new HttpError('تم التعامل مع هذا الطلب بالفعل (ربما بطلب سابق متزامن).', 409);
   }
-  const deleteEvent = deleteEventResult.results?.[0];
-  if (!deleteEvent) {
-    throw new Error('Order cancellation completed without an associated sync event');
-  }
-  publishStoredMerchantEvent(env, ctx, user.user_id, deleteEvent);
 
   let ticketData = {};
   try {
@@ -189,7 +205,7 @@ export async function cancelOrder({ env, ctx, user, body }) {
     ticketData = {};
   }
   const items = ticketData.items || [];
-  const changedProductIds = new Set();
+  let inventoryChanged = false;
 
   for (const item of items) {
     const prod = await env.DB.prepare(`SELECT quantity, quantity_type, options FROM products WHERE id = ? AND merchant_id = ?`)
@@ -197,7 +213,7 @@ export async function cancelOrder({ env, ctx, user, body }) {
       .first();
 
     if (prod && prod.quantity_type === 'tracked') {
-      changedProductIds.add(String(item.product_id));
+      inventoryChanged = true;
       if (item.size_id) {
         let options = [];
         try {
@@ -212,74 +228,52 @@ export async function cancelOrder({ env, ctx, user, body }) {
           }
           totalRemaining += parseInt(opt.quantity, 10) || 0;
         }
-        const [stockResult, stockEventResult] = await env.DB.batch([
-          env.DB.prepare(
-            `UPDATE products SET quantity = ?, options = ?, updated_at = ? WHERE id = ? AND merchant_id = ?`
-          ).bind(
-            totalRemaining,
-            JSON.stringify(options),
-            Date.now(),
-            item.product_id,
-            user.user_id
-          ),
-          createProductEventInsertStatement(
-            env.DB,
-            user.user_id,
-            item.product_id,
-            'updated'
-          ),
-        ]);
-        if (stockResult.meta?.changes) {
-          const stockEvent = stockEventResult.results?.[0];
-          if (!stockEvent) {
-            throw new Error('Product stock changed without an associated sync event');
-          }
-          publishStoredMerchantEvent(env, ctx, user.user_id, stockEvent);
-        }
+        await env.DB.prepare(`UPDATE products SET quantity = ?, options = ?, updated_at = ? WHERE id = ? AND merchant_id = ?`)
+          .bind(totalRemaining, JSON.stringify(options), Date.now(), item.product_id, user.user_id)
+          .run();
       } else {
-        const [stockResult, stockEventResult] = await env.DB.batch([
-          env.DB.prepare(
-            `UPDATE products SET quantity = quantity + ?, updated_at = ? WHERE id = ? AND merchant_id = ?`
-          ).bind(item.quantity, Date.now(), item.product_id, user.user_id),
-          createProductEventInsertStatement(
-            env.DB,
-            user.user_id,
-            item.product_id,
-            'updated'
-          ),
-        ]);
-        if (stockResult.meta?.changes) {
-          const stockEvent = stockEventResult.results?.[0];
-          if (!stockEvent) {
-            throw new Error('Product stock changed without an associated sync event');
-          }
-          publishStoredMerchantEvent(env, ctx, user.user_id, stockEvent);
-        }
+        await env.DB.prepare(`UPDATE products SET quantity = quantity + ?, updated_at = ? WHERE id = ? AND merchant_id = ?`)
+          .bind(item.quantity, Date.now(), item.product_id, user.user_id)
+          .run();
       }
     }
   }
 
+  ctx.waitUntil(syncOrderTracking(env, body.ticket_id, 'cancelled', user.username));
   // ⭐ إلغاء الطلب هو أيضاً "تغيير حالة من قبل التاجر"، فيجب أن يصل إشعار للعميل.
   ctx.waitUntil(notifyOrderStatusUpdate(env, ticket.customer_id, 'cancelled', body.ticket_id));
 
-  for (const productId of changedProductIds) {
-    const product = await env.DB.prepare(
+  // ⭐ تحديث الـ Durable Object
+  if (env.MERCHANT_SESSION) {
+    try {
+      const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
+      const doStub = env.MERCHANT_SESSION.get(doId);
+      ctx.waitUntil(
+        doStub.fetch('http://internal/sync-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order: { ticket_id: body.ticket_id, status: 'cancelled' } })
+        })
+      );
+    } catch (e) { console.error('DO sync error:', e); }
+  }
+
+  if (inventoryChanged) {
+    // ⭐ إصلاح فعلي (خطأ منطقي): كان هذا الاستعلام الوحيد بالمشروع الذي يغذّي
+    // syncCatalogToStorefront بدون شرط `is_available = 1` (كل نقاط المزامنة
+    // الأخرى بـ productController.js تضيفه). النتيجة: إلغاء أي طلب كان يعيد
+    // نشر كل منتجات التاجر بالكتالوج العام - **حتى المنتجات المخفية عمداً**
+    // (is_available = 0) - لأن catalogSyncService.js ينسخ قيمة is_available
+    // كما هي بدل تصفيتها. أضفنا نفس الشرط المستخدم بكل مكان آخر، مع نفس
+    // تقليص الأعمدة (راجع تعليق saveProduct لتفاصيل سبب ذلك).
+    const allProducts = await env.DB.prepare(
       `SELECT id, name, description, price, discount, image, category_id, options, features,
               quantity, quantity_type, is_available, currency
-       FROM products WHERE merchant_id = ? AND id = ?`
+       FROM products WHERE merchant_id = ? AND is_available = 1`
     )
-      .bind(user.user_id, productId)
-      .first();
-    if (product) {
-      ctx.waitUntil(
-        syncSingleProductToStorefront(
-          env,
-          user.username,
-          user.user_id,
-          product
-        )
-      );
-    }
+      .bind(user.user_id)
+      .all();
+    ctx.waitUntil(syncCatalogToStorefront(env, user.username, user.user_id, allProducts.results));
   }
 
   return { message: 'تم إلغاء الطلب بنجاح وإعادة المنتجات للمخزون.' };
@@ -302,7 +296,7 @@ export async function getStats({ env, user, body }) {
   const limit = Math.min(Math.max(parseInt(body?.limit, 10) || 500, 1), 500);
 
   const rows = await env.DB.prepare(
-    `SELECT id, product_id, product_name, quantity, price_per_item, total_price, currency, cost_at_sale, created_at
+    `SELECT id, product_id, product_name, quantity, price_per_item, total_price, currency, created_at
      FROM sales_log WHERE user_id = ? AND type = 'sale' ORDER BY created_at DESC LIMIT ?`
   )
     .bind(user.user_id, limit)
@@ -316,8 +310,6 @@ export async function getStats({ env, user, body }) {
     price_per_item: r.price_per_item,
     total_price: r.total_price,
     currency: r.currency,
-    cost_at_sale: r.cost_at_sale || 0,
-    cost_price: r.quantity > 0 ? (r.cost_at_sale / r.quantity) : 0,
     timestamp: r.created_at,
   }));
 
@@ -377,11 +369,21 @@ export async function confirmDeliveryCode({ env, ctx, user, body }) {
   // عملية البيع مرتين بـ sales_log (مضاعفة الإيراد بالإحصائيات) وبـ
   // orders_archive. نطالب بالتذكرة أولاً بحذف شرطي ذري - فقط أول طلب
   // ينجح، والثاني يفشل بوضوح بدل تكرار تسجيل البيع بصمت.
+  const claim = await env.DB.prepare(
+    `DELETE FROM live_tickets WHERE ticket_id = ? AND merchant_id = ? AND status = 'out_for_delivery'`
+  )
+    .bind(ticketId, user.user_id)
+    .run();
+
+  if (!claim.meta || claim.meta.changes === 0) {
+    throw new HttpError('تم تأكيد تسليم هذا الطلب بالفعل (ربما بطلب سابق متزامن).', 409);
+  }
+
   const items = ticketData.items || [];
   const currency = ticketData.financials?.currency || 'YER';
   const grandTotal = ticketData.financials?.grand_total || 0;
 
-  const saleStatements = items.map((item) => {
+  for (const item of items) {
     const saleId = 'SALE-' + crypto.randomUUID();
     const totalPrice = item.price * item.quantity;
     const costAtSale = (item.cost_price || 0) * item.quantity;
@@ -391,10 +393,9 @@ export async function confirmDeliveryCode({ env, ctx, user, body }) {
     // يلقى صف المنتج. الاسم متوفر أصلاً بـ item.product_name من لحظة
     // إنشاء الطلب (createOrder بـ customerController.js)، فلا داعي لأي
     // استعلام إضافي على products هنا.
-    return env.DB.prepare(
+    await env.DB.prepare(
       `INSERT INTO sales_log (id, user_id, product_id, product_name, size_id, quantity, price_per_item, total_price, currency, type, cost_at_sale, order_id, created_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sale', ?, ?, ?
-       WHERE changes() > 0`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sale', ?, ?, ?)`
     )
       .bind(
         saleId,
@@ -409,45 +410,18 @@ export async function confirmDeliveryCode({ env, ctx, user, body }) {
         costAtSale,
         ticketId,
         Date.now()
-      );
-  });
-
-  const [claimResult, archiveResult, archiveEventResult] = await env.DB.batch([
-    env.DB.prepare(
-      `DELETE FROM live_tickets
-       WHERE ticket_id = ? AND merchant_id = ? AND status = 'out_for_delivery'`
-    ).bind(ticketId, user.user_id),
-    ...saleStatements,
-    env.DB.prepare(
-      `INSERT INTO orders_archive (ticket_id, order_group_id, customer_id, merchant_id, final_status, total_amount, archived_data, archived_at)
-       SELECT ?, ?, ?, ?, 'completed', ?, ?, ?
-       WHERE changes() > 0`
-    ).bind(
-      ticketId,
-      ticket.order_group_id,
-      ticket.customer_id,
-      user.user_id,
-      grandTotal,
-      JSON.stringify(ticketData),
-      Date.now()
-    ),
-    createArchivedOrderEventInsertStatement(
-      env.DB,
-      user.user_id,
-      ticketId
-    ),
-  ]);
-  if (!claimResult.meta?.changes) {
-    throw new HttpError('تم تأكيد تسليم هذا الطلب بالفعل (ربما بطلب سابق متزامن).', 409);
-  }
-  if (!archiveResult.meta?.changes) {
-    throw new Error('Completed order could not be archived');
-  }
-  const archiveEvent = archiveEventResult.results?.[0];
-  if (!archiveEvent) {
-    throw new Error('Completed order archived without an associated sync event');
+      )
+      .run();
   }
 
+  await env.DB.prepare(
+    `INSERT INTO orders_archive (ticket_id, order_group_id, customer_id, merchant_id, final_status, total_amount, archived_data, archived_at)
+     VALUES (?, ?, ?, ?, 'completed', ?, ?, ?)`
+  )
+    .bind(ticketId, ticket.order_group_id, ticket.customer_id, user.user_id, grandTotal, JSON.stringify(ticketData), Date.now())
+    .run();
+
+  ctx.waitUntil(syncOrderTracking(env, ticketId, 'completed', user.username));
   // ⭐ عند اتمام الطلب فعلياً، يصل إشعار صحيح للعميل (تم التسليم) وللتاجر
   // (توثيق المبلغ في رصيده) معاً.
   ctx.waitUntil(
@@ -460,7 +434,71 @@ export async function confirmDeliveryCode({ env, ctx, user, body }) {
     })
   );
 
-  publishStoredMerchantEvent(env, ctx, user.user_id, archiveEvent);
+  // ⭐ تحديث الـ Durable Object
+  if (env.MERCHANT_SESSION) {
+    try {
+      const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
+      const doStub = env.MERCHANT_SESSION.get(doId);
+      ctx.waitUntil(
+        doStub.fetch('http://internal/sync-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order: { ticket_id: ticketId, status: 'completed' } })
+        })
+      );
+    } catch (e) { console.error('DO sync error:', e); }
+  }
 
   return { message: 'تم تأكيد التسليم بنجاح وتوثيق الأرباح في رصيدك!' };
 }
+
+// ========================================================
+// ⚡ صمام الأمان: جلب الطلبات الفائتة فقط (Zero-Waste Delta)
+// لا يُستدعى إلا عند لحظة عودة الإنترنت بعد انقطاع فقط!
+// ========================================================
+export async function getOrdersDelta({ env, user, body }) {
+  const since = typeof body?.since === 'string' ? body.since.trim() : '';
+  if (!since) {
+    return { data: [] };
+  }
+
+  const tickets = await env.DB.prepare(
+    `SELECT ticket_id as id, order_group_id, status, created_at, delivery_code, delivery_agent_id, ticket_data
+     FROM live_tickets 
+     WHERE merchant_id = ? AND created_at > ? 
+     ORDER BY created_at ASC LIMIT 50`
+  )
+    .bind(user.user_id, since)
+    .all();
+
+  const orders = (tickets.results || []).map((t) => {
+    let data = {};
+    try {
+      data = JSON.parse(t.ticket_data || '{}');
+    } catch {
+      data = {};
+    }
+    const fin = data.financials || {};
+    const cust = data.customer || {};
+
+    return {
+      id: t.id,
+      order_group_id: t.order_group_id,
+      total_amount: fin.grand_total ?? 0,
+      currency: fin.currency || 'YER',
+      delivery_fee: fin.delivery_fee ?? 0,
+      delivery_address_text: cust.address_text || 'عنوان غير محدد',
+      delivery_gps_link: cust.gps_link || '',
+      status: t.status,
+      created_at: t.created_at,
+      delivery_code: t.delivery_code || '',
+      customer_name: cust.name || 'عميل',
+      customer_phone: cust.phone || '',
+      items: data.items || [],
+      is_agent_assigned: t.delivery_agent_id !== null && t.delivery_agent_id !== undefined,
+    };
+  });
+
+  return { data: orders };
+}
+
