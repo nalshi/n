@@ -422,7 +422,15 @@ function useFirebaseOrderSignals(
         }
       )
       if (!response.ok) {
-        throw new Error(`تعذر الاتصال بإشارات الطلبات (${response.status}).`)
+        let message = `تعذر الاتصال بإشارات الطلبات (${response.status}).`
+        try {
+          const body: unknown = await response.clone().json()
+          const record = readRecord(body)
+          if (typeof record?.message === 'string') message = record.message
+        } catch {
+          // Keep the HTTP status when the proxy returns a non-JSON response.
+        }
+        throw new Error(message)
       }
       if (!response.body) throw new Error('تعذر قراءة بث إشارات الطلبات.')
 
@@ -678,7 +686,23 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         sessionStorage.getItem('merchant_token') ||
         ''
       if (!token) throw new Error('انتهت الجلسة. يرجى تسجيل الدخول مجدداً.')
-      return token
+      const response = await fetch('/api/worker/ws/ticket', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      })
+      if (!response.ok) {
+        throw new Error(`تعذر إصدار تذكرة الاتصال (${response.status}).`)
+      }
+      const result: unknown = await response.json()
+      const ticket = readRecord(result)?.ticket
+      if (typeof ticket !== 'string' || !ticket) {
+        throw new Error('استجابة تذكرة الاتصال غير صالحة.')
+      }
+      return ticket
     }
 
     const scheduleReconnect = () => {
@@ -852,9 +876,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         const currentCursor = await cursor()
         const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         const url = new URL(`${scheme}//${window.location.host}/api/worker/ws`)
-        url.searchParams.set('token', ticket)
         url.searchParams.set('ticket', ticket)
-        url.searchParams.set('merchant_id', merchantId)
         url.searchParams.set('m', merchantId)
         url.searchParams.set('since', String(currentCursor.timestamp))
         url.searchParams.set('lastEventId', String(currentCursor.eventId))
