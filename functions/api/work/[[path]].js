@@ -36,6 +36,26 @@ export async function onRequest(context) {
     return new Response(null, { status: 204 });
   }
 
+  const originalUrl = new URL(request.url);
+  const isDirectApiNavigation =
+    request.method === 'GET' &&
+    originalUrl.pathname.startsWith('/api/work/') &&
+    (request.headers.get('Sec-Fetch-Mode') === 'navigate' ||
+      request.headers.get('Sec-Fetch-Dest') === 'document');
+  if (isDirectApiNavigation) {
+    return new Response(
+      JSON.stringify({ status: 'error', message: 'هذا المسار مخصص لطلبات التطبيق.' }),
+      {
+        status: 404,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      }
+    );
+  }
+
   // 2. التحقق من اكتمال الإعدادات بالسيرفر
   if (!env.WORKER_URL || !env.PROXY_SECRET) {
     console.error('Proxy misconfigured: missing WORKER_URL or PROXY_SECRET');
@@ -45,7 +65,6 @@ export async function onRequest(context) {
     });
   }
 
-  const originalUrl = new URL(request.url);
   // Extract the Worker route suffix after /api/worker or /api/work (for example /ws or /stores/...).
   // IMPORTANT: worker MUST come before work in the alternation to prevent stripping /api/work and leaving 'er/...'
   const subpath = originalUrl.pathname.replace(/^\/api\/(?:worker|work)(?:\/|$)/, '');
