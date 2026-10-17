@@ -6,17 +6,14 @@ import {
 } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useRealtimeStore } from '@/stores/realtime-store'
-import { clearAuthApiCache } from '@/lib/auth-api'
 import {
   localDB,
-  injectOrder,
   hydrateFromSnapshot,
   writeSyncCursor,
   readSyncCursor,
 } from '@/lib/db'
 import {
   fetchDashboardInitialization,
-  fetchDashboardOrders,
   normalizeRealtimeOrders,
   normalizeRealtimeProducts,
   type DashboardData,
@@ -274,44 +271,15 @@ async function refreshOrdersFromFirebaseSignal(
   queryClient: QueryClient,
   merchantId: string
 ) {
-  clearAuthApiCache()
-  const [activeOrders, archivedOrders] = await Promise.all([
-    fetchDashboardOrders('active'),
-    fetchDashboardOrders('archived'),
-  ])
+  const snapshot = await fetchDashboardInitialization(true)
   const previousOrders =
     queryClient.getQueryData<DashboardOrder[]>(
       merchantQueryKeys.orders(merchantId, 'active')
     ) || []
   const knownOrderIds = new Set(previousOrders.map((order) => order.id))
-
-  queryClient.setQueryData(
-    merchantQueryKeys.orders(merchantId, 'active'),
-    activeOrders
-  )
-  queryClient.setQueryData(
-    merchantQueryKeys.orders(merchantId, 'archived'),
-    archivedOrders
-  )
-  queryClient.setQueryData<DashboardData>(
-    merchantQueryKeys.dashboard(merchantId),
-    (dashboard) =>
-      dashboard ? { ...dashboard, activeOrders, archivedOrders } : dashboard
-  )
-  queryClient.setQueryData<DashboardInitialization>(
-    merchantBootstrapKey(merchantId),
-    (snapshot) =>
-      snapshot
-        ? {
-            ...snapshot,
-            dashboard: { ...snapshot.dashboard, activeOrders, archivedOrders },
-          }
-        : snapshot
-  )
-
-  await Promise.all([...activeOrders, ...archivedOrders].map(injectOrder))
+  writeSnapshotQueries(queryClient, merchantId, snapshot)
   _localBus?.postMessage({ type: 'ORDER_MUTATED', merchantId })
-  for (const order of activeOrders) {
+  for (const order of snapshot.dashboard.activeOrders) {
     if (
       !knownOrderIds.has(order.id) &&
       order.status === 'pending_merchant_approval'
