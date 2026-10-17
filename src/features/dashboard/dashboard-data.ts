@@ -285,8 +285,10 @@ function normalizeProducts(result: ApiResult): DashboardProduct[] {
       name: readString(product.name, product.product_name) || 'منتج بدون اسم',
       description: readString(product.description, product.mainDescription),
       type:
-        readString(product.type, product.category_name, product.category) ||
-        'عام',
+        readString(product.type, product.category_name, product.category) ===
+        'عام'
+          ? ''
+          : readString(product.type, product.category_name, product.category),
       categoryId: readIdentifier(product.category_id),
       image: readProductImage(
         product.image,
@@ -664,8 +666,13 @@ export async function fetchDashboardUsername(): Promise<string> {
   return username
 }
 
-export async function saveDashboardProduct(payload: FormData): Promise<string> {
-  const result = await authApiRequest('save_product', payload)
+export async function saveDashboardProduct(
+  payload: FormData,
+  onUploadProgress?: (progress: number) => void
+): Promise<string> {
+  const result = onUploadProgress
+    ? await authApiRequest('save_product', payload, onUploadProgress)
+    : await authApiRequest('save_product', payload)
   if (result.status !== 'success' && result.status !== 'ok') {
     throw new Error(result.message || 'تعذر حفظ المنتج.')
   }
@@ -723,29 +730,49 @@ export async function compressDashboardImage(
   try {
     image.src = objectUrl
     await image.decode()
-    const scale = Math.min(1, 1200 / Math.max(image.width, image.height))
+    const baseScale = Math.min(1, 1200 / Math.max(image.width, image.height))
     const canvas = document.createElement('canvas')
-    canvas.width = Math.max(1, Math.round(image.width * scale))
-    canvas.height = Math.max(1, Math.round(image.height * scale))
     const context = canvas.getContext('2d')
     if (!context) throw new Error('تعذر تجهيز الصورة.')
-    context.drawImage(image, 0, 0, canvas.width, canvas.height)
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/webp', quality)
-    )
-    if (!blob) throw new Error('تعذر ضغط الصورة.')
-    return blob
+    const scales = [1, 0.85, 0.7, 0.55]
+    const qualities = [quality, 0.72, 0.62, 0.52]
+    let smallestBlob: Blob | null = null
+    for (const scaleFactor of scales) {
+      const scale = baseScale * scaleFactor
+      canvas.width = Math.max(1, Math.round(image.width * scale))
+      canvas.height = Math.max(1, Math.round(image.height * scale))
+      context.clearRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+      for (const candidateQuality of qualities) {
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, 'image/webp', candidateQuality)
+        )
+        if (!blob || blob.type !== 'image/webp') {
+          throw new Error('تعذر تحويل الصورة إلى WebP في هذا المتصفح.')
+        }
+        if (!smallestBlob || blob.size < smallestBlob.size) smallestBlob = blob
+        if (blob.size <= 700 * 1024) return blob
+      }
+    }
+    if (!smallestBlob) throw new Error('تعذر ضغط الصورة.')
+    return smallestBlob
   } finally {
     URL.revokeObjectURL(objectUrl)
   }
 }
 
-export async function uploadDashboardImage(file: File): Promise<string> {
+export async function uploadDashboardImage(
+  file: File,
+  onUploadProgress?: (progress: number) => void
+): Promise<string> {
   const webp =
     file.type === 'image/webp' ? file : await compressDashboardImage(file)
   const payload = new FormData()
   payload.append('image_data', webp, 'product.webp')
-  const result = await authApiRequest('upload_image', payload)
+  const result = onUploadProgress
+    ? await authApiRequest('upload_image', payload, onUploadProgress)
+    : await authApiRequest('upload_image', payload)
   const record = asRecord(result.data)
   const url = readString(result.url, record?.url, record?.image)
   if (result.status !== 'success' || !url) {

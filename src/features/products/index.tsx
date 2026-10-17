@@ -158,10 +158,41 @@ function flattenCategories(
     ])
 }
 
-function categoryTitle(category: DashboardCategory) {
-  return category.id.startsWith('NEW:')
-    ? `${category.name} (ستُحفظ مع أول منتج)`
-    : category.name
+function categoryPath(
+  category: DashboardCategory,
+  categories: DashboardCategory[]
+) {
+  const byId = new Map(categories.map((item) => [item.id, item]))
+  const path: string[] = []
+  const visited = new Set<string>()
+  let current: DashboardCategory | undefined = category
+
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id)
+    path.unshift(current.name)
+    current = current.parentId ? byId.get(current.parentId) : undefined
+  }
+
+  return path.join(' / ')
+}
+
+function selectedCategoryPath(
+  categoryId: string,
+  categories: DashboardCategory[]
+) {
+  const byId = new Map(categories.map((category) => [category.id, category]))
+  const path: DashboardCategory[] = []
+  const visited = new Set<string>()
+  let currentId = categoryId
+
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId)
+    const category = byId.get(currentId)
+    if (!category) break
+    path.unshift(category)
+    currentId = category.parentId
+  }
+  return path
 }
 
 function formatPrice(price: number, currency: string) {
@@ -184,6 +215,72 @@ function approvalLabel(status: string) {
   if (status === 'pending') return 'بانتظار النشر'
   if (status === 'rejected') return 'مرفوض'
   return 'منشور'
+}
+
+function CategoryPicker({
+  categories,
+  value,
+  loading,
+  onChange,
+}: {
+  categories: DashboardCategory[]
+  value: string
+  loading: boolean
+  onChange: (categoryId: string) => void
+}) {
+  const selectedPath = selectedCategoryPath(value, categories)
+  const parentIds = ['', ...selectedPath.map((category) => category.id)]
+  const levels = parentIds
+    .map((parentId, depth) => ({
+      parentId,
+      depth,
+      options: categories.filter((category) => category.parentId === parentId),
+    }))
+    .filter(({ depth, options }) => depth === 0 || options.length > 0)
+
+  return (
+    <div className='grid min-w-0 flex-1 gap-2'>
+      {levels.map(({ depth, options }) => {
+        const selectedId = selectedPath[depth]?.id || '__none__'
+        return (
+          <Select
+            key={depth}
+            value={selectedId}
+            disabled={loading}
+            onValueChange={(categoryId) => {
+              if (categoryId === '__none__') {
+                onChange(depth === 0 ? '' : selectedPath[depth - 1]?.id || '')
+              } else {
+                onChange(categoryId)
+              }
+            }}
+          >
+            <SelectTrigger className='w-full'>
+              <SelectValue
+                placeholder={
+                  loading
+                    ? 'جارٍ تحميل الفئات...'
+                    : depth === 0
+                      ? 'اختر الفئة الرئيسية'
+                      : `اختر فئة فرعية - المستوى ${depth + 1}`
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='__none__'>
+                {depth === 0 ? 'اختر الفئة' : 'بدون فئة فرعية'}
+              </SelectItem>
+              {options.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      })}
+    </div>
+  )
 }
 
 export function Products() {
@@ -223,6 +320,7 @@ function ProductsWorkspace({
     null
   )
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [categories, setCategories] = useState<DashboardCategory[]>([])
   const [qrProduct, setQrProduct] = useState<DashboardProduct | null>(null)
   const [deleteProduct, setDeleteProduct] = useState<DashboardProduct | null>(
@@ -392,35 +490,39 @@ function ProductsWorkspace({
       if (draft.variantsEnabled) {
         if (!draft.options.length)
           throw new Error('أضف خياراً واحداً على الأقل.')
-        const options = await Promise.all(
-          draft.options.map(async (option) => {
-            if (!option.name.trim()) throw new Error('اكتب اسم كل خيار للمنتج.')
-            const image = option.imageFile
-              ? await uploadDashboardImage(option.imageFile)
-              : option.image
-            return {
-              id: option.id,
-              name: option.name.trim(),
-              quantity_type: option.quantityType,
-              quantity:
-                option.quantityType === 'unlimited' ? 9999 : option.quantity,
-              use_main_image: option.useMainImage,
-              image: option.useMainImage ? null : image || null,
-              custom_price: option.customPrice,
-              currency: draft.currency,
-            }
+        const options: Record<string, unknown>[] = []
+        for (const option of draft.options) {
+          if (!option.name.trim()) throw new Error('اكتب اسم كل خيار للمنتج.')
+          if (option.imageFile) setUploadProgress(0)
+          const image = option.imageFile
+            ? await uploadDashboardImage(option.imageFile, setUploadProgress)
+            : option.image
+          options.push({
+            id: option.id,
+            name: option.name.trim(),
+            quantity_type: option.quantityType,
+            quantity:
+              option.quantityType === 'unlimited' ? 9999 : option.quantity,
+            use_main_image: option.useMainImage,
+            image: option.useMainImage ? null : image || null,
+            custom_price: option.customPrice,
+            currency: draft.currency,
           })
-        )
+        }
         payload.set('sizes', JSON.stringify(options))
       }
 
+      setUploadProgress(draft.imageFile ? 0 : null)
       if (draft.imageFile) {
-        const webp = await compressDashboardImage(draft.imageFile)
-        payload.set('image_file', webp, 'product.webp')
+        payload.set('image_file', draft.imageFile, draft.imageFile.name)
       }
-      return saveDashboardProduct(payload)
+      return saveDashboardProduct(
+        payload,
+        draft.imageFile ? setUploadProgress : undefined
+      )
     },
     onSuccess: () => {
+      setUploadProgress(null)
       toast.success(
         editingProduct ? 'تم تحديث المنتج بنجاح.' : 'تم حفظ المنتج ونشره بنجاح.'
       )
@@ -428,8 +530,10 @@ function ProductsWorkspace({
       setEditingProduct(null)
       clearCreateShortcut()
     },
-    onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'تعذر حفظ المنتج.'),
+    onError: (error) => {
+      setUploadProgress(null)
+      toast.error(error instanceof Error ? error.message : 'تعذر حفظ المنتج.')
+    },
   })
 
   const deleteMutation = useMutation({
@@ -456,6 +560,7 @@ function ProductsWorkspace({
   })
 
   const openEditor = (product: DashboardProduct | null = null) => {
+    setUploadProgress(null)
     setEditingProduct(product)
     setEditorOpen(true)
     if (!categoriesQuery.data && !categoriesQuery.isLoading) {
@@ -587,8 +692,7 @@ function ProductsWorkspace({
                     .filter((category) => !category.id.startsWith('NEW:'))
                     .map((category) => (
                       <SelectItem key={category.id} value={category.id}>
-                        {'　'.repeat(category.depth)}
-                        {category.name}
+                        {categoryPath(category, categoryList)}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -669,6 +773,14 @@ function ProductsWorkspace({
                 <ProductCard
                   key={product.id}
                   product={product}
+                  categoryName={
+                    categoryList.find(
+                      (category) => category.id === product.categoryId
+                    )?.name ||
+                    (product.type && product.type !== 'عام'
+                      ? product.type
+                      : 'بدون فئة')
+                  }
                   onEdit={() => openEditor(product)}
                   onDelete={() => setDeleteProduct(product)}
                   onQr={() => setQrProduct(product)}
@@ -745,6 +857,7 @@ function ProductsWorkspace({
       </Main>
 
       <ProductEditor
+        key={`${editorOpen || create === true ? 'open' : 'closed'}:${editingProduct?.id ?? 'new'}`}
         open={editorOpen || create === true}
         product={editingProduct}
         categories={categoryList}
@@ -755,6 +868,7 @@ function ProductsWorkspace({
           void categoriesQuery.refetch()
         }}
         saving={saveMutation.isPending}
+        uploadProgress={uploadProgress}
         onOpenChange={(open) => {
           setEditorOpen(open)
           if (!open) clearCreateShortcut()
@@ -859,6 +973,7 @@ function StatCard({
 
 function ProductCard({
   product,
+  categoryName,
   onEdit,
   onDelete,
   onQr,
@@ -866,6 +981,7 @@ function ProductCard({
   availabilityPending,
 }: {
   product: DashboardProduct
+  categoryName: string
   onEdit: () => void
   onDelete: () => void
   onQr: () => void
@@ -907,7 +1023,7 @@ function ProductCard({
         <div className='flex items-center justify-between gap-1.5'>
           <span className='flex min-w-0 items-center gap-1 truncate text-[11px] text-muted-foreground sm:gap-1.5 sm:text-xs'>
             <Tags className='size-3 shrink-0 sm:size-3.5' />
-            {product.type}
+            {categoryName}
           </span>
           <span className='shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:px-2 sm:py-1 sm:text-[11px]'>
             {approvalLabel(product.approvalStatus)}
@@ -994,6 +1110,7 @@ function ProductEditor({
   categoriesError,
   onRetryCategories,
   saving,
+  uploadProgress,
   onOpenChange,
   onSave,
   onCategoryAdded,
@@ -1006,44 +1123,47 @@ function ProductEditor({
   categoriesError: boolean
   onRetryCategories: () => void
   saving: boolean
+  uploadProgress: number | null
   onOpenChange: (open: boolean) => void
   onSave: (draft: ProductDraft) => void
   onCategoryAdded: (category: DashboardCategory) => void
   onManageCategories: () => void
 }) {
-  const [draft, setDraft] = useState<ProductDraft>(emptyDraft)
+  const [draft, setDraft] = useState<ProductDraft>(() =>
+    product ? draftFromProduct(product) : emptyDraft()
+  )
   const [newCategoryName, setNewCategoryName] = useState('')
   const [newCategoryParent, setNewCategoryParent] = useState('')
   const [addCategoryOpen, setAddCategoryOpen] = useState(false)
-  const [imagePreview, setImagePreview] = useState('')
+  const [imagePreview, setImagePreview] = useState(product?.image || '')
+  const [imageProcessing, setImageProcessing] = useState(false)
+  const [processingOptionImages, setProcessingOptionImages] = useState(
+    new Set<string>()
+  )
   const flatCategories = useMemo(
     () => flattenCategories(categories),
     [categories]
   )
 
   const resetEditor = (isOpen: boolean) => {
-    if (isOpen) {
-      setDraft(product ? draftFromProduct(product) : emptyDraft())
-      setImagePreview(product?.image || '')
-      setNewCategoryName('')
-      setNewCategoryParent('')
-      setAddCategoryOpen(false)
-    }
     onOpenChange(isOpen)
   }
 
   const handleImage = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
+    setImageProcessing(true)
     try {
-      const preview = await readImagePreview(file)
-      setDraft((current) => ({ ...current, imageFile: file }))
-      setImagePreview(preview)
+      const prepared = await prepareDashboardImage(file)
+      setDraft((current) => ({ ...current, imageFile: prepared.file }))
+      setImagePreview(prepared.preview)
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'تعذرت قراءة الصورة.'
       )
       event.target.value = ''
+    } finally {
+      setImageProcessing(false)
     }
   }
 
@@ -1148,37 +1268,27 @@ function ProductEditor({
               </Field>
               <Field label='فئة المنتج' required>
                 <div className='flex gap-2'>
-                  <Select
+                  <CategoryPicker
+                    categories={categories}
                     value={draft.categoryId}
-                    onValueChange={(categoryId) => {
-                      if (categoryId === 'add-category') {
-                        setAddCategoryOpen(true)
-                        return
-                      }
+                    loading={categoriesLoading}
+                    onChange={(categoryId) =>
                       setDraft((current) => ({ ...current, categoryId }))
+                    }
+                  />
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='icon'
+                    aria-label='إضافة فئة فرعية'
+                    title='إضافة فئة ضمن الفئة المحددة'
+                    onClick={() => {
+                      setNewCategoryParent(draft.categoryId)
+                      setAddCategoryOpen(true)
                     }}
                   >
-                    <SelectTrigger className='min-w-0 flex-1'>
-                      <SelectValue
-                        placeholder={
-                          categoriesLoading
-                            ? 'جارٍ تحميل الفئات...'
-                            : 'اختر الفئة'
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {flatCategories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          {'　'.repeat(category.depth)}
-                          {categoryTitle(category)}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value='add-category'>
-                        + إضافة فئة جديدة
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <Plus />
+                  </Button>
                   <Button
                     type='button'
                     variant='outline'
@@ -1240,8 +1350,38 @@ function ProductEditor({
                     className='max-w-sm file:me-3'
                   />
                   <p className='text-xs text-muted-foreground'>
-                    الصور تُراجع وتُضغط إلى WebP قبل الرفع (حد أقصى 1200px).
+                    تُحوّل الصور إلى WebP وتُضغط قبل رفعها (بحد أقصى 1200px).
                   </p>
+                  {imageProcessing && (
+                    <div className='grid gap-1' role='status'>
+                      <span className='text-xs text-muted-foreground'>
+                        جارٍ ضغط الصورة وتحويلها إلى WebP...
+                      </span>
+                      <div className='h-1.5 overflow-hidden rounded-full bg-muted'>
+                        <div className='h-full w-2/3 animate-pulse rounded-full bg-primary' />
+                      </div>
+                    </div>
+                  )}
+                  {uploadProgress !== null && (
+                    <div className='grid gap-1' role='status'>
+                      <span className='text-xs text-muted-foreground'>
+                        جارٍ رفع الصورة والمنتج: {uploadProgress}٪
+                      </span>
+                      <div
+                        className='h-1.5 overflow-hidden rounded-full bg-muted'
+                        role='progressbar'
+                        aria-label='تقدم رفع الصورة'
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={uploadProgress}
+                      >
+                        <div
+                          className='h-full rounded-full bg-primary transition-[width] duration-200'
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </Field>
@@ -1389,6 +1529,14 @@ function ProductEditor({
                     index={index}
                     currency={draft.currency}
                     onChange={(update) => updateOption(index, update)}
+                    onProcessingChange={(processing) =>
+                      setProcessingOptionImages((current) => {
+                        const next = new Set(current)
+                        if (processing) next.add(option.id)
+                        else next.delete(option.id)
+                        return next
+                      })
+                    }
                     onRemove={() => removeOption(index)}
                   />
                 ))}
@@ -1420,7 +1568,15 @@ function ProductEditor({
             >
               إلغاء
             </Button>
-            <Button type='submit' disabled={saving || categoriesLoading}>
+            <Button
+              type='submit'
+              disabled={
+                saving ||
+                categoriesLoading ||
+                imageProcessing ||
+                processingOptionImages.size > 0
+              }
+            >
               {saving ? <LoaderCircle className='animate-spin' /> : <Check />}
               {saving
                 ? 'جارٍ الحفظ...'
@@ -1436,7 +1592,9 @@ function ProductEditor({
             <DialogHeader>
               <DialogTitle>إضافة فئة</DialogTitle>
               <DialogDescription>
-                تظهر الفئة الآن مباشرة، وتحفظ نهائياً مع أول منتج تستخدم فيه.
+                اختر أي مستوى كفئة أب لإنشاء فئات متداخلة، مثل إلكترونيات /
+                جوالات / سامسونج / جالكسي. تحفظ الفئات الجديدة مع أول منتج
+                يستخدمها.
               </DialogDescription>
             </DialogHeader>
             <div className='grid gap-4'>
@@ -1449,7 +1607,7 @@ function ProductEditor({
                   placeholder='مثال: سامسونج'
                 />
               </Field>
-              <Field label='الفئة الأم (اختياري)'>
+              <Field label='تتبع الفئة (اختياري)'>
                 <Select
                   value={newCategoryParent || 'root'}
                   onValueChange={(value) =>
@@ -1463,13 +1621,30 @@ function ProductEditor({
                     <SelectItem value='root'>فئة رئيسية</SelectItem>
                     {flatCategories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
-                        {'　'.repeat(category.depth)}
-                        {category.name}
+                        {categoryPath(category, categories)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
+              {newCategoryName.trim() && (
+                <p className='text-xs text-muted-foreground' aria-live='polite'>
+                  المسار:{' '}
+                  {newCategoryParent
+                    ? `${categoryPath(
+                        categories.find(
+                          (category) => category.id === newCategoryParent
+                        ) || {
+                          id: newCategoryParent,
+                          name: '',
+                          parentId: '',
+                        },
+                        categories
+                      )} / `
+                    : ''}
+                  {newCategoryName.trim()}
+                </p>
+              )}
             </div>
             <DialogFooter>
               <Button
@@ -1492,27 +1667,36 @@ function VariantEditor({
   index,
   currency,
   onChange,
+  onProcessingChange,
   onRemove,
 }: {
   option: DraftOption
   index: number
   currency: string
   onChange: (update: Partial<DraftOption>) => void
+  onProcessingChange: (processing: boolean) => void
   onRemove: () => void
 }) {
   const [preview, setPreview] = useState(option.image)
+  const [imageProcessing, setImageProcessing] = useState(false)
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
+    setImageProcessing(true)
+    onProcessingChange(true)
     try {
-      setPreview(await readImagePreview(file))
-      onChange({ imageFile: file, useMainImage: false })
+      const prepared = await prepareDashboardImage(file)
+      setPreview(prepared.preview)
+      onChange({ imageFile: prepared.file, useMainImage: false })
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'تعذرت قراءة الصورة.'
       )
       event.target.value = ''
+    } finally {
+      setImageProcessing(false)
+      onProcessingChange(false)
     }
   }
 
@@ -1621,6 +1805,16 @@ function VariantEditor({
                 onChange={handleFile}
               />
             </Field>
+            {imageProcessing && (
+              <div className='grid gap-1' role='status'>
+                <span className='text-xs text-muted-foreground'>
+                  جارٍ ضغط الصورة وتحويلها إلى WebP...
+                </span>
+                <div className='h-1.5 overflow-hidden rounded-full bg-muted'>
+                  <div className='h-full w-2/3 animate-pulse rounded-full bg-primary' />
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -1706,8 +1900,8 @@ function CategoryManager({
         <DialogHeader>
           <DialogTitle>إدارة الفئات</DialogTitle>
           <DialogDescription>
-            نظّم المنتجات ضمن فئات رئيسية وفرعية. الفئات الجديدة تحفظ نهائياً مع
-            أول منتج تستخدم فيه.
+            أنشئ مستويات متداخلة باختيار أي فئة كأب، مثل إلكترونيات / جوالات /
+            سامسونج / جالكسي. تحفظ الفئات الجديدة مع أول منتج يستخدمها.
           </DialogDescription>
         </DialogHeader>
         <div className='grid gap-5 md:grid-cols-[minmax(230px,0.8fr)_minmax(0,1.2fr)]'>
@@ -1746,21 +1940,34 @@ function CategoryManager({
               </div>
             </fieldset>
             {mode === 'sub' && (
-              <Field label='الفئة الرئيسية'>
+              <Field label='تتبع الفئة'>
                 <Select value={parentId} onValueChange={setParentId}>
                   <SelectTrigger className='w-full'>
-                    <SelectValue placeholder='اختر الفئة الأم' />
+                    <SelectValue placeholder='اختر الفئة الأب' />
                   </SelectTrigger>
                   <SelectContent>
                     {flatCategories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
-                        {'　'.repeat(category.depth)}
-                        {category.name}
+                        {categoryPath(category, categories)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
+            )}
+            {mode === 'sub' && parentId && (
+              <p className='text-xs text-muted-foreground' aria-live='polite'>
+                المسار:{' '}
+                {categoryPath(
+                  categories.find((category) => category.id === parentId) || {
+                    id: parentId,
+                    name: '',
+                    parentId: '',
+                  },
+                  categories
+                )}
+                {name.trim() ? ` / ${name.trim()}` : ''}
+              </p>
             )}
             <Button onClick={add}>
               <Plus aria-hidden='true' /> إضافة الفئة
@@ -1788,7 +1995,7 @@ function CategoryManager({
                     }}
                   >
                     <span className='min-w-0 flex-1 truncate'>
-                      {category.name}
+                      {categoryPath(category, categories)}
                     </span>
                     {category.id.startsWith('NEW:') ? (
                       <>
@@ -1984,8 +2191,19 @@ function Field({
   )
 }
 
-async function readImagePreview(file: File): Promise<string> {
-  await compressDashboardImage(file, 0.8)
+async function prepareDashboardImage(
+  file: File
+): Promise<{ file: File; preview: string }> {
+  const webp = await compressDashboardImage(file, 0.8)
+  const compressedFile = new File([webp], 'product.webp', {
+    type: 'image/webp',
+    lastModified: Date.now(),
+  })
+  const preview = await readImagePreview(webp)
+  return { file: compressedFile, preview }
+}
+
+async function readImagePreview(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {

@@ -183,7 +183,7 @@ describe('fetchDashboardData', () => {
           productNumber: '',
           name: 'منتج',
           description: '',
-          type: 'عام',
+          type: '',
           categoryId: '',
           image: '/product.png',
           price: 1200,
