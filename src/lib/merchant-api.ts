@@ -5,6 +5,7 @@ const WORKER_ACTIONS = new Set([
   'get_public_products',
   'delete_product',
   'toggle_availability',
+  'update_product_stock',
   'get_categories_tree',
   'get_merchant_settings',
   'save_merchant_settings',
@@ -25,6 +26,8 @@ const WORKER_ACTIONS = new Set([
   'get_storefront_config',
   'save_storefront_config',
   'get_storefront_themes',
+  'get_storefront_base_config',
+  'get_storefront_theme_config',
   'save_storefront_selection',
   'get_color_palettes',
   'apply_color_palette',
@@ -32,15 +35,6 @@ const WORKER_ACTIONS = new Set([
   'save_color_palette_draft',
   'publish_color_palette',
 ])
-const WORKER_NO_FALLBACK_ACTIONS = new Set([
-  'get_orders',
-  'save_storefront_selection',
-  'apply_color_palette',
-  'get_color_palette_admin',
-  'save_color_palette_draft',
-  'publish_color_palette',
-])
-
 declare global {
   interface Window {
     API_URL?: string
@@ -263,28 +257,13 @@ export async function apiRequest(
     )
   }
 
-  try {
-    return await executeFetch(
-      workerUrl,
-      action,
-      payload,
-      csrfToken,
-      token,
-      true,
-      onUploadProgress
-    )
-  } catch (workerError) {
-    if (workerUrl === apiUrl || WORKER_NO_FALLBACK_ACTIONS.has(action)) {
-      throw workerError
-    }
-    return executeFetch(
-      apiUrl,
-      action,
-      payload,
-      csrfToken,
-      token,
-      false,
-      onUploadProgress
-    )
-  }
+  return executeFetch(
+    workerUrl,
+    action,
+    payload,
+    csrfToken,
+    token,
+    true,
+    onUploadProgress
+  )
 }

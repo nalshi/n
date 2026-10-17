@@ -50,35 +50,17 @@ describe('merchant API transport', () => {
     })
   })
 
-  it('falls back to api.php for actions that still support the legacy server', async () => {
+  it('keeps Worker actions behind the secure proxy when the Worker is unavailable', async () => {
     localStorage.setItem('merchant_token', 'merchant-token')
-    mockedFetch
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockResolvedValueOnce(
-        jsonResponse(
-          { status: 'success' },
-          { headers: { 'X-New-CSRF-Token': 'csrf-next' } }
-        )
-      )
+    mockedFetch.mockRejectedValue(new TypeError('Failed to fetch'))
 
     await expect(
       apiRequest('list_products', { page: 1 }, csrfToken)
-    ).resolves.toEqual({ status: 'success' })
+    ).rejects.toThrow('Failed to fetch')
 
-    expect(mockedFetch).toHaveBeenCalledTimes(2)
-    expect(mockedFetch.mock.calls[1][0]).toBe(
-      'https://api.nalsh.dpdns.org/api.php'
-    )
-    expect(mockedFetch.mock.calls[1][1]?.credentials).toBe('include')
-    expect(
-      new Headers(mockedFetch.mock.calls[1][1]?.headers).get('X-CSRF-TOKEN')
-    ).toBe('csrf-initial')
-    expect(JSON.parse(String(mockedFetch.mock.calls[1][1]?.body))).toEqual({
-      action: 'list_products',
-      auth_token: 'merchant-token',
-      page: 1,
-    })
-    expect(csrfToken.current).toBe('csrf-next')
+    expect(mockedFetch).toHaveBeenCalledOnce()
+    expect(mockedFetch.mock.calls[0][0]).toBe('/api/work/')
+    expect(mockedFetch.mock.calls[0][1]?.credentials).toBe('omit')
   })
 
   it('keeps order synchronization on the Worker without falling back to api.php', async () => {

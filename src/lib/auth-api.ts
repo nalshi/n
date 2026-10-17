@@ -11,6 +11,8 @@ const readCacheTtl = new Map<string, number>([
   ['get_whatsapp_config', 5 * 60_000],
   ['get_storefront_config', 5 * 60_000],
   ['get_storefront_themes', 30 * 60_000],
+  ['get_storefront_base_config', 30 * 60_000],
+  ['get_storefront_theme_config', 30 * 60_000],
 ])
 
 const readCache = new Map<
