@@ -50,7 +50,7 @@ describe('merchant API transport', () => {
     })
   })
 
-  it('falls back to api.php when the worker request fails', async () => {
+  it('falls back to api.php for actions that still support the legacy server', async () => {
     localStorage.setItem('merchant_token', 'merchant-token')
     mockedFetch
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
@@ -62,7 +62,7 @@ describe('merchant API transport', () => {
       )
 
     await expect(
-      apiRequest('get_orders', { filter: 'active' }, csrfToken)
+      apiRequest('list_products', { page: 1 }, csrfToken)
     ).resolves.toEqual({ status: 'success' })
 
     expect(mockedFetch).toHaveBeenCalledTimes(2)
@@ -74,11 +74,23 @@ describe('merchant API transport', () => {
       new Headers(mockedFetch.mock.calls[1][1]?.headers).get('X-CSRF-TOKEN')
     ).toBe('csrf-initial')
     expect(JSON.parse(String(mockedFetch.mock.calls[1][1]?.body))).toEqual({
-      action: 'get_orders',
+      action: 'list_products',
       auth_token: 'merchant-token',
-      filter: 'active',
+      page: 1,
     })
     expect(csrfToken.current).toBe('csrf-next')
+  })
+
+  it('keeps order synchronization on the Worker without falling back to api.php', async () => {
+    localStorage.setItem('merchant_token', 'merchant-token')
+    mockedFetch.mockRejectedValue(new TypeError('Worker unavailable'))
+
+    await expect(
+      apiRequest('get_orders', { filter: 'active' }, csrfToken)
+    ).rejects.toThrow('Worker unavailable')
+
+    expect(mockedFetch).toHaveBeenCalledOnce()
+    expect(mockedFetch.mock.calls[0][0]).toBe('/api/work/')
   })
 
   it('does not fall back for legacy no-fallback actions', async () => {
