@@ -139,6 +139,13 @@ function readString(...values: unknown[]): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function readProductImage(...values: unknown[]): string {
+  const image = readString(...values)
+  return /^https?:\/\/(?:[^/]+\.)?loremflickr\.com(?:\/|$)/i.test(image)
+    ? ''
+    : image
+}
+
 function readIdentifier(...values: unknown[]): string {
   const value = values.find(
     (candidate) =>
@@ -281,7 +288,11 @@ function normalizeProducts(result: ApiResult): DashboardProduct[] {
         readString(product.type, product.category_name, product.category) ||
         'عام',
       categoryId: readIdentifier(product.category_id),
-      image: readString(product.image, product.image_url, product.imageUrl),
+      image: readProductImage(
+        product.image,
+        product.image_url,
+        product.imageUrl
+      ),
       price: readNumber(product.price),
       costPrice: readNumber(product.cost_price),
       discount: readNumber(product.discount),
@@ -422,7 +433,7 @@ function normalizeOrderItems(value: unknown): DashboardOrderItem[] {
       {
         id: readIdentifier(item.id, item.product_id) || `item-${index}`,
         name: readString(item.product_name, item.name) || 'منتج',
-        image: readString(item.image, item.image_url),
+        image: readProductImage(item.image, item.image_url),
         quantity: Math.max(1, readNumber(item.quantity) || 1),
         price: readNumber(item.price),
         costPrice: readNumber(item.cost_price),

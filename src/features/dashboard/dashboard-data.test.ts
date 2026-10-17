@@ -15,6 +15,7 @@ import {
   confirmDashboardOrderDelivery,
   summarizeDashboardOrders,
   normalizeRealtimeOrders,
+  normalizeRealtimeProducts,
 } from './dashboard-data'
 
 const { authApiRequest } = vi.hoisted(() => ({
@@ -284,12 +285,28 @@ describe('fetchDashboardData', () => {
       total: 1200,
       items: [{ id: 'p1', name: 'منتج', quantity: 1 }],
     })
+
     expect(orders.find((order) => order.id === 'archived-1')).toMatchObject({
       customerName: 'عميل مؤرشف',
       total: 900,
       status: 'completed',
       items: [{ id: 'p2', name: 'قديم', quantity: 2 }],
     })
+  })
+
+  it('drops broken loremflickr placeholder image URLs but keeps merchant images', () => {
+    const products = normalizeRealtimeProducts([
+      {
+        id: 'broken-image',
+        image: 'https://loremflickr.com/640/640/womens-fashion,dress?lock=2003',
+      },
+      { id: 'merchant-image', image: 'https://cdn.example.com/product.jpg' },
+    ])
+
+    expect(products.map((product) => product.image)).toEqual([
+      '',
+      'https://cdn.example.com/product.jpg',
+    ])
   })
 
   it('reports API failures instead of showing empty dashboard data', async () => {
