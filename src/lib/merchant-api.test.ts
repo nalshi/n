@@ -112,4 +112,50 @@ describe('merchant API transport', () => {
     expect(url).toBe('https://api.nalsh.dpdns.org/api.php')
     expect(options?.credentials).toBe('include')
   })
+
+  it('reports real upload progress for multipart Worker requests', async () => {
+    class MockXhr extends EventTarget {
+      upload = new EventTarget()
+      withCredentials = false
+      status = 200
+      responseText = JSON.stringify({ status: 'success', id: 'product-1' })
+      sentBody: FormData | null = null
+      openedUrl = ''
+
+      open(_method: string, url: string) {
+        this.openedUrl = url
+      }
+
+      setRequestHeader() {}
+
+      getResponseHeader() {
+        return null
+      }
+
+      send(body: XMLHttpRequestBodyInit | Document | null) {
+        if (body instanceof FormData) this.sentBody = body
+        const progress = new Event('progress')
+        Object.defineProperties(progress, {
+          lengthComputable: { value: true },
+          loaded: { value: 50 },
+          total: { value: 100 },
+        })
+        this.upload.dispatchEvent(progress)
+        this.dispatchEvent(new Event('load'))
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', MockXhr)
+    const progress: number[] = []
+    const payload = new FormData()
+    payload.set('name', 'منتج')
+
+    await expect(
+      apiRequest('save_product', payload, csrfToken, (value) =>
+        progress.push(value)
+      )
+    ).resolves.toMatchObject({ status: 'success', id: 'product-1' })
+
+    expect(progress).toEqual([50, 100])
+    expect(payload.get('action')).toBe('save_product')
+  })
 })

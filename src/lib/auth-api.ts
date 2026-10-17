@@ -37,7 +37,8 @@ export function clearAuthApiCache() {
 
 export function authApiRequest(
   action: string,
-  payload: Record<string, unknown> | FormData
+  payload: Record<string, unknown> | FormData,
+  onUploadProgress?: (progress: number) => void
 ) {
   const scope = authScope()
   if (scope !== activeAuthScope) {
@@ -47,7 +48,10 @@ export function authApiRequest(
 
   const ttl = payload instanceof FormData ? undefined : readCacheTtl.get(action)
   if (ttl === undefined) {
-    return apiRequest(action, payload, csrfToken).then((result) => {
+    const request = onUploadProgress
+      ? apiRequest(action, payload, csrfToken, onUploadProgress)
+      : apiRequest(action, payload, csrfToken)
+    return request.then((result) => {
       if (result.status === 'success' || result.status === 'ok') {
         clearAuthApiCache()
       }

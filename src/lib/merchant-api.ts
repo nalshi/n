@@ -101,8 +101,76 @@ async function executeFetch(
   payload: Record<string, unknown> | FormData,
   csrfToken: { current: string },
   token: string,
-  isWorkerCall: boolean
+  isWorkerCall: boolean,
+  onUploadProgress?: (progress: number) => void
 ): Promise<ApiResult> {
+  if (payload instanceof FormData && onUploadProgress) {
+    if (!payload.has('action')) payload.append('action', action)
+    if (!isWorkerCall && token) payload.set('auth_token', token)
+
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest()
+      request.open('POST', url)
+      request.withCredentials = !isWorkerCall
+      if (token) request.setRequestHeader('Authorization', `Bearer ${token}`)
+      if (!isWorkerCall) {
+        request.setRequestHeader('X-CSRF-TOKEN', csrfToken.current)
+      }
+      request.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          onUploadProgress(Math.round((event.loaded / event.total) * 100))
+        }
+      })
+      request.addEventListener('load', () => {
+        const newToken = request.getResponseHeader('X-New-CSRF-Token')
+        if (newToken) csrfToken.current = newToken
+        const rawText = request.responseText
+        if (!rawText || rawText.includes('<html')) {
+          reject(new Error('تعذر الاتصال بخادم نالش.'))
+          return
+        }
+
+        let result: unknown
+        try {
+          const jsonStart = rawText.indexOf('{')
+          const jsonEnd = rawText.lastIndexOf('}')
+          if (jsonStart < 0 || jsonEnd < jsonStart) throw new Error()
+          result = JSON.parse(rawText.slice(jsonStart, jsonEnd + 1))
+        } catch {
+          reject(new Error('أعاد الخادم استجابة غير صالحة.'))
+          return
+        }
+
+        if (
+          typeof result !== 'object' ||
+          result === null ||
+          !('status' in result) ||
+          typeof result.status !== 'string'
+        ) {
+          reject(new Error('أعاد الخادم بيانات غير متوقعة.'))
+          return
+        }
+        if (request.status >= 400 && request.status !== 429) {
+          const message =
+            'message' in result && typeof result.message === 'string'
+              ? result.message
+              : 'فشل الطلب إلى الخادم.'
+          reject(new Error(message))
+          return
+        }
+        onUploadProgress(100)
+        resolve(result as ApiResult)
+      })
+      request.addEventListener('error', () =>
+        reject(new Error('تعذر الاتصال بخادم نالش.'))
+      )
+      request.addEventListener('abort', () =>
+        reject(new Error('تم إلغاء رفع الملف.'))
+      )
+      request.send(payload)
+    })
+  }
+
   const headers: Record<string, string> = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
@@ -170,7 +238,8 @@ async function executeFetch(
 export async function apiRequest(
   action: string,
   payload: Record<string, unknown> | FormData,
-  csrfToken: { current: string }
+  csrfToken: { current: string },
+  onUploadProgress?: (progress: number) => void
 ): Promise<ApiResult> {
   const token =
     typeof window === 'undefined'
@@ -183,7 +252,15 @@ export async function apiRequest(
   const workerUrl = getWorkerApiUrl()
 
   if (!useWorker) {
-    return executeFetch(apiUrl, action, payload, csrfToken, token, false)
+    return executeFetch(
+      apiUrl,
+      action,
+      payload,
+      csrfToken,
+      token,
+      false,
+      onUploadProgress
+    )
   }
 
   try {
@@ -193,12 +270,21 @@ export async function apiRequest(
       payload,
       csrfToken,
       token,
-      true
+      true,
+      onUploadProgress
     )
   } catch (workerError) {
     if (workerUrl === apiUrl || WORKER_NO_FALLBACK_ACTIONS.has(action)) {
       throw workerError
     }
-    return executeFetch(apiUrl, action, payload, csrfToken, token, false)
+    return executeFetch(
+      apiUrl,
+      action,
+      payload,
+      csrfToken,
+      token,
+      false,
+      onUploadProgress
+    )
   }
 }
