@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+﻿import { useEffect, useRef } from 'react'
 import {
   useQuery,
   useQueryClient,
@@ -6,7 +6,6 @@ import {
 } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useRealtimeStore } from '@/stores/realtime-store'
-import { checkSyncBeacon } from '@/lib/beacon-checker'
 import {
   localDB,
   injectOrder,
@@ -29,9 +28,9 @@ import {
   type DashboardProduct,
 } from '@/features/dashboard/dashboard-data'
 
-// ─── قناة البث المحلي بين التبويبات (BroadcastChannel) ───────────────────
+// قناة بث محلية بين التبويبات (BroadcastChannel)
 // تُستخدم لإعلام التبويبات الثانوية بالتحديثات دون أي طلب شبكة إضافي.
-// التبويب القائد يكتب في Dexie ثم يبث عبر هذه القناة → التبويبات الأخرى
+// التبويب القائد يكتب في Dexie ثم يبث عبر هذه القناة، والتبويبات الأخرى
 // تقرأ من Dexie محلياً (0 HTTP requests).
 const _localBus =
   typeof BroadcastChannel !== 'undefined'
@@ -117,7 +116,7 @@ function writeSnapshotQueries(
   )
   queryClient.setQueryData(merchantQueryKeys.categories(merchantId), categories)
 
-  // ─── حقن Snapshot في Dexie IndexedDB بشكل غير متزامن ────────────────
+  // حقن Snapshot في Dexie IndexedDB بشكل غير متزامن
   // نستخدم void لأن هذا الحقن لا يحتاج أن يُكمل قبل تحديث الـ UI.
   // الـ UI يتحدث فوراً من TanStack Query، بينما Dexie تُحدَّث في الخلفية
   // لضمان المخزن الدائم (Offline-First persistence).
@@ -131,6 +130,14 @@ function writeSnapshotQueries(
   }).catch((err) => {
     console.warn('[db] فشل حفظ Snapshot في IndexedDB:', err)
   })
+}
+
+async function refreshMerchantSnapshot(
+  queryClient: QueryClient,
+  merchantId: string
+) {
+  const snapshot = await fetchDashboardInitialization(true)
+  writeSnapshotQueries(queryClient, merchantId, snapshot)
 }
 
 function upsertProduct(
@@ -194,7 +201,7 @@ function applyMerchantEvent(
         : snapshot
     )
 
-    // ─── حقن التغيير في Dexie بالتوازي (غير مُعلِّق للـ UI) ──────────
+    // حقن التغيير في Dexie بالتوازي (غير مُعلِّق للـ UI)
     if (event.action === 'deleted') {
       void removeProduct(productId).catch((err) =>
         console.warn('[db] فشل حذف المنتج من IndexedDB:', err)
@@ -213,7 +220,7 @@ function applyMerchantEvent(
     return
   }
 
-  // ─── معالجة أحداث الطلبات ─────────────────────────────────────────────
+  // معالجة أحداث الطلبات
   const active =
     queryClient.getQueryData<DashboardOrder[]>([
       'merchant-orders',
@@ -566,13 +573,15 @@ export function useMerchantData(merchantId: string) {
     writeSnapshotQueries(queryClient, merchantId, query.data)
   }, [merchantId, query.data, queryClient])
 
-  // فحص منارة التزامن المشفرة عند فتح اللوحة (صفر استعلامات D1 إذا لم تكن هناك طلبات جديدة)
+  // تحديث لقطة التاجر عند فتح اللوحة لمطابقة بيانات الخادم مع الذاكرة المحلية.
   useEffect(() => {
     if (!merchantId) return
-    void checkSyncBeacon(merchantId).catch((err) => {
-      console.warn('[beacon-checker] تعذر فحص منارة التزامن:', err)
-    })
-  }, [merchantId])
+    void refreshMerchantSnapshot(queryClient, merchantId).catch(
+      (error: unknown) => {
+        console.warn('[merchant-sync] تعذر تحديث بيانات المتجر:', error)
+      }
+    )
+  }, [merchantId, queryClient])
 
   return {
     data: query.data,
@@ -602,9 +611,9 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
     let lockReleaser: (() => void) | null = null
     const setStatus = useRealtimeStore.getState().setStatus
 
-    // ─── استماع التبويبات الثانوية لإشعارات القائد ──────────────────────
+    // استماع التبويبات الثانوية لإشعارات القائد
     // التبويبات التي لم تفز بالقفل تستمع للـ BroadcastChannel فقط.
-    // عند وصول إشعار، تقرأ البيانات من Dexie محلياً (0 HTTP).
+    // عند وصول إشعاѡ تقرأ البيانات من Dexie محلياً (0 HTTP).
     const handleBusMessage = (ev: MessageEvent<unknown>) => {
       const msg = ev.data as Record<string, unknown>
       if (!msg || typeof msg !== 'object') return
@@ -644,7 +653,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
     }
     _localBus?.addEventListener('message', handleBusMessage)
 
-    // ─── دالة cursor: تقرأ من TanStack Query أولاً ثم من Dexie fallback ──
+    // ? دالة cursor: تقرأ من TanStack Query أولاً ثم من Dexie fallback ?
     const cursor = async () => {
       const snapshot = queryClient.getQueryData<DashboardInitialization>(
         merchantBootstrapKey(merchantId)
@@ -725,10 +734,10 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         )
       }
 
-      // ─── تحديث Dexie cursor بعد كل دفعة من الأحداث (غير مُعلِّق) ────
+      // ? تحديث Dexie cursor بعد كل دفعة من الأحداث (غير مُعلِّق) ?
       if (appliedEvents.length > 0) {
         void writeSyncCursor(merchantId, lastEventId, lastTimestamp).catch(
-          (err) => console.warn('[db] فشل تحديث sync cursor:', err)
+          (err: unknown) => console.warn('[db] فشل تحديث sync cursor:', err)
         )
       }
 
@@ -839,7 +848,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
       try {
         const ticket = await requestTicket()
         if (stopped) return
-        // ─── قراءة الـ Cursor من Dexie (Delta Sync) ──────────────────
+        // ? قراءة الـ Cursor من Dexie (Delta Sync) ?
         const currentCursor = await cursor()
         const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         const url = new URL(`${scheme}//${window.location.host}/api/worker/ws`)
@@ -902,20 +911,20 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
     const onOnline = () => {
       reconnectAttempt = 0
       void connect()
-
-      // ─── فحص منارة التزامن المشفرة عند عودة الإنترنت (0 D1 queries إذا لم تكن هناك طلبات جديدة) ───
-      void checkSyncBeacon(merchantId).catch((err) => {
-        console.warn(
-          '[beacon-checker] تعذر فحص منارة التزامن عند عودة النت:',
-          err
-        )
-      })
+      void refreshMerchantSnapshot(queryClient, merchantId).catch(
+        (error: unknown) => {
+          console.warn(
+            '[merchant-sync] تعذر تحديث بيانات المتجر بعد الاتصال:',
+            error
+          )
+        }
+      )
     }
     const onOffline = () => setStatus('offline', 'لا يوجد اتصال بالإنترنت')
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)
 
-    // ─── Leader Election عبر Web Locks API ───────────────────────────────
+    // Leader election عبر Web Locks API
     // التبويب الأول الذي يحصل على القفل يصبح "القائد" ويفتح الاتصال.
     // التبويبات الأخرى تبقى في طابور الانتظار على القفل.
     // إذا أُغلق القائد، يحصل التبويب التالي في الطابور على القفل تلقائياً.
