@@ -3,7 +3,7 @@
 // ============================================================
 // مميزات الأمان الفائقة:
 //  1. توقيع رقمي ديناميكي HMAC-SHA256 لكل طلب على حدة (Dynamic Request Signature).
-//  2. مانع هجمات إعادة الإرسال (Anti-Replay Attack) عبر Nonce و Timestamp مؤقت.
+//  2. رفض التواقيع القديمة وربط التوقيع بـ Nonce فريد لكل طلب.
 //  3. إخفاء تام لرابط الـ Worker الحقيقي وسر البوابة (Server-Side Only).
 //  4. فحص حجم ونوع البيانات ومنع هجمات حجب الخدمة (DoS Protection).
 //  5. عزل أمني صارم ومطابقة لنطاق المصدر (Same-Origin Isolation).
@@ -21,6 +21,11 @@ async function hmacSha256(secret, message) {
   );
   const signature = await crypto.subtle.sign('HMAC', key, enc.encode(message));
   return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function sha256Hex(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 export async function onRequest(context) {
@@ -109,7 +114,6 @@ export async function onRequest(context) {
 
   // 4. قراءة محتوى الطلب للتحقق والحماية
   let bodyBuffer = null;
-  let bodyText = '';
   if (['POST'].includes(request.method)) {
     try {
       bodyBuffer = await request.arrayBuffer();
@@ -120,17 +124,17 @@ export async function onRequest(context) {
           headers: { 'Content-Type': 'application/json' }
         });
       }
-      // قراءة عينة للـ Hash إذا كان نصاً أو FormData
-      bodyText = new TextDecoder().decode(bodyBuffer.slice(0, 1024));
     } catch (e) {
       bodyBuffer = null;
     }
   }
 
-  // 5. توليد توقيع رقمي ديناميكي مشفر (HMAC-SHA256 Signature)
+  // 5. توقيع الطلب على المسار والحمولة كاملة قبل إرسالها للعامل.
   const timestamp = Date.now().toString();
   const nonce = crypto.randomUUID();
-  const signaturePayload = `${timestamp}:${nonce}:${request.method}:${bodyText.length}`;
+  const target = new URL(targetUrl);
+  const bodyHash = await sha256Hex(bodyBuffer || new ArrayBuffer(0));
+  const signaturePayload = `${timestamp}:${nonce}:${request.method}:${target.pathname}:${target.search}:${bodyHash}`;
   const hmacSignature = await hmacSha256(env.PROXY_SECRET, signaturePayload);
 
   // 6. تجهيز الهيدرات المحصنة
@@ -143,6 +147,7 @@ export async function onRequest(context) {
   headers.set('X-Gateway-Secret', env.PROXY_SECRET);
   headers.set('X-Gateway-Timestamp', timestamp);
   headers.set('X-Gateway-Nonce', nonce);
+  headers.set('X-Gateway-Body-SHA256', bodyHash);
   headers.set('X-Gateway-Signature', hmacSignature);
   headers.set('X-Forwarded-For', request.headers.get('CF-Connecting-IP') || '');
 
