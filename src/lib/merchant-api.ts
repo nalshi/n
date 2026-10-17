@@ -18,6 +18,7 @@ const WORKER_ACTIONS = new Set([
   'create_order',
   'save_fcm_token',
   'get_firebase_config',
+  'get_merchant_realtime_config',
   'get_ai_assistant_config',
   'save_ai_assistant_config',
   'get_whatsapp_config',
@@ -33,6 +34,7 @@ const WORKER_ACTIONS = new Set([
   'publish_color_palette',
 ])
 const WORKER_NO_FALLBACK_ACTIONS = new Set([
+  'get_merchant_realtime_config',
   'save_storefront_selection',
   'apply_color_palette',
   'get_color_palette_admin',
@@ -59,6 +61,7 @@ export type ApiResult = {
   id?: string | number
   url?: string
   data?: unknown
+  databaseUrl?: string
   products?: unknown
   orders?: unknown
   accounts?: {

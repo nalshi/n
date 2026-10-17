@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useRealtimeStore } from '@/stores/realtime-store'
+import { authApiRequest } from '@/lib/auth-api'
 import {
   localDB,
   injectOrder,
@@ -16,7 +17,6 @@ import {
   readSyncCursor,
   hydrateFromSnapshot,
 } from '@/lib/db'
-import { getWorkerApiUrl } from '@/lib/merchant-api'
 import {
   fetchDashboardInitialization,
   fetchDashboardOrders,
@@ -392,6 +392,7 @@ function useFirebaseOrderSignals(
     let hasReconciledSignal = false
     let lastSignal =
       localStorage.getItem(`merchant-firebase-order-signal:${merchantId}`) || ''
+    let databaseUrl: string | null = null
 
     const waitForReconnect = (delay: number) =>
       new Promise<void>((resolve) => {
@@ -408,27 +409,48 @@ function useFirebaseOrderSignals(
         ''
       if (!token) throw new Error('انتهت الجلسة. يرجى تسجيل الدخول مجدداً.')
 
-      controller = new AbortController()
-      const response = await fetch(
-        `${getWorkerApiUrl()}merchant/order-signals`,
-        {
-          headers: {
-            Accept: 'text/event-stream',
-            Authorization: `Bearer ${token}`,
-          },
-          credentials: 'omit',
-          cache: 'no-store',
-          signal: controller.signal,
+      if (!databaseUrl) {
+        const config = await authApiRequest('get_merchant_realtime_config', {})
+        if (
+          config.status !== 'success' ||
+          typeof config.databaseUrl !== 'string'
+        ) {
+          throw new Error(
+            config.message || 'تعذر تحميل إعدادات Firebase للاتصال اللحظي.'
+          )
         }
+        const parsedDatabaseUrl = new URL(config.databaseUrl)
+        if (parsedDatabaseUrl.protocol !== 'https:') {
+          throw new Error('عنوان Firebase غير آمن للاتصال اللحظي.')
+        }
+        databaseUrl = parsedDatabaseUrl.toString().replace(/\/$/, '')
+      }
+
+      controller = new AbortController()
+      const signalUrl = new URL(
+        `${databaseUrl}/merchant_order_signals/${encodeURIComponent(merchantId)}.json`
       )
+      const response = await fetch(signalUrl, {
+        headers: { Accept: 'text/event-stream' },
+        credentials: 'omit',
+        cache: 'no-store',
+        signal: controller.signal,
+      })
       if (!response.ok) {
         let message = `تعذر الاتصال بإشارات الطلبات (${response.status}).`
         try {
           const body: unknown = await response.clone().json()
           const record = readRecord(body)
-          if (typeof record?.message === 'string') message = record.message
+          if (typeof record?.message === 'string') {
+            message = record.message
+          } else if (typeof record?.error === 'string') {
+            message =
+              record.error === 'Permission denied'
+                ? 'رفض Firebase قراءة إشارات الطلبات. أضف قاعدة القراءة المحدودة لمسار التاجر.'
+                : record.error
+          }
         } catch {
-          // Keep the HTTP status when the proxy returns a non-JSON response.
+          // Keep the HTTP status when Firebase returns a non-JSON response.
         }
         throw new Error(message)
       }
