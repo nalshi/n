@@ -36,6 +36,9 @@ const THEME_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,79}$/
 const THEME_FILE_PATTERN =
   /^\/templates\/(?:themes\/)?[a-z0-9][a-z0-9_-]{0,79}\.json$/
 
+export const storefrontLibraryQueryKey = (merchantId: string) =>
+  ['merchant-storefront-library', merchantId] as const
+
 function asRecord(value: unknown): ApiRecord | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as ApiRecord)
@@ -112,31 +115,12 @@ function readThemeRows(value: unknown): StorefrontTheme[] {
   return themes
 }
 
-async function getJson(url: string): Promise<unknown> {
-  const response = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    credentials: 'same-origin',
-  })
-  if (!response.ok) throw new Error(`تعذر تحميل ${url} (${response.status}).`)
-  try {
-    return (await response.json()) as unknown
-  } catch {
-    throw new Error('أعاد الخادم ملف إعدادات غير صالح.')
-  }
-}
-
 async function loadThemes(): Promise<StorefrontTheme[]> {
-  try {
-    const catalog = await getJson('/templates/themes.json')
-    const record = asRecord(catalog)
-    return readThemeRows(record ? { items: record.items } : catalog)
-  } catch {
-    const result = await authApiRequest('get_storefront_themes', {})
-    if (result.status !== 'success' && result.status !== 'ok') {
-      throw new Error(result.message || 'تعذر تحميل مكتبة القوالب.')
-    }
-    return readThemeRows(result)
+  const result = await authApiRequest('get_storefront_themes', {})
+  if (result.status !== 'success' && result.status !== 'ok') {
+    throw new Error(result.message || 'تعذر تحميل مكتبة القوالب.')
   }
+  return readThemeRows(result)
 }
 
 export async function fetchStorefrontLibrary(): Promise<StorefrontLibrary> {
@@ -197,28 +181,34 @@ export async function loadStorefrontThemeConfig(
   theme: StorefrontTheme
 ): Promise<ApiRecord> {
   if (theme.config) return theme.config
-  if (!theme.sourceFile || !THEME_FILE_PATTERN.test(theme.sourceFile)) {
-    throw new Error('ملف إعدادات القالب غير متوفر.')
+  if (!THEME_ID_PATTERN.test(theme.id)) {
+    throw new Error('معرّف القالب غير صالح.')
   }
-  const file = asRecord(await getJson(theme.sourceFile))
-  const config = asRecord(file?.config)
-  if (file?.id !== theme.id || !config) {
+  const result = await authApiRequest('get_storefront_theme_config', {
+    id: theme.id,
+  })
+  if (result.status !== 'success' && result.status !== 'ok') {
+    throw new Error(result.message || 'تعذر تحميل إعدادات القالب.')
+  }
+  const data = asRecord(result.data)
+  const config = asRecord(data?.config)
+  if (data?.id !== theme.id || !config) {
     throw new Error('ملف القالب لا يطابق القالب المحدد أو إعداداته غير صالحة.')
   }
   return config
 }
 
 export async function loadBaseStorefrontConfig(
-  savedConfig: ApiRecord
+  _savedConfig: ApiRecord
 ): Promise<ApiRecord> {
-  try {
-    const config = asRecord(await getJson('/theme-config.json'))
-    if (!config) throw new Error('صيغة إعدادات القالب الأساسية غير صالحة.')
-    return config
-  } catch (error) {
-    if (Object.keys(savedConfig).length) return savedConfig
-    throw error
+  const result = await authApiRequest('get_storefront_base_config', {})
+  if (result.status !== 'success' && result.status !== 'ok') {
+    throw new Error(result.message || 'تعذر تحميل إعدادات القالب الأساسية.')
   }
+  const data = asRecord(result.data)
+  const config = asRecord(data?.config)
+  if (!config) throw new Error('صيغة إعدادات القالب الأساسية غير صالحة.')
+  return config
 }
 
 export function mergeStorefrontConfig(

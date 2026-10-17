@@ -22,26 +22,25 @@ describe('storefront data', () => {
     vi.unstubAllGlobals()
   })
 
-  it('loads themes and the saved merchant selection', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          items: [
-            {
-              id: 'summer-shop',
-              name: 'الصيفي',
-              description: 'واجهة مشرقة',
-              category: 'عصري',
-              sourceFile: '/templates/themes/summer-shop.json',
-              preview: { primary: '#123456' },
-            },
-          ],
-        }),
-      })
-    )
+  it('loads themes and saved merchant selection through the secure API', async () => {
     mockedAuthApiRequest.mockImplementation(async (action) => {
+      if (action === 'get_storefront_themes') {
+        return {
+          status: 'success',
+          data: {
+            themes: [
+              {
+                id: 'summer-shop',
+                name: 'الصيفي',
+                description: 'واجهة مشرقة',
+                category: 'عصري',
+                preview: { primary: '#123456' },
+                config: { light_theme: {} },
+              },
+            ],
+          },
+        }
+      }
       if (action === 'get_storefront_config') {
         return {
           status: 'success',
@@ -80,57 +79,28 @@ describe('storefront data', () => {
         },
       ],
     })
-  })
-
-  it('falls back to the storefront themes API when the static catalog is unavailable', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 404 })
-    )
-    mockedAuthApiRequest.mockImplementation(async (action) => {
-      if (action === 'get_storefront_themes') {
-        return {
-          status: 'success',
-          data: {
-            themes: [
-              {
-                id: 'api-theme',
-                name: 'قالب المنصة',
-                config: { theme_name: 'api-theme' },
-              },
-            ],
-          },
-        }
-      }
-      if (action === 'get_storefront_config') {
-        return { status: 'success', data: { config: {} } }
-      }
-      if (action === 'get_merchant_settings') {
-        return { status: 'success', data: { username: 'merchant' } }
-      }
-      return { status: 'error', message: 'طلب غير معروف' }
-    })
-
-    await expect(fetchStorefrontLibrary()).resolves.toMatchObject({
-      username: 'merchant',
-      themes: [{ id: 'api-theme', name: 'قالب المنصة' }],
-    })
     expect(mockedAuthApiRequest).toHaveBeenCalledWith(
       'get_storefront_themes',
       {}
     )
   })
 
-  it('loads a theme configuration only from its validated matching file', async () => {
-    const fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        id: 'summer-shop',
-        config: { light_theme: { colors: { primary: '#123456' } } },
-      }),
+  it('reports an unavailable secure theme API instead of fetching a public file', async () => {
+    mockedAuthApiRequest.mockImplementation(async (action) => {
+      if (action === 'get_storefront_themes') {
+        return { status: 'error', message: 'البوابة غير متاحة.' }
+      }
+      return { status: 'error', message: 'طلب غير معروف' }
     })
-    vi.stubGlobal('fetch', fetch)
 
+    await expect(fetchStorefrontLibrary()).rejects.toThrow('البوابة غير متاحة.')
+    expect(mockedAuthApiRequest).toHaveBeenCalledWith(
+      'get_storefront_themes',
+      {}
+    )
+  })
+
+  it('loads a theme configuration through the authenticated Worker API', async () => {
     const theme = {
       id: 'summer-shop',
       name: 'الصيفي',
@@ -148,17 +118,21 @@ describe('storefront data', () => {
         },
       },
     }
+    mockedAuthApiRequest.mockResolvedValue({
+      status: 'success',
+      data: {
+        id: 'summer-shop',
+        config: { light_theme: { colors: { primary: '#123456' } } },
+      },
+    })
 
     await expect(loadStorefrontThemeConfig(theme)).resolves.toEqual({
       light_theme: { colors: { primary: '#123456' } },
     })
-    expect(fetch).toHaveBeenCalledWith(
-      '/templates/themes/summer-shop.json',
-      expect.objectContaining({ credentials: 'same-origin' })
+    expect(mockedAuthApiRequest).toHaveBeenCalledWith(
+      'get_storefront_theme_config',
+      { id: 'summer-shop' }
     )
-    await expect(
-      loadStorefrontThemeConfig({ ...theme, sourceFile: '/private.json' })
-    ).rejects.toThrow('ملف إعدادات القالب غير متوفر.')
   })
 
   it('merges nested config while retaining unrelated base storefront settings', () => {
