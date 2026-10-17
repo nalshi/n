@@ -16,6 +16,7 @@ import {
   summarizeDashboardOrders,
   normalizeRealtimeOrders,
   normalizeRealtimeProducts,
+  buildPendingCategoryChain,
 } from './dashboard-data'
 
 const { authApiRequest } = vi.hoisted(() => ({
@@ -72,6 +73,7 @@ describe('summarizeDashboardOrders', () => {
       createdAt,
       items: [],
     })
+
     const activeOrders = [
       makeOrder('active-pending', '2026-10-10', 'pending_merchant_approval'),
       makeOrder('active-delivery', '2026-10-09', 'out_for_delivery'),
@@ -98,6 +100,25 @@ describe('summarizeDashboardOrders', () => {
       'active-delivery',
       'archive-third',
     ])
+  })
+})
+
+describe('buildPendingCategoryChain', () => {
+  it('preserves an arbitrary nested category path until its saved ancestor', () => {
+    expect(
+      buildPendingCategoryChain(
+        [
+          { id: '10', name: 'إلكترونيات', parentId: '' },
+          { id: 'NEW:phones', name: 'جوالات', parentId: '10' },
+          { id: 'NEW:samsung', name: 'سامسونج', parentId: 'NEW:phones' },
+          { id: 'NEW:galaxy', name: 'جالكسي', parentId: 'NEW:samsung' },
+        ],
+        'NEW:galaxy'
+      )
+    ).toEqual({
+      names: ['جوالات', 'سامسونج', 'جالكسي'],
+      anchorId: '10',
+    })
   })
 })
 

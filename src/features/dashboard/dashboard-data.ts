@@ -741,7 +741,8 @@ export async function compressDashboardImage(
 }
 
 export async function uploadDashboardImage(file: File): Promise<string> {
-  const webp = await compressDashboardImage(file)
+  const webp =
+    file.type === 'image/webp' ? file : await compressDashboardImage(file)
   const payload = new FormData()
   payload.append('image_data', webp, 'product.webp')
   const result = await authApiRequest('upload_image', payload)
