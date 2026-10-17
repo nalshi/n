@@ -46,53 +46,6 @@ describe('refreshMerchantSnapshot', () => {
     queryClient = new QueryClient()
   })
 
-  describe('fetchMerchantOrderSignals', () => {
-    beforeEach(() => {
-      localStorage.setItem('merchant_token', 'merchant-session-token')
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(() => Promise.resolve(new Response('', { status: 200 })))
-      )
-    })
-
-    afterEach(() => {
-      vi.unstubAllGlobals()
-    })
-
-    it('connects through the same-origin work proxy using the merchant session', async () => {
-      const signal = new AbortController().signal
-
-      await fetchMerchantOrderSignals(signal)
-
-      expect(fetch).toHaveBeenCalledWith(
-        '/api/work/merchant/order-signals',
-        expect.objectContaining({
-          headers: {
-            Accept: 'text/event-stream',
-            Authorization: `Bearer ${localStorage.getItem('merchant_token')}`,
-          },
-          cache: 'no-store',
-          credentials: 'same-origin',
-          signal,
-        })
-      )
-      const fetchCalls = vi.mocked(fetch).mock.calls
-      expect(String(fetchCalls[fetchCalls.length - 1]?.[0])).not.toContain(
-        'firebase'
-      )
-    })
-
-    it('does not open the realtime stream without a merchant session', async () => {
-      localStorage.removeItem('merchant_token')
-      sessionStorage.removeItem('merchant_token')
-
-      expect(() =>
-        fetchMerchantOrderSignals(new AbortController().signal)
-      ).toThrow('انتهت جلسة التاجر.')
-      expect(fetch).not.toHaveBeenCalled()
-    })
-  })
-
   afterEach(() => {
     queryClient.clear()
     clearDashboardInitializationCache()
@@ -118,5 +71,60 @@ describe('refreshMerchantSnapshot', () => {
     expect(queryClient.getQueryData(merchantBootstrapKey('42'))).toMatchObject({
       dashboard: { products: [{ id: '9', price: 99 }] },
     })
+  })
+})
+
+describe('fetchMerchantOrderSignals', () => {
+  beforeEach(() => {
+    vi.stubEnv(
+      'VITE_FIREBASE_DB_URL',
+      'https://example-default-rtdb.europe-west1.firebasedatabase.app/'
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('', { status: 200 })))
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('connects directly to the merchant Firebase signal path', async () => {
+    const signal = new AbortController().signal
+
+    await fetchMerchantOrderSignals('merchant-42', signal)
+
+    const fetchCalls = vi.mocked(fetch).mock.calls
+    const [url, options] = fetchCalls[0] || []
+    expect(String(url)).toBe(
+      'https://example-default-rtdb.europe-west1.firebasedatabase.app/merchant_order_signals/merchant-42.json'
+    )
+    expect(options).toMatchObject({
+      headers: { Accept: 'text/event-stream' },
+      cache: 'no-store',
+      credentials: 'omit',
+      signal,
+    })
+    expect(String(url)).not.toContain('/api/work')
+  })
+
+  it('fails explicitly when Firebase URL is not configured', () => {
+    vi.stubEnv('VITE_FIREBASE_DB_URL', '')
+
+    expect(() =>
+      fetchMerchantOrderSignals('merchant-42', new AbortController().signal)
+    ).toThrow('عنوان Firebase غير مضبوط')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('rejects insecure Firebase URLs', () => {
+    vi.stubEnv('VITE_FIREBASE_DB_URL', 'http://firebase.example')
+
+    expect(() =>
+      fetchMerchantOrderSignals('merchant-42', new AbortController().signal)
+    ).toThrow('عنوان Firebase غير صالح')
+    expect(fetch).not.toHaveBeenCalled()
   })
 })

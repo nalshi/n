@@ -30,24 +30,43 @@ const _localBus =
   typeof BroadcastChannel !== 'undefined'
     ? new BroadcastChannel('merchant_tab_mesh_v1')
     : null
-const MERCHANT_ORDER_SIGNALS_PATH = '/api/work/merchant/order-signals'
 
-export function fetchMerchantOrderSignals(signal: AbortSignal) {
-  const token =
-    localStorage.getItem('merchant_token') ||
-    sessionStorage.getItem('merchant_token') ||
-    ''
-  if (!token) {
-    throw new Error('انتهت جلسة التاجر. سجّل الدخول مجدداً لمتابعة الطلبات.')
+export function fetchMerchantOrderSignals(
+  merchantId: string,
+  signal: AbortSignal
+) {
+  if (!merchantId) {
+    throw new Error('تعذر تحديد حساب التاجر لقراءة إشارات الطلبات.')
+  }
+  const databaseUrl = import.meta.env.VITE_FIREBASE_DB_URL?.trim()
+  if (!databaseUrl) {
+    throw new Error('عنوان Firebase غير مضبوط في إعدادات بناء الواجهة.')
   }
 
-  return fetch(MERCHANT_ORDER_SIGNALS_PATH, {
-    headers: {
-      Accept: 'text/event-stream',
-      Authorization: `Bearer ${token}`,
-    },
+  let endpoint: URL
+  try {
+    const baseUrl = new URL(databaseUrl)
+    if (
+      baseUrl.protocol !== 'https:' ||
+      baseUrl.username ||
+      baseUrl.password ||
+      baseUrl.search ||
+      baseUrl.hash
+    ) {
+      throw new Error('Invalid Firebase database URL')
+    }
+    endpoint = new URL(
+      `merchant_order_signals/${encodeURIComponent(merchantId)}.json`,
+      `${baseUrl.toString().replace(/\/+$/, '')}/`
+    )
+  } catch {
+    throw new Error('عنوان Firebase غير صالح في إعدادات بناء الواجهة.')
+  }
+
+  return fetch(endpoint, {
+    headers: { Accept: 'text/event-stream' },
     cache: 'no-store',
-    credentials: 'same-origin',
+    credentials: 'omit',
     signal,
   })
 }
@@ -357,7 +376,10 @@ function useFirebaseOrderSignals(
 
     async function consumeSignals() {
       controller = new AbortController()
-      const response = await fetchMerchantOrderSignals(controller.signal)
+      const response = await fetchMerchantOrderSignals(
+        merchantId,
+        controller.signal
+      )
       if (!response.ok) {
         let message = `تعذر الاتصال بإشارات الطلبات (${response.status}).`
         try {
