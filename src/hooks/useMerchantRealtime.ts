@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   useQuery,
   useQueryClient,
@@ -30,8 +30,27 @@ const _localBus =
   typeof BroadcastChannel !== 'undefined'
     ? new BroadcastChannel('merchant_tab_mesh_v1')
     : null
-const FIREBASE_DATABASE_URL =
-  'https://shiban-a2757-default-rtdb.europe-west1.firebasedatabase.app'
+const MERCHANT_ORDER_SIGNALS_PATH = '/api/work/merchant/order-signals'
+
+export function fetchMerchantOrderSignals(signal: AbortSignal) {
+  const token =
+    localStorage.getItem('merchant_token') ||
+    sessionStorage.getItem('merchant_token') ||
+    ''
+  if (!token) {
+    throw new Error('انتهت جلسة التاجر. سجّل الدخول مجدداً لمتابعة الطلبات.')
+  }
+
+  return fetch(MERCHANT_ORDER_SIGNALS_PATH, {
+    headers: {
+      Accept: 'text/event-stream',
+      Authorization: `Bearer ${token}`,
+    },
+    cache: 'no-store',
+    credentials: 'same-origin',
+    signal,
+  })
+}
 
 export const merchantBootstrapKey = (merchantId: string) =>
   ['merchant-bootstrap', merchantId] as const
@@ -338,15 +357,7 @@ function useFirebaseOrderSignals(
 
     async function consumeSignals() {
       controller = new AbortController()
-      const signalUrl = new URL(
-        `${FIREBASE_DATABASE_URL}/merchant_order_signals/${encodeURIComponent(merchantId)}.json`
-      )
-      const response = await fetch(signalUrl, {
-        headers: { Accept: 'text/event-stream' },
-        credentials: 'omit',
-        cache: 'no-store',
-        signal: controller.signal,
-      })
+      const response = await fetchMerchantOrderSignals(controller.signal)
       if (!response.ok) {
         let message = `تعذر الاتصال بإشارات الطلبات (${response.status}).`
         try {
@@ -366,7 +377,7 @@ function useFirebaseOrderSignals(
         throw new Error(message)
       }
       if (!response.body) throw new Error('تعذر قراءة بث إشارات الطلبات.')
-      reportStatus('connected', 'متصل مباشرةً بـ Firebase')
+      reportStatus('connected', 'متصل بمزامنة الطلبات لحظياً')
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()

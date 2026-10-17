@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearDashboardInitializationCache } from '@/features/dashboard/dashboard-data'
 import {
+  fetchMerchantOrderSignals,
   merchantBootstrapKey,
   merchantQueryKeys,
   refreshMerchantSnapshot,
@@ -43,6 +44,53 @@ describe('refreshMerchantSnapshot', () => {
       )
     )
     queryClient = new QueryClient()
+  })
+
+  describe('fetchMerchantOrderSignals', () => {
+    beforeEach(() => {
+      localStorage.setItem('merchant_token', 'merchant-session-token')
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => Promise.resolve(new Response('', { status: 200 })))
+      )
+    })
+
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('connects through the same-origin work proxy using the merchant session', async () => {
+      const signal = new AbortController().signal
+
+      await fetchMerchantOrderSignals(signal)
+
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/work/merchant/order-signals',
+        expect.objectContaining({
+          headers: {
+            Accept: 'text/event-stream',
+            Authorization: `Bearer ${localStorage.getItem('merchant_token')}`,
+          },
+          cache: 'no-store',
+          credentials: 'same-origin',
+          signal,
+        })
+      )
+      const fetchCalls = vi.mocked(fetch).mock.calls
+      expect(String(fetchCalls[fetchCalls.length - 1]?.[0])).not.toContain(
+        'firebase'
+      )
+    })
+
+    it('does not open the realtime stream without a merchant session', async () => {
+      localStorage.removeItem('merchant_token')
+      sessionStorage.removeItem('merchant_token')
+
+      expect(() =>
+        fetchMerchantOrderSignals(new AbortController().signal)
+      ).toThrow('انتهت جلسة التاجر.')
+      expect(fetch).not.toHaveBeenCalled()
+    })
   })
 
   afterEach(() => {
