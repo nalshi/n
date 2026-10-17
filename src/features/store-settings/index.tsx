@@ -18,6 +18,10 @@ import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { clearAuthApiCache } from '@/lib/auth-api'
 import {
+  refreshMerchantSnapshot,
+  useMerchantIdentity,
+} from '@/hooks/useMerchantRealtime'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -188,6 +192,7 @@ function shippingDescription(merchant: MerchantSettings) {
 export function StoreSettings() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const merchantId = useMerchantIdentity()
   const [dialog, setDialog] = useState<DialogName>(null)
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [merchantDraft, setMerchantDraft] = useState<MerchantSettings | null>(
@@ -215,9 +220,25 @@ export function StoreSettings() {
 
   const refreshSettings = async () => {
     clearDashboardInitializationCache()
+    try {
+      await refreshMerchantSnapshot(queryClient, merchantId)
+    } catch (error) {
+      toast.error(
+        `تم حفظ الإعدادات، لكن تعذر تحديث بيانات اللوحة: ${
+          error instanceof Error ? error.message : 'خطأ غير معروف.'
+        }`
+      )
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['merchant-dashboard-home', merchantId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['merchant-bootstrap', merchantId],
+        }),
+      ])
+    }
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['merchant-store-settings'] }),
-      queryClient.invalidateQueries({ queryKey: ['merchant-dashboard-home'] }),
       queryClient.invalidateQueries({
         queryKey: ['merchant-storefront-library'],
       }),

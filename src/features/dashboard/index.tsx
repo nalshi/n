@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowLeft,
@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 import { authApiRequest } from '@/lib/auth-api'
 import {
   merchantQueryKeys,
+  refreshMerchantSnapshot,
   useMerchantData,
   useMerchantIdentity,
 } from '@/hooks/useMerchantRealtime'
@@ -125,6 +126,7 @@ function EmptyList({ children }: { children: string }) {
 
 export function Dashboard() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const merchantId = useMerchantIdentity()
   const bootstrapQuery = useMerchantData(merchantId)
   const [selectedOrder, setSelectedOrder] = useState<DashboardOrder | null>(
@@ -156,6 +158,15 @@ export function Dashboard() {
     },
     onSuccess: async (result) => {
       toast.success(result.message || 'تم تأكيد تسليم الطلب بنجاح.')
+      try {
+        await refreshMerchantSnapshot(queryClient, merchantId)
+      } catch (error) {
+        toast.error(
+          `تم تأكيد التسليم، لكن تعذر تحديث بيانات اللوحة: ${
+            error instanceof Error ? error.message : 'خطأ غير معروف.'
+          }`
+        )
+      }
       setDeliveryDialogOpen(false)
       setDeliveryCode('')
       setDeliveryOrderId('')

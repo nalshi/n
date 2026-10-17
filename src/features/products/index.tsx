@@ -5,7 +5,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import {
   Barcode,
@@ -27,6 +27,7 @@ import { toast } from 'sonner'
 import { clearAuthApiCache } from '@/lib/auth-api'
 import {
   merchantQueryKeys,
+  refreshMerchantSnapshot,
   useMerchantIdentity,
 } from '@/hooks/useMerchantRealtime'
 import { Button } from '@/components/ui/button'
@@ -308,6 +309,7 @@ function ProductsWorkspace({
   create?: boolean
   manageCategories?: boolean
 }) {
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const merchantId = useMerchantIdentity()
   const [search, setSearch] = useState('')
@@ -388,6 +390,17 @@ function ProductsWorkspace({
     [categoryList]
   )
   const products = useMemo(() => productsQuery.data || [], [productsQuery.data])
+  const refreshMerchantData = async () => {
+    try {
+      await refreshMerchantSnapshot(queryClient, merchantId)
+    } catch (error) {
+      toast.error(
+        `تم حفظ التغيير، لكن تعذر تحديث بيانات اللوحة: ${
+          error instanceof Error ? error.message : 'خطأ غير معروف.'
+        }`
+      )
+    }
+  }
   const filteredProducts = useMemo(() => {
     const matching = products.filter((product) => {
       const matchesSearch =
@@ -521,11 +534,12 @@ function ProductsWorkspace({
         draft.imageFile ? setUploadProgress : undefined
       )
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       setUploadProgress(null)
       toast.success(
         editingProduct ? 'تم تحديث المنتج بنجاح.' : 'تم حفظ المنتج ونشره بنجاح.'
       )
+      await refreshMerchantData()
       setEditorOpen(false)
       setEditingProduct(null)
       clearCreateShortcut()
@@ -539,8 +553,9 @@ function ProductsWorkspace({
   const deleteMutation = useMutation({
     mutationFn: (product: DashboardProduct) =>
       deleteDashboardProduct(product.id),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('تم حذف المنتج.')
+      await refreshMerchantData()
       setDeleteProduct(null)
     },
     onError: (error) =>
@@ -550,8 +565,9 @@ function ProductsWorkspace({
   const availabilityMutation = useMutation({
     mutationFn: (product: DashboardProduct) =>
       updateDashboardAvailability(product.id, !product.isAvailable),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('تم تحديث إتاحة المنتج.')
+      await refreshMerchantData()
     },
     onError: (error) =>
       toast.error(

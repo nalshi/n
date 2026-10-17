@@ -1,5 +1,5 @@
 import { useDeferredValue, useMemo, useState, type FormEvent } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import {
   ArrowLeft,
@@ -21,6 +21,7 @@ import { toast } from 'sonner'
 import { clearAuthApiCache } from '@/lib/auth-api'
 import {
   merchantQueryKeys,
+  refreshMerchantSnapshot,
   useMerchantIdentity,
 } from '@/hooks/useMerchantRealtime'
 import { Button } from '@/components/ui/button'
@@ -404,6 +405,7 @@ function OrdersPage({
   archived?: boolean
 }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const merchantId = useMerchantIdentity()
   const filter: OrdersFilter = archived ? 'archived' : 'active'
   const ordersPath = filter === 'archived' ? '/previous-orders' : '/orders'
@@ -443,6 +445,18 @@ function OrdersPage({
     )
   }, [deferredSearch, orders])
 
+  const refreshMerchantData = async () => {
+    try {
+      await refreshMerchantSnapshot(queryClient, merchantId)
+    } catch (error) {
+      toast.error(
+        `تم حفظ التغيير، لكن تعذر تحديث بيانات اللوحة: ${
+          error instanceof Error ? error.message : 'خطأ غير معروف.'
+        }`
+      )
+    }
+  }
+
   const statusMutation = useMutation({
     mutationFn: ({
       order,
@@ -451,13 +465,14 @@ function OrdersPage({
       order: DashboardOrder
       status: 'confirmed_by_store' | 'out_for_delivery'
     }) => updateDashboardOrderStatus(order.id, status),
-    onSuccess: (message, variables) => {
+    onSuccess: async (message, variables) => {
       toast.success(
         message ||
           (variables.status === 'confirmed_by_store'
             ? 'تمت الموافقة على الطلب وجارٍ التجهيز.'
             : 'تم تحديث حالة الطلب إلى في الطريق.')
       )
+      await refreshMerchantData()
       const nextOrderId =
         variables.status === 'confirmed_by_store'
           ? nextPendingOrderId(filteredOrders, variables.order.id)
@@ -476,8 +491,9 @@ function OrdersPage({
   })
   const cancelMutation = useMutation({
     mutationFn: (order: DashboardOrder) => cancelDashboardOrder(order.id),
-    onSuccess: (message, order) => {
+    onSuccess: async (message, order) => {
       toast.success(message || 'تم إلغاء الطلب بنجاح.')
+      await refreshMerchantData()
       const nextOrderId = nextPendingOrderId(filteredOrders, order.id)
       setSelectedOrderId(nextOrderId)
       void navigate({
@@ -497,8 +513,9 @@ function OrdersPage({
         deliveryCode.trim()
       )
     },
-    onSuccess: (message) => {
+    onSuccess: async (message) => {
       toast.success(message || 'تم تأكيد تسليم الطلب بنجاح.')
+      await refreshMerchantData()
       setDeliveryOrder(null)
       setDeliveryCode('')
       setSelectedOrderId(null)
