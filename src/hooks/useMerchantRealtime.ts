@@ -89,6 +89,7 @@ function writeSnapshotQueries(
   snapshot: DashboardInitialization
 ) {
   const { dashboard, categories } = snapshot
+  queryClient.setQueryData(merchantBootstrapKey(merchantId), snapshot)
   queryClient.setQueryData(merchantQueryKeys.dashboard(merchantId), dashboard)
   queryClient.setQueryData(
     merchantQueryKeys.products(merchantId),
@@ -128,12 +129,14 @@ function writeSnapshotQueries(
   })
 }
 
-async function refreshMerchantSnapshot(
+export async function refreshMerchantSnapshot(
   queryClient: QueryClient,
   merchantId: string
 ) {
+  if (!merchantId) throw new Error('تعذر تحديد حساب التاجر لتحديث اللوحة.')
   const snapshot = await fetchDashboardInitialization(true)
   writeSnapshotQueries(queryClient, merchantId, snapshot)
+  return snapshot
 }
 
 function upsertProduct(
