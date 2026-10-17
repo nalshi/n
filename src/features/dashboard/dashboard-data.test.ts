@@ -433,33 +433,32 @@ describe('fetchDashboardData', () => {
   })
 
   it('loads complete order and product item details from get_orders', async () => {
-    mockDashboardResponse(
-      dashboardSnapshot({
-        orders: [
-          {
-            id: 'ticket-1',
-            customer_name: 'سارة',
-            customer_phone: '+967700000000',
-            delivery_address_text: 'صنعاء',
-            delivery_gps_link: 'https://maps.example/order',
-            total_amount: 2750,
-            delivery_fee: 250,
-            status: 'pending_merchant_approval',
-            created_at: '2026-10-12T10:00:00Z',
-            items: JSON.stringify([
-              {
-                product_id: 9,
-                product_name: 'حقيبة',
-                image: '/bag.png',
-                quantity: 2,
-                price: 1250,
-                cost_price: 800,
-              },
-            ]),
-          },
-        ],
-      })
-    )
+    authApiRequest.mockResolvedValueOnce({
+      status: 'success',
+      data: [
+        {
+          id: 'ticket-1',
+          customer_name: 'سارة',
+          customer_phone: '+967700000000',
+          delivery_address_text: 'صنعاء',
+          delivery_gps_link: 'https://maps.example/order',
+          total_amount: 2750,
+          delivery_fee: 250,
+          status: 'pending_merchant_approval',
+          created_at: '2026-10-12T10:00:00Z',
+          items: JSON.stringify([
+            {
+              product_id: 9,
+              product_name: 'حقيبة',
+              image: '/bag.png',
+              quantity: 2,
+              price: 1250,
+              cost_price: 800,
+            },
+          ]),
+        },
+      ],
+    })
 
     await expect(fetchDashboardOrders('active')).resolves.toEqual([
       {
@@ -485,7 +484,9 @@ describe('fetchDashboardData', () => {
         ],
       },
     ])
-    expect(fetch).toHaveBeenCalledOnce()
+    expect(authApiRequest).toHaveBeenCalledWith('get_orders', {
+      filter: 'active',
+    })
   })
 
   it('sends supported order state and delivery actions with legacy payload fields', async () => {

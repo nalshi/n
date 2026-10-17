@@ -592,8 +592,13 @@ export async function fetchDashboardCategories(): Promise<DashboardCategory[]> {
 export async function fetchDashboardOrders(
   filter: 'active' | 'archived'
 ): Promise<DashboardOrder[]> {
-  const dashboard = (await fetchDashboardInitialization()).dashboard
-  return filter === 'active' ? dashboard.activeOrders : dashboard.archivedOrders
+  const result = await authApiRequest('get_orders', { filter })
+  const orders = normalizeOrders(result)
+  return filter === 'active'
+    ? orders.filter(
+        (order) => order.status !== 'completed' && order.status !== 'cancelled'
+      )
+    : orders
 }
 
 export async function updateDashboardOrderStatus(
