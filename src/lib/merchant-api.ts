@@ -71,7 +71,7 @@ function getApiUrl() {
   return typeof window === 'undefined' ? API_URL : window.API_URL || API_URL
 }
 
-function getWorkerApiUrl() {
+export function getWorkerApiUrl() {
   if (typeof window === 'undefined') return '/api/work/'
   const configured =
     window.WORKER_API_URL ||
