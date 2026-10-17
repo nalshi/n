@@ -69,6 +69,7 @@ import {
   fetchDashboardProducts,
   fetchDashboardUsername,
   saveDashboardProduct,
+  updateDashboardProductStock,
   type DashboardCategory,
   type DashboardProduct,
   type ProductOption,
@@ -98,6 +99,17 @@ type ProductDraft = {
   isAvailable: boolean
   variantsEnabled: boolean
   options: DraftOption[]
+}
+
+type StockDraft = {
+  quantity: number
+  quantityType: 'tracked' | 'unlimited'
+  options: Array<{
+    id: string
+    name: string
+    quantity: number
+    quantityType: 'tracked' | 'unlimited'
+  }>
 }
 
 const currencies = [
@@ -212,6 +224,19 @@ function getStock(product: DashboardProduct) {
     : `المخزون ${product.quantity}`
 }
 
+function stockDraftFromProduct(product: DashboardProduct): StockDraft {
+  return {
+    quantity: product.quantity,
+    quantityType: product.quantityType,
+    options: product.options.map((option) => ({
+      id: option.id,
+      name: option.name,
+      quantity: option.quantity,
+      quantityType: option.quantityType,
+    })),
+  }
+}
+
 function approvalLabel(status: string) {
   if (status === 'pending') return 'بانتظار النشر'
   if (status === 'rejected') return 'مرفوض'
@@ -322,6 +347,8 @@ function ProductsWorkspace({
     null
   )
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false)
+  const [inventoryView, setInventoryView] = useState(false)
+  const [stockDrafts, setStockDrafts] = useState<Record<string, StockDraft>>({})
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [categories, setCategories] = useState<DashboardCategory[]>([])
   const [qrProduct, setQrProduct] = useState<DashboardProduct | null>(null)
@@ -575,6 +602,41 @@ function ProductsWorkspace({
       ),
   })
 
+  const stockMutation = useMutation({
+    mutationFn: ({
+      product,
+      stock,
+    }: {
+      product: DashboardProduct
+      stock: StockDraft
+    }) => updateDashboardProductStock(product, stock),
+    onSuccess: async (message, { product }) => {
+      toast.success(message || 'تم تحديث مخزون المنتج.')
+      setStockDrafts((current) => {
+        const next = { ...current }
+        delete next[product.id]
+        return next
+      })
+      await refreshMerchantData()
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof Error ? error.message : 'تعذر تحديث مخزون المنتج.'
+      ),
+  })
+
+  const changeStockDraft = (
+    product: DashboardProduct,
+    update: (stock: StockDraft) => StockDraft
+  ) => {
+    setStockDrafts((current) => ({
+      ...current,
+      [product.id]: update(
+        current[product.id] || stockDraftFromProduct(product)
+      ),
+    }))
+  }
+
   const openEditor = (product: DashboardProduct | null = null) => {
     setUploadProgress(null)
     setEditingProduct(product)
@@ -596,11 +658,22 @@ function ProductsWorkspace({
             title={catalogOnly ? 'قائمة المنتجات' : 'إدارة المنتجات'}
             description={
               catalogOnly
-                ? 'استعرض منتجات متجرك وابحث عنها وعدّل تفاصيلها.'
+                ? inventoryView
+                  ? 'راجع رصيد جميع المنتجات وخياراتها، وعدّل المخزون مباشرة.'
+                  : 'استعرض منتجات متجرك وابحث عنها وعدّل تفاصيلها.'
                 : 'نظّم المنتجات والأسعار والمخزون والفئات من مكان واحد.'
             }
             actions={
               <>
+                {catalogOnly && (
+                  <Button
+                    variant={inventoryView ? 'secondary' : 'outline'}
+                    onClick={() => setInventoryView((current) => !current)}
+                  >
+                    <Boxes aria-hidden='true' />
+                    {inventoryView ? 'قائمة المنتجات' : 'إدارة المخزون'}
+                  </Button>
+                )}
                 {catalogOnly ? (
                   <Button variant='outline' asChild>
                     <Link to='/products'>
@@ -676,7 +749,7 @@ function ProductsWorkspace({
               </CardContent>
             </Card>
           </>
-        ) : (
+        ) : catalogOnly && !inventoryView ? (
           <Card className='mb-5 gap-4 py-4'>
             <CardContent className='grid gap-3 px-4 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_repeat(3,minmax(150px,220px))]'>
               <label className='relative sm:col-span-2 xl:col-span-1'>
@@ -753,15 +826,65 @@ function ProductsWorkspace({
               </Select>
             </CardContent>
           </Card>
-        )}
+        ) : null}
 
-        {catalogOnly && productsQuery.isPending ? (
+        {catalogOnly && inventoryView ? (
+          productsQuery.isPending ? (
+            <p className='py-10 text-center text-sm text-muted-foreground'>
+              جارٍ تحميل المخزون...
+            </p>
+          ) : productsQuery.isError && !productsQuery.data ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>تعذر تحميل المخزون</CardTitle>
+                <CardDescription>
+                  {productsQuery.error instanceof Error
+                    ? productsQuery.error.message
+                    : 'تحقق من الاتصال ثم أعد المحاولة.'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  onClick={() => {
+                    clearAuthApiCache()
+                    void productsQuery.refetch()
+                  }}
+                >
+                  إعادة المحاولة
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <StockManager
+              products={products}
+              drafts={stockDrafts}
+              savingProductId={
+                stockMutation.isPending
+                  ? stockMutation.variables?.product.id
+                  : undefined
+              }
+              onChange={changeStockDraft}
+              onSave={(product) =>
+                stockMutation.mutate({
+                  product,
+                  stock:
+                    stockDrafts[product.id] || stockDraftFromProduct(product),
+                })
+              }
+            />
+          )
+        ) : null}
+
+        {catalogOnly && !inventoryView && productsQuery.isPending ? (
           <div className='grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4'>
             {Array.from({ length: 6 }, (_, index) => (
               <Card key={index} className='h-64 bg-muted/40' />
             ))}
           </div>
-        ) : catalogOnly && productsQuery.isError && !productsQuery.data ? (
+        ) : catalogOnly &&
+          !inventoryView &&
+          productsQuery.isError &&
+          !productsQuery.data ? (
           <Card>
             <CardHeader>
               <CardTitle>تعذر تحميل المنتجات</CardTitle>
@@ -782,7 +905,7 @@ function ProductsWorkspace({
               </Button>
             </CardContent>
           </Card>
-        ) : catalogOnly && visibleProducts.length ? (
+        ) : catalogOnly && !inventoryView && visibleProducts.length ? (
           <>
             <div className='grid grid-cols-2 items-start gap-3 lg:grid-cols-3 2xl:grid-cols-4'>
               {visibleProducts.map((product) => (
@@ -834,7 +957,7 @@ function ProductsWorkspace({
               </div>
             </div>
           </>
-        ) : catalogOnly ? (
+        ) : catalogOnly && !inventoryView ? (
           <Card>
             <CardContent className='grid justify-items-center gap-3 py-14 text-center'>
               <span className='grid size-14 place-items-center rounded-2xl bg-muted text-muted-foreground'>
@@ -1834,6 +1957,178 @@ function VariantEditor({
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+function StockManager({
+  products,
+  drafts,
+  savingProductId,
+  onChange,
+  onSave,
+}: {
+  products: DashboardProduct[]
+  drafts: Record<string, StockDraft>
+  savingProductId?: string
+  onChange: (
+    product: DashboardProduct,
+    update: (stock: StockDraft) => StockDraft
+  ) => void
+  onSave: (product: DashboardProduct) => void
+}) {
+  if (!products.length) {
+    return (
+      <p className='rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground'>
+        لا توجد منتجات لإدارة مخزونها.
+      </p>
+    )
+  }
+
+  return (
+    <div className='divide-y rounded-xl border px-4 sm:px-5'>
+      {products.map((product) => {
+        const stock = drafts[product.id] || stockDraftFromProduct(product)
+        const saving = savingProductId === product.id
+        return (
+          <section key={product.id} className='grid gap-4 py-5'>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <div>
+                <h2 className='font-semibold'>{product.name}</h2>
+                <p className='mt-1 text-sm text-muted-foreground'>
+                  {product.options.length
+                    ? `${product.options.length} خيارات`
+                    : product.quantityType === 'unlimited'
+                      ? 'مخزون متجدد'
+                      : `المتاح حالياً: ${product.quantity}`}
+                </p>
+              </div>
+              <Button
+                disabled={saving}
+                onClick={() => onSave(product)}
+                className='min-w-28'
+              >
+                {saving ? (
+                  <>
+                    <LoaderCircle className='animate-spin' aria-hidden='true' />
+                    جارٍ الحفظ
+                  </>
+                ) : (
+                  'حفظ المخزون'
+                )}
+              </Button>
+            </div>
+
+            {product.options.length ? (
+              <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
+                {stock.options.map((option, index) => (
+                  <div
+                    key={option.id}
+                    className='grid gap-3 rounded-lg border bg-muted/20 p-3'
+                  >
+                    <h3 className='text-sm font-medium'>
+                      {option.name || `الخيار ${index + 1}`}
+                    </h3>
+                    <Field label='نوع المخزون'>
+                      <Select
+                        value={option.quantityType}
+                        onValueChange={(value: 'tracked' | 'unlimited') =>
+                          onChange(product, (current) => ({
+                            ...current,
+                            options: current.options.map((item) =>
+                              item.id === option.id
+                                ? { ...item, quantityType: value }
+                                : item
+                            ),
+                          }))
+                        }
+                      >
+                        <SelectTrigger className='w-full'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='tracked'>كمية محدودة</SelectItem>
+                          <SelectItem value='unlimited'>
+                            متجدد دائماً
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    {option.quantityType === 'tracked' && (
+                      <Field label='الكمية'>
+                        <Input
+                          aria-label={`مخزون ${option.name}`}
+                          type='number'
+                          min='0'
+                          step='1'
+                          value={option.quantity}
+                          onChange={(event) => {
+                            const quantity = Math.max(
+                              0,
+                              Number(event.target.value) || 0
+                            )
+                            onChange(product, (current) => ({
+                              ...current,
+                              options: current.options.map((item) =>
+                                item.id === option.id
+                                  ? { ...item, quantity }
+                                  : item
+                              ),
+                            }))
+                          }}
+                        />
+                      </Field>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className='grid gap-3 sm:grid-cols-[minmax(180px,240px)_minmax(180px,240px)]'>
+                <Field label='نوع المخزون'>
+                  <Select
+                    value={stock.quantityType}
+                    onValueChange={(quantityType: 'tracked' | 'unlimited') =>
+                      onChange(product, (current) => ({
+                        ...current,
+                        quantityType,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className='w-full'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='tracked'>كمية محدودة</SelectItem>
+                      <SelectItem value='unlimited'>متجدد دائماً</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                {stock.quantityType === 'tracked' && (
+                  <Field label='الكمية'>
+                    <Input
+                      aria-label={`مخزون ${product.name}`}
+                      type='number'
+                      min='0'
+                      step='1'
+                      value={stock.quantity}
+                      onChange={(event) => {
+                        const quantity = Math.max(
+                          0,
+                          Number(event.target.value) || 0
+                        )
+                        onChange(product, (current) => ({
+                          ...current,
+                          quantity,
+                        }))
+                      }}
+                    />
+                  </Field>
+                )}
+              </div>
+            )}
+          </section>
+        )
+      })}
     </div>
   )
 }

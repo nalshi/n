@@ -707,6 +707,35 @@ export async function updateDashboardAvailability(
   clearDashboardInitializationCache()
 }
 
+export async function updateDashboardProductStock(
+  product: DashboardProduct,
+  stock: {
+    quantity: number
+    quantityType: 'tracked' | 'unlimited'
+    options: Array<{
+      id: string
+      quantity: number
+      quantityType: 'tracked' | 'unlimited'
+    }>
+  }
+): Promise<string> {
+  const result = await authApiRequest('update_product_stock', {
+    product_id: product.id,
+    quantity: stock.quantity,
+    quantity_type: stock.quantityType,
+    options: stock.options.map((option) => ({
+      id: option.id,
+      quantity: option.quantity,
+      quantity_type: option.quantityType,
+    })),
+  })
+  if (result.status !== 'success' && result.status !== 'ok') {
+    throw new Error(result.message || 'تعذر تحديث مخزون المنتج.')
+  }
+  clearDashboardInitializationCache()
+  return result.message || ''
+}
+
 export async function compressDashboardImage(
   file: File,
   quality = 0.8
