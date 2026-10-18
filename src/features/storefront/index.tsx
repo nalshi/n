@@ -108,11 +108,95 @@ function buildSelectedConfig(
     const darkTheme = record(config.dark_theme)
     config.dark_theme = { ...darkTheme, colors: { ...darkColors } }
   }
+
+  // دمج إعدادات الثيم الكاملة
   mergeStorefrontConfig(config, themeConfig)
+
+  // تطبيق النمط المختار والوضع الأساسي
   config.default_theme_mode = mode
   config.theme_name = theme.id
   config.theme_selection = { light: theme.id, dark: theme.id }
   config.theme_display_names = { light: theme.name, dark: theme.name }
+
+  // تطبيق إعدادات الروبوت الذكي (ai_assistant) كما في الاستديو تماماً
+  const themeAssistant = record(themeConfig.assistant)
+  if (Object.keys(themeAssistant).length) {
+    const messages = record(config.messages)
+    const existingAssistant = record(messages.ai_assistant)
+    config.messages = {
+      ...messages,
+      ai_assistant: {
+        ...existingAssistant,
+        ...themeAssistant,
+        accent_color:
+          mode === 'dark'
+            ? theme.preview.dark.primary
+            : theme.preview.primary,
+      },
+    }
+    // حفظ نسخة أيضاً في الجذر لتوافق كافة المشغلات
+    config.assistant = {
+      ...themeAssistant,
+      accent_color:
+        mode === 'dark'
+          ? theme.preview.dark.primary
+          : theme.preview.primary,
+    }
+  }
+
+  // تطبيق إعدادات شريط التنقل (navigation_settings) والشرائط العلوية والسفلية
+  const themeNavigation = record(themeConfig.navigation_settings)
+  if (Object.keys(themeNavigation).length) {
+    const currentNav = record(config.navigation_settings)
+    config.navigation_settings = {
+      ...currentNav,
+      ...themeNavigation,
+      bottom_bar: {
+        ...record(currentNav.bottom_bar),
+        ...record(themeNavigation.bottom_bar),
+      },
+      top_bar: {
+        ...record(currentNav.top_bar),
+        ...record(themeNavigation.top_bar),
+      },
+    }
+  }
+
+  // تطبيق أشكال الأزرار والكروت وأنماط العرض
+  const themeShapes = record(themeConfig.shapes)
+  if (Object.keys(themeShapes).length) {
+    config.shapes = {
+      ...record(config.shapes),
+      ...themeShapes,
+    }
+  }
+
+  // تطبيق الخطوط وأحجام النصوص
+  const themeTypography = record(themeConfig.typography)
+  if (Object.keys(themeTypography).length) {
+    config.typography = {
+      ...record(config.typography),
+      ...themeTypography,
+    }
+  }
+
+  // تطبيق إعدادات وتخطيط المنتجات
+  const themeProducts = record(themeConfig.products_settings)
+  if (Object.keys(themeProducts).length) {
+    const currentProd = record(config.products_settings)
+    config.products_settings = {
+      ...currentProd,
+      ...themeProducts,
+      portrait: {
+        ...record(currentProd.portrait),
+        ...record(themeProducts.portrait),
+      },
+      landscape: {
+        ...record(currentProd.landscape),
+        ...record(themeProducts.landscape),
+      },
+    }
+  }
 
   const currentModes = record(config.modes)
   const configuredLight = record(config.light_theme)
