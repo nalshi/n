@@ -12,11 +12,22 @@ export type StorefrontTheme = {
     primary: string
     accent: string
     background: string
+    card?: string
+    text?: string
     dark: {
       primary: string
       accent: string
       background: string
+      card?: string
+      text?: string
     }
+  }
+  shapes?: {
+    button_style?: string
+    card_style?: string
+  }
+  typography?: {
+    font_family?: string
   }
   config?: ApiRecord
 }
@@ -70,7 +81,12 @@ function normalizeTheme(candidate: unknown): StorefrontTheme | null {
 
   const preview = asRecord(theme.preview) || {}
   const darkPreview = asRecord(preview.dark) || {}
-  const config = asRecord(theme.config)
+  const config = asRecord(theme.config) || {}
+  const configShapes = asRecord(config.shapes) || asRecord(theme.shapes)
+  const configTypography = asRecord(config.typography) || asRecord(theme.typography)
+  const lightColors = asRecord(asRecord(config.light_theme)?.colors) || {}
+  const darkColors = asRecord(asRecord(config.dark_theme)?.colors) || {}
+
   return {
     id: theme.id,
     name: nonEmptyString(theme.name),
@@ -78,16 +94,27 @@ function normalizeTheme(candidate: unknown): StorefrontTheme | null {
     category: nonEmptyString(theme.category),
     sourceFile,
     preview: {
-      primary: safeColor(preview.primary, '#4F46E5'),
-      accent: safeColor(preview.accent, '#06B6D4'),
-      background: safeColor(preview.background, '#F8FAFC'),
+      primary: safeColor(preview.primary || lightColors.primary, '#4F46E5'),
+      accent: safeColor(preview.accent || lightColors.accent, '#06B6D4'),
+      background: safeColor(preview.background || lightColors.bg_body, '#F8FAFC'),
+      card: safeColor(preview.card || lightColors.card_bg || lightColors.bg_card, '#FFFFFF'),
+      text: safeColor(preview.text || lightColors.text_main, '#0F172A'),
       dark: {
-        primary: safeColor(darkPreview.primary, '#6D28D9'),
-        accent: safeColor(darkPreview.accent, '#0891B2'),
-        background: safeColor(darkPreview.background, '#111827'),
+        primary: safeColor(darkPreview.primary || darkColors.primary, '#6D28D9'),
+        accent: safeColor(darkPreview.accent || darkColors.accent, '#0891B2'),
+        background: safeColor(darkPreview.background || darkColors.bg_body, '#111827'),
+        card: safeColor(darkPreview.card || darkColors.card_bg || darkColors.bg_card, '#151E2E'),
+        text: safeColor(darkPreview.text || darkColors.text_main, '#F8FAFC'),
       },
     },
-    ...(config ? { config } : {}),
+    shapes: {
+      button_style: nonEmptyString(configShapes?.button_style) || 'rounded',
+      card_style: nonEmptyString(configShapes?.card_style) || 'classic',
+    },
+    typography: {
+      font_family: nonEmptyString(configTypography?.font_family) || 'Cairo',
+    },
+    ...(Object.keys(config).length ? { config } : {}),
   }
 }
 

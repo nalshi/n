@@ -62,25 +62,28 @@ function ColorSwatches({
   theme: StorefrontTheme
   mode: ThemeMode
 }) {
-  const colors =
-    mode === 'dark'
-      ? [
-          theme.preview.dark.primary,
-          theme.preview.dark.accent,
-          theme.preview.dark.background,
-        ]
-      : [theme.preview.primary, theme.preview.accent, theme.preview.background]
+  const isDark = mode === 'dark'
+  const p = isDark ? theme.preview.dark : theme.preview
+  const swatches = [
+    { title: 'الأساسي', color: p.primary },
+    { title: 'التمييز', color: p.accent },
+    { title: 'الخلفية', color: p.background },
+    { title: 'الكروت', color: p.card || (isDark ? '#151E2E' : '#FFFFFF') },
+    { title: 'النص', color: p.text || (isDark ? '#F8FAFC' : '#0F172A') },
+  ]
+
   return (
-    <span className='flex gap-1.5' aria-label='معاينة ألوان القالب'>
-      {colors.map((color, index) => (
+    <div className='flex items-center gap-1.5' aria-label={`معاينة ألوان ${isDark ? 'الداكن' : 'الفاتح'}`}>
+      {swatches.map((s, index) => (
         <span
-          key={`${color}-${index}`}
-          className='size-5 rounded-full border shadow-sm'
-          style={{ backgroundColor: color }}
+          key={`${s.color}-${index}`}
+          title={s.title}
+          className='size-5 rounded-md border shadow-xs transition-transform hover:scale-110'
+          style={{ backgroundColor: s.color }}
           aria-hidden='true'
         />
       ))}
-    </span>
+    </div>
   )
 }
 
@@ -158,8 +161,28 @@ function ThemeCard({
   selectedMode: ThemeMode | ''
   onSelect: (theme: StorefrontTheme, mode: ThemeMode) => void
 }) {
+  const isSelected = selectedThemeId === theme.id
+  const fontName = theme.typography?.font_family || 'Cairo'
+  const buttonStyleLabel =
+    theme.shapes?.button_style === 'pill'
+      ? 'أزرار كبسولية'
+      : theme.shapes?.button_style === 'square'
+        ? 'أزرار مربعة'
+        : 'أزرار ناعمة'
+  const cardStyleLabel =
+    theme.shapes?.card_style === 'magazine'
+      ? 'كروت مجلة'
+      : theme.shapes?.card_style === 'glass'
+        ? 'كروت زجاجية'
+        : theme.shapes?.card_style === 'bordered'
+          ? 'كروت بإطار'
+          : theme.shapes?.card_style === 'flat'
+            ? 'كروت فلات'
+            : 'كروت بارزة'
+
   return (
-    <Card className='overflow-hidden py-0'>
+    <Card className={`overflow-hidden transition-all duration-200 ${isSelected ? 'ring-2 ring-primary shadow-md' : 'hover:border-primary/50'}`}>
+      {/* معاينة الرأس بالألوان الأساسية للوضعين */}
       <div className='grid h-24 grid-cols-2'>
         {(['light', 'dark'] as const).map((mode) => {
           const isDark = mode === 'dark'
@@ -172,15 +195,16 @@ function ThemeCard({
           const accent = isDark
             ? theme.preview.dark.accent
             : theme.preview.accent
-          const selected = selectedThemeId === theme.id && selectedMode === mode
+          const active = isSelected && selectedMode === mode
+
           return (
             <button
               key={mode}
               type='button'
               aria-label={`اختيار قالب ${theme.name} للوضع ${isDark ? 'الداكن' : 'الفاتح'}`}
-              aria-pressed={selected}
+              aria-pressed={active}
               onClick={() => onSelect(theme, mode)}
-              className='relative grid place-items-center gap-2 border-e last:border-e-0 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-ring'
+              className='relative grid place-items-center gap-2 border-e last:border-e-0 transition-opacity hover:opacity-90 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-ring cursor-pointer'
               style={{ backgroundColor: background }}
             >
               <span
@@ -190,12 +214,15 @@ function ThemeCard({
                 <Palette className='size-5' />
               </span>
               <span
-                className='absolute end-3 bottom-3 size-3 rounded-full border border-white/70'
+                className='absolute end-3 bottom-3 size-3 rounded-full border border-white/70 shadow-xs'
                 style={{ backgroundColor: accent }}
                 aria-hidden='true'
               />
-              {selected && (
-                <span className='absolute end-2 top-2 grid size-6 place-items-center rounded-full bg-primary text-primary-foreground'>
+              <span className='absolute start-3 top-2 rounded bg-black/40 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-xs'>
+                {isDark ? '🌙 داكن' : '☀️ فاتح'}
+              </span>
+              {active && (
+                <span className='absolute end-2 top-2 grid size-6 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm'>
                   <Check className='size-4' />
                 </span>
               )}
@@ -203,29 +230,73 @@ function ThemeCard({
           )
         })}
       </div>
-      <CardHeader className='gap-1 px-4 pt-4 pb-2'>
+
+      <CardHeader className='gap-2 px-4 pt-4 pb-2'>
         <div className='flex items-start justify-between gap-3'>
           <div className='min-w-0'>
-            <CardTitle className='truncate text-base'>{theme.name}</CardTitle>
-            <CardDescription className='mt-1 line-clamp-2 min-h-10'>
+            <CardTitle className='truncate text-base font-bold'>{theme.name}</CardTitle>
+            <CardDescription className='mt-1 line-clamp-2 min-h-9 text-xs'>
               {theme.description || theme.category || 'قالب لمتجرك'}
             </CardDescription>
           </div>
-          <span className='shrink-0 rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground'>
+          <span className='shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground'>
             {theme.category || 'عام'}
           </span>
         </div>
-      </CardHeader>
-      <CardContent className='flex items-center justify-between gap-3 px-4 pb-4'>
-        <div className='flex items-center gap-3'>
-          <span className='inline-flex items-center gap-1 text-xs text-muted-foreground'>
-            <Sun className='size-3.5' /> فاتح
+
+        {/* وسوم أنماط الأزرار، الكروت، والخطوط المطابقة للاستديو */}
+        <div className='flex flex-wrap gap-1.5 pt-1'>
+          <span className='inline-flex items-center rounded-md border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground'>
+            {buttonStyleLabel}
           </span>
-          <ColorSwatches theme={theme} mode='light' />
+          <span className='inline-flex items-center rounded-md border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground'>
+            {cardStyleLabel}
+          </span>
+          <span className='inline-flex items-center rounded-md border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground'>
+            {fontName}
+          </span>
         </div>
-        <div className='flex items-center gap-2'>
-          <Moon className='size-3.5 text-muted-foreground' aria-hidden='true' />
-          <ColorSwatches theme={theme} mode='dark' />
+      </CardHeader>
+
+      <CardContent className='flex flex-col gap-3 px-4 pb-4 pt-2'>
+        {/* شريحة ألوان كل وضع على حدة */}
+        <div className='flex flex-col gap-2 rounded-lg border bg-muted/30 p-2.5 text-xs'>
+          <div className='flex items-center justify-between'>
+            <span className='inline-flex items-center gap-1 font-medium text-muted-foreground'>
+              <Sun className='size-3.5 text-amber-500' /> فاتح
+            </span>
+            <ColorSwatches theme={theme} mode='light' />
+          </div>
+          <div className='flex items-center justify-between'>
+            <span className='inline-flex items-center gap-1 font-medium text-muted-foreground'>
+              <Moon className='size-3.5 text-indigo-400' /> داكن
+            </span>
+            <ColorSwatches theme={theme} mode='dark' />
+          </div>
+        </div>
+
+        {/* أزرار الاختيار المباشر للوضعين */}
+        <div className='grid grid-cols-2 gap-2 pt-1'>
+          <Button
+            type='button'
+            size='sm'
+            variant={isSelected && selectedMode === 'light' ? 'default' : 'outline'}
+            onClick={() => onSelect(theme, 'light')}
+            className='w-full text-xs'
+          >
+            {isSelected && selectedMode === 'light' && <Check className='size-3.5 me-1' />}
+            اختيار فاتح ☀️
+          </Button>
+          <Button
+            type='button'
+            size='sm'
+            variant={isSelected && selectedMode === 'dark' ? 'default' : 'outline'}
+            onClick={() => onSelect(theme, 'dark')}
+            className='w-full text-xs'
+          >
+            {isSelected && selectedMode === 'dark' && <Check className='size-3.5 me-1' />}
+            اختيار داكن 🌙
+          </Button>
         </div>
       </CardContent>
     </Card>
