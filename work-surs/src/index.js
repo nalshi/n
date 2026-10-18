@@ -1,11 +1,10 @@
 import { actionRegistry } from './router.js';
-import { verifyJWT, timingSafeEqual } from './security/auth.js';
+import { verifyHmacSignature, verifyJWT, timingSafeEqual } from './security/auth.js';
 import { assertAllowed, HttpError } from './security/rbac.js';
 import { validateAction } from './security/validate.js';
 import { buildCorsHeaders, successResponse, errorResponse } from './core/response.js';
 import { ROLES } from './config/constants.js';
-import { handleWhatsappWebhookVerify, handleWhatsappWebhookEvent } from './controllers/whatsappController.js';
-import { createFirebaseCustomToken } from './services/realtime/providers/firebaseSignalProvider.js';
+import { handleWhatsappWebhookVerify, handleWhatsappWebhookEvent } from './controllers/whatsappController.js'; // ⭐ إضافة: ربط واتساب
 
 // ========================================================
 // 🚪 نقطة الدخول الرئيسية للـ Worker
@@ -17,6 +16,145 @@ import { createFirebaseCustomToken } from './services/realtime/providers/firebas
 // 🚪 تصدير كائنات Durable Objects
 // ========================================================
 export { MerchantSession } from './durableObjects/MerchantSession.js';
+
+function base64UrlEncode(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+async function createWebSocketTicket(user, secret) {
+  const header = base64UrlEncode(
+    new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+  );
+  const payload = base64UrlEncode(
+    new TextEncoder().encode(
+      JSON.stringify({
+        user_id: user.user_id,
+        role: user.role,
+        username: user.username || '',
+        ws_ticket: true,
+        exp: Math.floor(Date.now() / 1000) + 60,
+      })
+    )
+  );
+  const data = `${header}.${payload}`;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(data)
+  );
+  return `${data}.${base64UrlEncode(new Uint8Array(signature))}`;
+}
+
+async function verifyGatewayAccess(request, env, corsHeaders) {
+  const gatewaySecret = request.headers.get('X-Gateway-Secret') || '';
+  const timestamp = request.headers.get('X-Gateway-Timestamp') || '';
+  const nonce = request.headers.get('X-Gateway-Nonce') || '';
+  const signature = request.headers.get('X-Gateway-Signature') || '';
+  const validSecrets = (env.PROXY_SECRETS || env.PROXY_SECRET || '')
+    .split(',')
+    .map((secret) => secret.trim())
+    .filter(Boolean);
+  const matchedSecret = validSecrets.find((secret) =>
+    timingSafeEqual(gatewaySecret, secret)
+  );
+  const isTrustedGateway = Boolean(matchedSecret);
+  const internalKey = request.headers.get('X-Internal-Key') || '';
+  const isTrustedLegacyServer =
+    Boolean(env.INTERNAL_SYNC_KEY) &&
+    timingSafeEqual(internalKey, env.INTERNAL_SYNC_KEY);
+
+  if (!isTrustedGateway && !isTrustedLegacyServer) {
+    return new Response(
+      JSON.stringify({
+        status: 'error',
+        code: 'ACCESS_DENIED_DIRECT_CALL_BLOCKED',
+        message: '⛔ وصول محظور: غير مصرح بالاتصال المباشر بالخادم.',
+      }),
+      {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY',
+          'X-Robots-Tag': 'noindex, nofollow',
+        },
+      }
+    );
+  }
+
+  const isWebSocketRequest =
+    request.headers.get('Upgrade')?.toLowerCase() === 'websocket' ||
+    new URL(request.url).pathname === '/api/worker/ws';
+  if (!isTrustedGateway || isWebSocketRequest) return null;
+
+  if (!timestamp || !nonce || !signature) {
+    return errorResponse('توقيع بوابة الحماية مفقود.', corsHeaders, 403);
+  }
+  const requestTime = Number.parseInt(timestamp, 10);
+  if (
+    !Number.isFinite(requestTime) ||
+    Math.abs(Date.now() - requestTime) > 60_000 ||
+    !/^[0-9a-f-]{36}$/i.test(nonce)
+  ) {
+    return errorResponse(
+      '⛔ الطلب منتهي الصلاحية أو تم التلاعب بالوقت.',
+      corsHeaders,
+      403
+    );
+  }
+
+  let bodyHash = request.headers.get('X-Gateway-Body-SHA256') || '';
+  if (!/^[0-9a-f]{64}$/i.test(bodyHash)) {
+    return errorResponse('بصمة حمولة البوابة غير صالحة.', corsHeaders, 403);
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    const body = await request.clone().arrayBuffer();
+    if (body.byteLength > 12 * 1024 * 1024) {
+      return errorResponse(
+        'حجم البيانات المرسلة تجاوز الحد المسموح.',
+        corsHeaders,
+        413
+      );
+    }
+    const digest = await crypto.subtle.digest('SHA-256', body);
+    bodyHash = Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
+    if (
+      !timingSafeEqual(
+        bodyHash,
+        request.headers.get('X-Gateway-Body-SHA256')
+      )
+    ) {
+      return errorResponse(
+        'بصمة حمولة الطلب لا تطابق التوقيع.',
+        corsHeaders,
+        403
+      );
+    }
+  }
+
+  const requestUrl = new URL(request.url);
+  const signaturePayload = `${timestamp}:${nonce}:${request.method}:${requestUrl.pathname}:${requestUrl.search}:${bodyHash}`;
+  const isValidSignature = await verifyHmacSignature(
+    matchedSecret,
+    signaturePayload,
+    signature
+  );
+  if (!isValidSignature) {
+    return errorResponse('توقيع بوابة الحماية غير صالح.', corsHeaders, 403);
+  }
+  return null;
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -35,38 +173,24 @@ export default {
       return new Response('Method Not Allowed', { status: 405 });
     }
 
-    // ⭐ مسار Firebase Custom Token — يُصدر للتاجر توكن قراءة محدود الصلاحية (ساعة)
-    if (url.pathname === '/api/firebase/token' || url.pathname === '/firebase/token') {
-      const authHeader = request.headers.get('Authorization') || '';
-      const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-      if (!token) {
-        return new Response(JSON.stringify({ status: 'error', message: 'Unauthorized' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      try {
-        const user = await verifyJWT(token, env.APP_SECRET_KEY);
-        if (!user) throw new Error('invalid token');
-        const firebaseToken = await createFirebaseCustomToken(env, user.user_id);
-        return new Response(JSON.stringify({
-          status: 'success',
-          token: firebaseToken,
-          expiresIn: 3600,
-        }), {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      } catch {
-        return new Response(JSON.stringify({ status: 'error', message: 'Unauthorized' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
+    const isEarlyRoute =
+      url.pathname.endsWith('/ws/ticket') ||
+      url.pathname.endsWith('/merchant/order-signals') ||
+      url.pathname.endsWith('/ws') ||
+      request.headers.get('Upgrade')?.toLowerCase() === 'websocket';
+    if (isEarlyRoute) {
+      const gatewayError = await verifyGatewayAccess(request, env, corsHeaders);
+      if (gatewayError) return gatewayError;
     }
 
     // ⭐ مسار استخراج تذكرة اتصال WebSocket (يدعم التوافق مع المتصفحات القديمة)
     if (url.pathname.endsWith('/ws/ticket')) {
+      if (request.method !== 'POST') {
+        return new Response(JSON.stringify({ status: 'error', message: 'Method Not Allowed' }), {
+          status: 405,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
       const authHeader = request.headers.get('Authorization') || '';
       const token = authHeader.replace(/^Bearer\s+/i, '').trim();
       if (!token) {
@@ -75,7 +199,21 @@ export default {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      return new Response(JSON.stringify({ status: 'success', ticket: token }), {
+      const user = await verifyJWT(token, env.APP_SECRET_KEY);
+      if (!user) {
+        return new Response(JSON.stringify({ status: 'error', message: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (user.role !== ROLES.MERCHANT) {
+        return new Response(JSON.stringify({ status: 'error', message: 'Forbidden' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const ticket = await createWebSocketTicket(user, env.APP_SECRET_KEY);
+      return new Response(JSON.stringify({ status: 'success', ticket }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -104,7 +242,11 @@ export default {
       try {
         const user = await verifyJWT(token, env.APP_SECRET_KEY);
         // التحقق من صلاحية المستخدم
-        if (!user || String(user.user_id) !== String(merchantId)) {
+        if (
+          !user ||
+          user.ws_ticket !== true ||
+          String(user.user_id) !== String(merchantId)
+        ) {
            return new Response('Unauthorized: Invalid Token or ID Mismatch', { status: 401 });
         }
 
@@ -124,8 +266,60 @@ export default {
       }
     }
 
+    if (url.pathname.endsWith('/merchant/order-signals')) {
+      if (request.method !== 'GET') {
+        return errorResponse('Method Not Allowed', corsHeaders, 405);
+      }
 
-    // ⭐ درع الحماية الفائق (Zero-Trust Shield & Anti-Replay Guard)
+      const authHeader = request.headers.get('Authorization') || '';
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+      const user = token ? await verifyJWT(token, env.APP_SECRET_KEY) : null;
+      if (!user) return errorResponse('غير مصرح', corsHeaders, 401);
+      if (user.role !== ROLES.MERCHANT) {
+        return errorResponse('غير مصرح', corsHeaders, 403);
+      }
+      if (!env.FIREBASE_DB_URL || !env.FIREBASE_DB_SECRET) {
+        return errorResponse('إعدادات الاتصال اللحظي غير مهيأة.', corsHeaders, 503);
+      }
+
+      const merchantId = encodeURIComponent(String(user.user_id));
+      const base = env.FIREBASE_DB_URL.replace(/\/$/, '');
+      const firebaseUrl = new URL(
+        `${base}/merchant_order_signals/${merchantId}.json`
+      );
+      firebaseUrl.searchParams.set('auth', env.FIREBASE_DB_SECRET);
+      let firebaseResponse;
+      try {
+        firebaseResponse = await fetch(firebaseUrl, {
+          headers: { Accept: 'text/event-stream' },
+          cache: 'no-store',
+          signal: request.signal,
+        });
+      } catch (error) {
+        console.error('[firebase-realtime] فشل فتح بث إشارات الطلبات:', error);
+        return errorResponse('تعذر فتح اتصال Firebase اللحظي.', corsHeaders, 502);
+      }
+      if (!firebaseResponse.ok || !firebaseResponse.body) {
+        console.error(
+          '[firebase-realtime] تعذر فتح بث إشارة الطلبات:',
+          firebaseResponse.status
+        );
+        return errorResponse('تعذر فتح اتصال Firebase اللحظي.', corsHeaders, 502);
+      }
+
+      return new Response(firebaseResponse.body, {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          'X-Accel-Buffering': 'no',
+        },
+      });
+    }
+
+
+    // ⭐ درع الحماية الفائق (Zero-Trust Gateway Validation)
     // كل الطلبات (ما عدا Webhook واتساب) يجب أن تأتي حصرياً عبر البروكسي الداخلي
     // وتحمل التوقيع الرقمي وسر البوابة المشفر، أو المفتاح الداخلي للسيرفر الموثوق.
     const gatewaySecret = request.headers.get('X-Gateway-Secret') || '';
@@ -160,12 +354,52 @@ export default {
       });
     }
 
-    // ⛔ التحقق من منع هجمات إعادة الإرسال (Anti-Replay Attack) إذا تم تمرير Timestamp
-    if (timestamp) {
+    const isWebSocketRequest =
+      request.headers.get('Upgrade')?.toLowerCase() === 'websocket' ||
+      url.pathname === '/api/worker/ws';
+
+    // التوقيع يربط السر بالمسار والحمولة؛ السر وحده لا يكفي لقبول طلب HTTP.
+    if (isTrustedGateway && !isWebSocketRequest) {
+      if (!timestamp || !nonce || !signature) {
+        return errorResponse('توقيع بوابة الحماية مفقود.', corsHeaders, 403);
+      }
       const now = Date.now();
       const reqTime = parseInt(timestamp, 10);
-      if (isNaN(reqTime) || Math.abs(now - reqTime) > 60000) {
+      if (
+        !Number.isFinite(reqTime) ||
+        Math.abs(now - reqTime) > 60_000 ||
+        !/^[0-9a-f-]{36}$/i.test(nonce)
+      ) {
         return errorResponse('⛔ الطلب منتهي الصلاحية أو تم التلاعب بالوقت.', corsHeaders, 403);
+      }
+
+      let bodyHash = request.headers.get('X-Gateway-Body-SHA256') || '';
+      if (!/^[0-9a-f]{64}$/i.test(bodyHash)) {
+        return errorResponse('بصمة حمولة البوابة غير صالحة.', corsHeaders, 403);
+      }
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        const body = await request.clone().arrayBuffer();
+        if (body.byteLength > 12 * 1024 * 1024) {
+          return errorResponse('حجم البيانات المرسلة تجاوز الحد المسموح.', corsHeaders, 413);
+        }
+        const digest = await crypto.subtle.digest('SHA-256', body);
+        bodyHash = Array.from(new Uint8Array(digest))
+          .map((byte) => byte.toString(16).padStart(2, '0'))
+          .join('');
+        if (!timingSafeEqual(bodyHash, request.headers.get('X-Gateway-Body-SHA256'))) {
+          return errorResponse('بصمة حمولة الطلب لا تطابق التوقيع.', corsHeaders, 403);
+        }
+      }
+
+      const requestUrl = new URL(request.url);
+      const signaturePayload = `${timestamp}:${nonce}:${request.method}:${requestUrl.pathname}:${requestUrl.search}:${bodyHash}`;
+      const isValidSignature = await verifyHmacSignature(
+        matchedSecret,
+        signaturePayload,
+        signature
+      );
+      if (!isValidSignature) {
+        return errorResponse('توقيع بوابة الحماية غير صالح.', corsHeaders, 403);
       }
     }
 

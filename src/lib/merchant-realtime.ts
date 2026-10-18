@@ -300,7 +300,7 @@ export function startMerchantRealtime(
     const isReconnect = hasConnected
     hasConnected = true
     reconnectAttempt = 0
-    setStatus('connected', 'متصل لحظيًا')
+    setStatus('connected', 'متصل')
     if (isReconnect) void resyncAfterReconnect()
   }
 
@@ -324,7 +324,7 @@ export function startMerchantRealtime(
         'disconnected',
         typeof message.message === 'string'
           ? message.message
-          : 'تعذر تجهيز بيانات الاتصال اللحظي'
+          : 'تعذر تجهيز بيانات الاتصال'
       )
       return
     }
@@ -480,7 +480,7 @@ export function startMerchantRealtime(
       return
     }
 
-    setStatus('connecting', 'جاري إنشاء الاتصال اللحظي...')
+    setStatus('connecting', 'جاري إنشاء الاتصال...')
     try {
       const ticket = await fetchTicket()
       if (stopped) return
@@ -506,7 +506,7 @@ export function startMerchantRealtime(
       })
       nextSocket.addEventListener('error', () => {
         if (socket === nextSocket) {
-          setStatus('disconnected', 'حدث خطأ في الاتصال اللحظي')
+          setStatus('disconnected', 'حدث خطأ في الاتصال')
         }
       })
       nextSocket.addEventListener('close', (event) => {
@@ -518,14 +518,14 @@ export function startMerchantRealtime(
         }
         setStatus(
           navigator.onLine ? 'disconnected' : 'offline',
-          event.reason || `انقطع الاتصال اللحظي (${event.code})`
+          event.reason || `انقطع الاتصال (${event.code})`
         )
         scheduleReconnect()
       })
     } catch (error) {
       setStatus(
         'disconnected',
-        error instanceof Error ? error.message : 'تعذر بدء الاتصال اللحظي'
+        error instanceof Error ? error.message : 'تعذر بدء الاتصال'
       )
       scheduleReconnect()
     }
@@ -582,6 +582,6 @@ export function startMerchantRealtime(
       sharedPort.close()
       sharedPort = null
     }
-    setStatus('disconnected', 'الاتصال اللحظي متوقف')
+    setStatus('disconnected', 'الاتصال متوقف')
   }
 }

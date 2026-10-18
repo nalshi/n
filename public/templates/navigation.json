@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "items": [
+    { "id": "bottom-bar", "name": "شريط سفلي", "description": "تنقل مألوف وسريع للجوال.", "config": { "navigation_settings": { "bottom_bar": { "enabled": true, "style": "solid" } } } },
+    { "id": "floating", "name": "عائم", "description": "شريط تنقل منفصل وأنيق.", "config": { "navigation_settings": { "bottom_bar": { "enabled": true, "style": "floating" } } } }
+  ]
+}

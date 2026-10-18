@@ -1,0 +1,119 @@
+{
+  "version": "2.0",
+  "theme_name": "starlit_aurora",
+  "typography": {
+    "font_family": "Tajawal",
+    "base_size": "16px",
+    "heading_weight": "700",
+    "heading_font_family": "Tajawal"
+  },
+  "shapes": {
+    "card_radius": "18px",
+    "button_radius": "12px",
+    "button_style": "rounded",
+    "card_style": "elevated",
+    "navbar_style": "solid",
+    "section_spacing": "normal"
+  },
+  "navigation_settings": {
+    "bottom_bar": {
+      "items": [
+        { "id": "home", "label": "الرئيسية", "icon": "fa-house", "visible": true, "order": 1 },
+        { "id": "search", "label": "بحث", "icon": "fa-magnifying-glass", "visible": true, "order": 2 },
+        { "id": "orders", "label": "طلباتي", "icon": "fa-box-open", "visible": true, "order": 3 },
+        { "id": "favorites", "label": "المفضلة", "icon": "fa-heart", "visible": true, "order": 4 },
+        { "id": "cart", "label": "السلة", "icon": "fa-bag-shopping", "visible": true, "order": 5 }
+      ]
+    },
+    "top_bar": {
+      "show_logo_icon": true,
+      "logo_icon": "fa-store",
+      "show_profile_btn": true,
+      "show_search_btn": true
+    }
+  },
+  "modes": {
+    "light": {
+      "colors": {
+        "primary": "#6D28D9",
+        "primary_hover": "#5B21B6",
+        "primary_gradient_start": "#6D28D9",
+        "primary_gradient_end": "#22D3EE",
+        "accent": "#0891B2",
+        "bg_body": "#F7F4FF",
+        "bg_card": "#FFFFFF",
+        "bg_surface": "#EDE9FE",
+        "text_main": "#24114A",
+        "text_muted": "#5B3A8A",
+        "border": "#DDD6FE",
+        "header_bg": "#FFFFFF",
+        "header_text": "#24114A",
+        "bottom_nav_bg": "#FFFFFF",
+        "bottom_nav_active": "#6D28D9",
+        "bottom_nav_inactive": "#5B3A8A",
+        "search_bg": "#EDE9FE",
+        "search_text": "#24114A",
+        "search_placeholder": "#5B3A8A",
+        "category_chip_bg": "#EDE9FE",
+        "category_chip_active_bg": "#6D28D9",
+        "category_chip_text": "#24114A",
+        "category_chip_active_text": "#FFFFFF",
+        "modal_bg": "#FFFFFF",
+        "modal_overlay": "rgba(36, 17, 74, 0.6)",
+        "toast_success": "#10B981",
+        "toast_error": "#F43F5E",
+        "toast_warning": "#F59E0B",
+        "price_color": "#6D28D9",
+        "old_price_color": "#5B3A8A",
+        "discount_badge_bg": "#EF4444",
+        "discount_badge_text": "#FFFFFF",
+        "button_primary_bg": "#6D28D9",
+        "button_primary_text": "#FFFFFF",
+        "button_secondary_bg": "#EDE9FE",
+        "button_secondary_text": "#24114A",
+        "card_shadow": "0 4px 20px -2px rgba(0, 0, 0, 0.05)"
+      }
+    },
+    "dark": {
+      "colors": {
+        "primary": "#C4B5FD",
+        "primary_hover": "#DDD6FE",
+        "primary_gradient_start": "#C4B5FD",
+        "primary_gradient_end": "#22D3EE",
+        "accent": "#67E8F9",
+        "bg_body": "#10091F",
+        "bg_card": "#1C1233",
+        "bg_surface": "#2D1B4E",
+        "text_main": "#F5F3FF",
+        "text_muted": "#D8CCF5",
+        "border": "#5B3C86",
+        "header_bg": "#1C1233",
+        "header_text": "#F5F3FF",
+        "bottom_nav_bg": "#1C1233",
+        "bottom_nav_active": "#C4B5FD",
+        "bottom_nav_inactive": "#D8CCF5",
+        "search_bg": "#2D1B4E",
+        "search_text": "#F5F3FF",
+        "search_placeholder": "#D8CCF5",
+        "category_chip_bg": "#2D1B4E",
+        "category_chip_active_bg": "#C4B5FD",
+        "category_chip_text": "#F5F3FF",
+        "category_chip_active_text": "#10091F",
+        "modal_bg": "#1C1233",
+        "modal_overlay": "rgba(0, 0, 0, 0.75)",
+        "toast_success": "#10B981",
+        "toast_error": "#F43F5E",
+        "toast_warning": "#F59E0B",
+        "price_color": "#C4B5FD",
+        "old_price_color": "#D8CCF5",
+        "discount_badge_bg": "#EF4444",
+        "discount_badge_text": "#FFFFFF",
+        "button_primary_bg": "#C4B5FD",
+        "button_primary_text": "#10091F",
+        "button_secondary_bg": "#2D1B4E",
+        "button_secondary_text": "#F5F3FF",
+        "card_shadow": "0 4px 20px -2px rgba(0, 0, 0, 0.35)"
+      }
+    }
+  }
+}

@@ -7,6 +7,12 @@ import {
 import { toast } from 'sonner'
 import { useRealtimeStore } from '@/stores/realtime-store'
 import {
+  localDB,
+  hydrateFromSnapshot,
+  writeSyncCursor,
+  readSyncCursor,
+} from '@/lib/db'
+import {
   fetchDashboardInitialization,
   normalizeRealtimeOrders,
   normalizeRealtimeProducts,
@@ -15,24 +21,55 @@ import {
   type DashboardOrder,
   type DashboardProduct,
 } from '@/features/dashboard/dashboard-data'
-import {
-  localDB,
-  injectOrder,
-  removeOrder,
-  injectProduct,
-  removeProduct,
-  writeSyncCursor,
-  readSyncCursor,
-  hydrateFromSnapshot,
-} from '@/lib/db'
 
-// ─── قناة البث المحلي بين التبويبات (BroadcastChannel) ───────────────────
+// قناة بث محلية بين التبويبات (BroadcastChannel)
 // تُستخدم لإعلام التبويبات الثانوية بالتحديثات دون أي طلب شبكة إضافي.
-// التبويب القائد يكتب في Dexie ثم يبث عبر هذه القناة → التبويبات الأخرى
+// التبويب القائد يكتب في Dexie ثم يبث عبر هذه القناة، والتبويبات الأخرى
 // تقرأ من Dexie محلياً (0 HTTP requests).
-const _localBus = typeof BroadcastChannel !== 'undefined'
-  ? new BroadcastChannel('merchant_tab_mesh_v1')
-  : null
+const _localBus =
+  typeof BroadcastChannel !== 'undefined'
+    ? new BroadcastChannel('merchant_tab_mesh_v1')
+    : null
+
+export function fetchMerchantOrderSignals(
+  merchantId: string,
+  signal: AbortSignal
+) {
+  if (!merchantId) {
+    throw new Error('تعذر تحديد حساب التاجر لقراءة إشارات الطلبات.')
+  }
+  const databaseUrl = import.meta.env.VITE_FIREBASE_DB_URL?.trim()
+  if (!databaseUrl) {
+    throw new Error('عنوان Firebase غير مضبوط في إعدادات بناء الواجهة.')
+  }
+
+  let endpoint: URL
+  try {
+    const baseUrl = new URL(databaseUrl)
+    if (
+      baseUrl.protocol !== 'https:' ||
+      baseUrl.username ||
+      baseUrl.password ||
+      baseUrl.search ||
+      baseUrl.hash
+    ) {
+      throw new Error('Invalid Firebase database URL')
+    }
+    endpoint = new URL(
+      `merchant_order_signals/${encodeURIComponent(merchantId)}.json`,
+      `${baseUrl.toString().replace(/\/+$/, '')}/`
+    )
+  } catch {
+    throw new Error('عنوان Firebase غير صالح في إعدادات بناء الواجهة.')
+  }
+
+  return fetch(endpoint, {
+    headers: { Accept: 'text/event-stream' },
+    cache: 'no-store',
+    credentials: 'omit',
+    signal,
+  })
+}
 
 export const merchantBootstrapKey = (merchantId: string) =>
   ['merchant-bootstrap', merchantId] as const
@@ -90,6 +127,7 @@ function writeSnapshotQueries(
   snapshot: DashboardInitialization
 ) {
   const { dashboard, categories } = snapshot
+  queryClient.setQueryData(merchantBootstrapKey(merchantId), snapshot)
   queryClient.setQueryData(merchantQueryKeys.dashboard(merchantId), dashboard)
   queryClient.setQueryData(
     merchantQueryKeys.products(merchantId),
@@ -113,16 +151,13 @@ function writeSnapshotQueries(
   )
   queryClient.setQueryData(merchantQueryKeys.categories(merchantId), categories)
 
-  // ─── حقن Snapshot في Dexie IndexedDB بشكل غير متزامن ────────────────
+  // حقن Snapshot في Dexie IndexedDB بشكل غير متزامن
   // نستخدم void لأن هذا الحقن لا يحتاج أن يُكمل قبل تحديث الـ UI.
   // الـ UI يتحدث فوراً من TanStack Query، بينما Dexie تُحدَّث في الخلفية
   // لضمان المخزن الدائم (Offline-First persistence).
   void hydrateFromSnapshot({
     merchantId,
-    orders: [
-      ...dashboard.activeOrders,
-      ...dashboard.archivedOrders,
-    ],
+    orders: [...dashboard.activeOrders, ...dashboard.archivedOrders],
     products: dashboard.products,
     categories,
     lastEventId: snapshot.lastEventId ?? 0,
@@ -132,6 +167,15 @@ function writeSnapshotQueries(
   })
 }
 
+export async function refreshMerchantSnapshot(
+  queryClient: QueryClient,
+  merchantId: string
+) {
+  if (!merchantId) throw new Error('تعذر تحديد حساب التاجر لتحديث اللوحة.')
+  const snapshot = await fetchDashboardInitialization(true)
+  writeSnapshotQueries(queryClient, merchantId, snapshot)
+  return snapshot
+}
 
 function upsertProduct(
   products: DashboardProduct[],
@@ -157,7 +201,6 @@ function applyMerchantEvent(
   event: MerchantEvent
 ) {
   const key = merchantBootstrapKey(merchantId)
-
   if (event.type === 'product') {
     const productId =
       event.entityId ||
@@ -168,14 +211,13 @@ function applyMerchantEvent(
       queryClient.getQueryData<DashboardProduct[]>(
         merchantQueryKeys.products(merchantId)
       ) || []
+    const [eventProduct] = normalizeRealtimeProducts([event.data])
     const next =
       event.action === 'deleted'
         ? current.filter((product) => product.id !== productId)
-        : (() => {
-            const [product] = normalizeRealtimeProducts([event.data])
-            return product ? upsertProduct(current, product) : current
-          })()
-
+        : eventProduct
+          ? upsertProduct(current, eventProduct)
+          : current
     queryClient.setQueryData(merchantQueryKeys.products(merchantId), next)
     queryClient.setQueryData(
       merchantQueryKeys.dashboardProducts(merchantId),
@@ -187,83 +229,38 @@ function applyMerchantEvent(
     )
     queryClient.setQueryData<DashboardInitialization>(key, (snapshot) =>
       snapshot
-        ? {
-            ...snapshot,
-            dashboard: { ...snapshot.dashboard, products: next },
-          }
+        ? { ...snapshot, dashboard: { ...snapshot.dashboard, products: next } }
         : snapshot
     )
-
-    // ─── حقن التغيير في Dexie بالتوازي (غير مُعلِّق للـ UI) ──────────
-    if (event.action === 'deleted') {
-      void removeProduct(productId).catch((err) =>
-        console.warn('[db] فشل حذف المنتج من IndexedDB:', err)
-      )
-    } else {
-      const [product] = normalizeRealtimeProducts([event.data])
-      if (product) {
-        void injectProduct(product).catch((err) =>
-          console.warn('[db] فشل حفظ المنتج في IndexedDB:', err)
-        )
-      }
-    }
-
-    // إعلام التبويبات الأخرى محلياً (0 طلبات شبكة)
     _localBus?.postMessage({ type: 'PRODUCT_MUTATED', productId, merchantId })
     return
   }
 
-  // ─── معالجة أحداث الطلبات ─────────────────────────────────────────────
   const active =
-    queryClient.getQueryData<DashboardOrder[]>([
-      'merchant-orders',
-      merchantId,
-      'active',
-    ]) || []
+    queryClient.getQueryData<DashboardOrder[]>(
+      merchantQueryKeys.orders(merchantId, 'active')
+    ) || []
   const archived =
-    queryClient.getQueryData<DashboardOrder[]>([
-      'merchant-orders',
-      merchantId,
-      'archived',
-    ]) || []
+    queryClient.getQueryData<DashboardOrder[]>(
+      merchantQueryKeys.orders(merchantId, 'archived')
+    ) || []
   const orderId =
     event.entityId ||
     String(
       readRecord(event.data)?.id || readRecord(event.data)?.ticket_id || ''
     )
-
-  let nextActive = active
-  let nextArchived = archived
-
-  if (event.action === 'deleted') {
-    if (event.scope === 'archived') {
-      nextArchived = archived.filter((order) => order.id !== orderId)
-    } else {
-      nextActive = active.filter((order) => order.id !== orderId)
-    }
-    // حذف من Dexie
-    void removeOrder(orderId).catch((err) =>
-      console.warn('[db] فشل حذف الطلب من IndexedDB:', err)
-    )
-  } else {
-    const [order] = normalizeRealtimeOrders([event.data])
-    if (order) {
-      if (event.scope === 'archived') {
-        nextArchived = upsertOrder(archived, order)
-        nextActive = active.filter((item) => item.id !== order.id)
-      } else if (order.status === 'completed' || order.status === 'cancelled') {
-        nextActive = active.filter((item) => item.id !== order.id)
-      } else {
-        nextActive = upsertOrder(active, order)
-        nextArchived = archived.filter((item) => item.id !== order.id)
-      }
-      // حقن في Dexie
-      void injectOrder(order).catch((err) =>
-        console.warn('[db] فشل حفظ الطلب في IndexedDB:', err)
-      )
-    }
-  }
-
+  const [eventOrder] =
+    event.action === 'deleted' ? [] : normalizeRealtimeOrders([event.data])
+  const nextActive = eventOrder
+    ? eventOrder.status === 'completed' || eventOrder.status === 'cancelled'
+      ? active.filter((order) => order.id !== eventOrder.id)
+      : upsertOrder(active, eventOrder)
+    : active.filter((order) => order.id !== orderId)
+  const nextArchived = eventOrder
+    ? eventOrder.status === 'completed' || eventOrder.status === 'cancelled'
+      ? upsertOrder(archived, eventOrder)
+      : archived.filter((order) => order.id !== eventOrder.id)
+    : archived.filter((order) => order.id !== orderId)
   queryClient.setQueryData(
     merchantQueryKeys.orders(merchantId, 'active'),
     nextActive
@@ -295,26 +292,236 @@ function applyMerchantEvent(
         }
       : snapshot
   )
-
-  // إعلام التبويبات الأخرى محلياً (0 طلبات شبكة)
-  _localBus?.postMessage({
-    type: 'ORDER_MUTATED',
-    orderId,
-    merchantId,
-    action: event.action,
-  })
+  _localBus?.postMessage({ type: 'ORDER_MUTATED', orderId, merchantId })
 }
 
+function firebaseSignalFromEvent(
+  value: unknown
+): { signal: string; revision: number } | null {
+  const event = readRecord(value)
+  const data = readRecord(event?.data)
+  if (typeof data?.signal !== 'string') return null
+  const revision =
+    typeof data.revision === 'number' && Number.isFinite(data.revision)
+      ? data.revision
+      : 0
+  return { signal: data.signal, revision }
+}
+
+async function refreshOrdersFromFirebaseSignal(
+  queryClient: QueryClient,
+  merchantId: string
+) {
+  const snapshot = await fetchDashboardInitialization(true)
+  const previousOrders =
+    queryClient.getQueryData<DashboardOrder[]>(
+      merchantQueryKeys.orders(merchantId, 'active')
+    ) || []
+  const knownOrderIds = new Set(previousOrders.map((order) => order.id))
+  writeSnapshotQueries(queryClient, merchantId, snapshot)
+  _localBus?.postMessage({ type: 'ORDER_MUTATED', merchantId })
+  for (const order of snapshot.dashboard.activeOrders) {
+    if (
+      !knownOrderIds.has(order.id) &&
+      order.status === 'pending_merchant_approval'
+    ) {
+      toast.info(`وصل طلب جديد من ${order.customerName}.`, {
+        duration: 8_000,
+      })
+    }
+  }
+}
+
+function useFirebaseOrderSignals(
+  merchantId: string,
+  enabled: boolean,
+  queryClient: QueryClient
+) {
+  useEffect(() => {
+    if (!merchantId || !enabled) return
+
+    let stopped = false
+    let controller: AbortController | null = null
+    let reconnectAttempt = 0
+    let reconnectTimer: number | undefined
+    let lockReleaser: (() => void) | null = null
+    let lastReportedError = ''
+    const signalStorageKey = `merchant-firebase-order-signal:${merchantId}`
+    const revisionStorageKey = `${signalStorageKey}:revision`
+    let lastSignal = localStorage.getItem(signalStorageKey) || ''
+    const storedRevision = Number(localStorage.getItem(revisionStorageKey))
+    let lastRevision = Number.isFinite(storedRevision) ? storedRevision : null
+    const setStatus = useRealtimeStore.getState().setStatus
+    const reportStatus = (
+      status: 'connecting' | 'connected' | 'disconnected' | 'offline',
+      detail: string
+    ) => {
+      setStatus(status, detail)
+      _localBus?.postMessage({
+        type: 'REALTIME_STATUS',
+        merchantId,
+        status,
+        detail,
+      })
+    }
+    reportStatus('connecting', 'جاري الاتصال بـ Firebase...')
+
+    const waitForReconnect = (delay: number) =>
+      new Promise<void>((resolve) => {
+        reconnectTimer = window.setTimeout(() => {
+          reconnectTimer = undefined
+          resolve()
+        }, delay)
+      })
+
+    async function consumeSignals() {
+      controller = new AbortController()
+      const response = await fetchMerchantOrderSignals(
+        merchantId,
+        controller.signal
+      )
+      if (!response.ok) {
+        let message = `تعذر الاتصال بإشارات الطلبات (${response.status}).`
+        try {
+          const body: unknown = await response.clone().json()
+          const record = readRecord(body)
+          if (typeof record?.message === 'string') {
+            message = record.message
+          } else if (typeof record?.error === 'string') {
+            message =
+              record.error === 'Permission denied'
+                ? 'رفض Firebase قراءة إشارات الطلبات. أضف قاعدة القراءة المحدودة لمسار التاجر.'
+                : record.error
+          }
+        } catch {
+          // Keep the HTTP status when Firebase returns a non-JSON response.
+        }
+        throw new Error(message)
+      }
+      if (!response.body) throw new Error('تعذر قراءة بث إشارات الطلبات.')
+      reportStatus('connected', 'متصل بمزامنة الطلبات')
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      const handleFrame = async (frame: string) => {
+        const dataLines = frame
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trimStart())
+        if (!dataLines.length) return
+
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(dataLines.join('\n')) as unknown
+        } catch {
+          throw new Error('وصلت إشارة طلب بصيغة غير صالحة من Firebase.')
+        }
+
+        const signal = firebaseSignalFromEvent(parsed)
+        if (!signal) return
+        if (signal.revision < (lastRevision ?? 0)) return
+
+        if (signal.signal === lastSignal) {
+          lastRevision = Math.max(lastRevision ?? 0, signal.revision)
+          localStorage.setItem(signalStorageKey, signal.signal)
+          localStorage.setItem(revisionStorageKey, String(lastRevision))
+          return
+        }
+
+        await refreshOrdersFromFirebaseSignal(queryClient, merchantId)
+        localStorage.setItem(signalStorageKey, signal.signal)
+        localStorage.setItem(revisionStorageKey, String(signal.revision))
+        lastSignal = signal.signal
+        lastRevision = signal.revision
+        lastReportedError = ''
+      }
+
+      while (!stopped) {
+        const { done, value } = await reader.read()
+        if (done) return
+        buffer += decoder.decode(value, { stream: true })
+        const frames = buffer.split(/\r?\n\r?\n/)
+        buffer = frames.pop() || ''
+        for (const frame of frames) await handleFrame(frame)
+      }
+    }
+
+    async function run() {
+      while (!stopped) {
+        try {
+          await consumeSignals()
+          if (stopped) return
+          reconnectAttempt = 0
+          controller?.abort()
+          controller = null
+          await waitForReconnect(1_000)
+        } catch (error) {
+          if (stopped) return
+          controller?.abort()
+          controller = null
+          reportStatus(
+            navigator.onLine ? 'disconnected' : 'offline',
+            error instanceof Error ? error.message : 'تعذر الاتصال بـ Firebase.'
+          )
+          if (!(error instanceof DOMException && error.name === 'AbortError')) {
+            const message =
+              error instanceof Error
+                ? error.message
+                : 'يرجى التحقق من الاتصال بالإنترنت.'
+            if (message !== lastReportedError) {
+              toast.error('تعذر تحديث الطلبات.', {
+                description: message,
+              })
+              lastReportedError = message
+            }
+          }
+          const delay = Math.min(1_000 * 2 ** reconnectAttempt, 30_000)
+          reconnectAttempt += 1
+          await waitForReconnect(delay)
+        }
+      }
+    }
+
+    if ('locks' in navigator) {
+      void navigator.locks.request(
+        `merchant_firebase_order_leader_${merchantId}`,
+        async (lock) => {
+          if (!lock || stopped) {
+            if (!stopped) {
+              reportStatus('connected', 'المزامنة تعمل في تبويب آخر.')
+            }
+            return
+          }
+          void run()
+          return new Promise<void>((resolve) => {
+            lockReleaser = resolve
+          })
+        }
+      )
+    } else {
+      void run()
+    }
+
+    return () => {
+      stopped = true
+      lockReleaser?.()
+      lockReleaser = null
+      controller?.abort()
+      reportStatus('disconnected', 'تم إيقاف اتصال Firebase.')
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
+    }
+  }, [enabled, merchantId, queryClient])
+}
 
 export function useMerchantData(merchantId: string) {
   const queryClient = useQueryClient()
   const query = useQuery({
     queryKey: merchantBootstrapKey(merchantId),
     queryFn: async (): Promise<DashboardInitialization> => {
-      // 1. تحقق من ذاكرة التاجر المحلية أولاً (Zero-Fetch on Refresh)
-      const localProductsCount = await localDB.products.count()
-      if (localProductsCount > 0) {
-        // البيانات موجودة بالفعل في ذاكرة التاجر! عرض فوري بدون أي استدعاء للسيرفر
+      const localSnapshot = await localDB.syncState.get('cursor')
+      if (localSnapshot?.merchantId === merchantId) {
         const [products, orders, categories] = await Promise.all([
           localDB.products.toArray(),
           localDB.orders.toArray(),
@@ -326,7 +533,7 @@ export function useMerchantData(merchantId: string) {
         const archivedOrders = orders.filter(
           (o) => o.status === 'completed' || o.status === 'cancelled'
         )
-        return {
+        const snapshot: DashboardInitialization = {
           dashboard: {
             products,
             activeOrders,
@@ -339,10 +546,13 @@ export function useMerchantData(merchantId: string) {
           lastTimestamp: Date.now(),
           lastEventId: 0,
         }
+        writeSnapshotQueries(queryClient, merchantId, snapshot)
+        return snapshot
       }
 
-      // 2. إذا كانت الذاكرة فارغة تماماً (أول تسجيل دخول على هذا المتصفح فقط):
-      return fetchDashboardInitialization(true)
+      const snapshot = await fetchDashboardInitialization(true)
+      writeSnapshotQueries(queryClient, merchantId, snapshot)
+      return snapshot
     },
     enabled: Boolean(merchantId),
     staleTime: Number.POSITIVE_INFINITY,
@@ -350,11 +560,6 @@ export function useMerchantData(merchantId: string) {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
-  useEffect(() => {
-    if (!query.data) return
-    writeSnapshotQueries(queryClient, merchantId, query.data)
-  }, [merchantId, query.data, queryClient])
-
   return {
     data: query.data,
     error: query.error,
@@ -366,11 +571,101 @@ export function useMerchantData(merchantId: string) {
   }
 }
 
-
 export function useRealtimeSync(merchantId: string, enabled: boolean) {
+  const queryClient = useQueryClient()
+  useFirebaseOrderSignals(merchantId, enabled, queryClient)
+
+  useEffect(() => {
+    if (!merchantId || !enabled) return
+
+    const setStatus = useRealtimeStore.getState().setStatus
+    const handleBusMessage = (event: MessageEvent<unknown>) => {
+      const message = readRecord(event.data)
+      if (!message || message.merchantId !== merchantId) return
+
+      if (
+        message.type === 'REALTIME_STATUS' &&
+        (message.status === 'connecting' ||
+          message.status === 'connected' ||
+          message.status === 'disconnected' ||
+          message.status === 'offline')
+      ) {
+        setStatus(
+          message.status,
+          typeof message.detail === 'string' ? message.detail : ''
+        )
+        return
+      }
+
+      if (message.type === 'ORDER_MUTATED') {
+        void localDB.orders.toArray().then((orders) => {
+          const activeOrders = orders.filter(
+            (order) =>
+              order.status !== 'completed' && order.status !== 'cancelled'
+          )
+          const archivedOrders = orders.filter(
+            (order) =>
+              order.status === 'completed' || order.status === 'cancelled'
+          )
+          queryClient.setQueryData(
+            merchantQueryKeys.orders(merchantId, 'active'),
+            activeOrders
+          )
+          queryClient.setQueryData(
+            merchantQueryKeys.orders(merchantId, 'archived'),
+            archivedOrders
+          )
+          queryClient.setQueryData<DashboardData>(
+            merchantQueryKeys.dashboard(merchantId),
+            (dashboard) =>
+              dashboard
+                ? { ...dashboard, activeOrders, archivedOrders }
+                : dashboard
+          )
+          queryClient.setQueryData<DashboardInitialization>(
+            merchantBootstrapKey(merchantId),
+            (snapshot) =>
+              snapshot
+                ? {
+                    ...snapshot,
+                    dashboard: {
+                      ...snapshot.dashboard,
+                      activeOrders,
+                      archivedOrders,
+                    },
+                  }
+                : snapshot
+          )
+        })
+      }
+
+      if (message.type === 'PRODUCT_MUTATED') {
+        void localDB.products.toArray().then((products) => {
+          queryClient.setQueryData(
+            merchantQueryKeys.products(merchantId),
+            products
+          )
+          queryClient.setQueryData(
+            merchantQueryKeys.dashboardProducts(merchantId),
+            products
+          )
+        })
+      }
+    }
+
+    _localBus?.addEventListener('message', handleBusMessage)
+    return () => _localBus?.removeEventListener('message', handleBusMessage)
+  }, [enabled, merchantId, queryClient])
+}
+
+export function useLegacyWorkerRealtimeSync(
+  merchantId: string,
+  enabled: boolean
+) {
   const queryClient = useQueryClient()
   const pendingEvents = useRef(new Map<number, MerchantEvent>())
   const socketRef = useRef<WebSocket | null>(null)
+  useFirebaseOrderSignals(merchantId, enabled, queryClient)
 
   useEffect(() => {
     if (!merchantId || !enabled) return
@@ -383,9 +678,9 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
     let lockReleaser: (() => void) | null = null
     const setStatus = useRealtimeStore.getState().setStatus
 
-    // ─── استماع التبويبات الثانوية لإشعارات القائد ──────────────────────
+    // استماع التبويبات الثانوية لإشعارات القائد
     // التبويبات التي لم تفز بالقفل تستمع للـ BroadcastChannel فقط.
-    // عند وصول إشعار، تقرأ البيانات من Dexie محلياً (0 HTTP).
+    // عند وصول إشعاѡ تقرأ البيانات من Dexie محلياً (0 HTTP).
     const handleBusMessage = (ev: MessageEvent<unknown>) => {
       const msg = ev.data as Record<string, unknown>
       if (!msg || typeof msg !== 'object') return
@@ -393,10 +688,12 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
       if (msg.type === 'ORDER_MUTATED' && msg.merchantId === merchantId) {
         void localDB.orders.toArray().then((orders: DashboardOrder[]) => {
           const active = orders.filter(
-            (o: DashboardOrder) => o.status !== 'completed' && o.status !== 'cancelled'
+            (o: DashboardOrder) =>
+              o.status !== 'completed' && o.status !== 'cancelled'
           )
           const archived = orders.filter(
-            (o: DashboardOrder) => o.status === 'completed' || o.status === 'cancelled'
+            (o: DashboardOrder) =>
+              o.status === 'completed' || o.status === 'cancelled'
           )
           queryClient.setQueryData(
             merchantQueryKeys.orders(merchantId, 'active'),
@@ -420,11 +717,10 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
           )
         })
       }
-
     }
     _localBus?.addEventListener('message', handleBusMessage)
 
-    // ─── دالة cursor: تقرأ من TanStack Query أولاً ثم من Dexie fallback ──
+    // ? دالة cursor: تقرأ من TanStack Query أولاً ثم من Dexie fallback ?
     const cursor = async () => {
       const snapshot = queryClient.getQueryData<DashboardInitialization>(
         merchantBootstrapKey(merchantId)
@@ -449,7 +745,23 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         sessionStorage.getItem('merchant_token') ||
         ''
       if (!token) throw new Error('انتهت الجلسة. يرجى تسجيل الدخول مجدداً.')
-      return token
+      const response = await fetch('/api/worker/ws/ticket', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      })
+      if (!response.ok) {
+        throw new Error(`تعذر إصدار تذكرة الاتصال (${response.status}).`)
+      }
+      const result: unknown = await response.json()
+      const ticket = readRecord(result)?.ticket
+      if (typeof ticket !== 'string' || !ticket) {
+        throw new Error('استجابة تذكرة الاتصال غير صالحة.')
+      }
+      return ticket
     }
 
     const scheduleReconnect = () => {
@@ -505,10 +817,10 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         )
       }
 
-      // ─── تحديث Dexie cursor بعد كل دفعة من الأحداث (غير مُعلِّق) ────
+      // ? تحديث Dexie cursor بعد كل دفعة من الأحداث (غير مُعلِّق) ?
       if (appliedEvents.length > 0) {
         void writeSyncCursor(merchantId, lastEventId, lastTimestamp).catch(
-          (err) => console.warn('[db] فشل تحديث sync cursor:', err)
+          (err: unknown) => console.warn('[db] فشل تحديث sync cursor:', err)
         )
       }
 
@@ -526,14 +838,13 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
       return appliedEvents
     }
 
-
     const handleMessage = (raw: unknown) => {
       if (typeof raw !== 'string') return
       let parsed: unknown
       try {
         parsed = JSON.parse(raw) as unknown
       } catch {
-        setStatus('disconnected', 'وصلت رسالة لحظية بصيغة غير صالحة.')
+        setStatus('disconnected', 'وصلت رسالة بصيغة غير صالحة.')
         return
       }
       const message = readRecord(parsed)
@@ -543,7 +854,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
           'disconnected',
           typeof message.message === 'string'
             ? message.message
-            : 'تعذر تجهيز بيانات الاتصال اللحظي'
+            : 'تعذر تجهيز بيانات الاتصال'
         )
         return
       }
@@ -616,17 +927,15 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         return
       }
 
-      setStatus('connecting', 'جاري إنشاء الاتصال اللحظي...')
+      setStatus('connecting', 'جاري إنشاء الاتصال...')
       try {
         const ticket = await requestTicket()
         if (stopped) return
-        // ─── قراءة الـ Cursor من Dexie (Delta Sync) ──────────────────
+        // ? قراءة الـ Cursor من Dexie (Delta Sync) ?
         const currentCursor = await cursor()
         const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         const url = new URL(`${scheme}//${window.location.host}/api/worker/ws`)
-        url.searchParams.set('token', ticket)
         url.searchParams.set('ticket', ticket)
-        url.searchParams.set('merchant_id', merchantId)
         url.searchParams.set('m', merchantId)
         url.searchParams.set('since', String(currentCursor.timestamp))
         url.searchParams.set('lastEventId', String(currentCursor.eventId))
@@ -638,7 +947,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
             return
           }
           reconnectAttempt = 0
-          setStatus('connected', 'متصل لحظيًا')
+          setStatus('connected', 'متصل')
 
           // نبض حياة خفيف جداً كل 35 ثانية لمنع انقطاع الاتصال عند الخمول الطويل
           if (pingTimer !== undefined) window.clearInterval(pingTimer)
@@ -655,7 +964,7 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         })
         socket.addEventListener('error', () => {
           if (socketRef.current === socket) {
-            setStatus('disconnected', 'حدث خطأ في الاتصال اللحظي')
+            setStatus('disconnected', 'حدث خطأ في الاتصال')
           }
         })
         socket.addEventListener('close', (event) => {
@@ -667,14 +976,14 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
           socketRef.current = null
           setStatus(
             navigator.onLine ? 'disconnected' : 'offline',
-            event.reason || `انقطع الاتصال اللحظي (${event.code})`
+            event.reason || `انقطع الاتصال (${event.code})`
           )
           scheduleReconnect()
         })
       } catch (error) {
         setStatus(
           'disconnected',
-          error instanceof Error ? error.message : 'تعذر بدء الاتصال اللحظي'
+          error instanceof Error ? error.message : 'تعذر بدء الاتصال'
         )
         scheduleReconnect()
       }
@@ -683,13 +992,20 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
     const onOnline = () => {
       reconnectAttempt = 0
       void connect()
+      void refreshMerchantSnapshot(queryClient, merchantId).catch(
+        (error: unknown) => {
+          console.warn(
+            '[merchant-sync] تعذر تحديث بيانات المتجر بعد الاتصال:',
+            error
+          )
+        }
+      )
     }
     const onOffline = () => setStatus('offline', 'لا يوجد اتصال بالإنترنت')
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)
 
-
-    // ─── Leader Election عبر Web Locks API ───────────────────────────────
+    // Leader election عبر Web Locks API
     // التبويب الأول الذي يحصل على القفل يصبح "القائد" ويفتح الاتصال.
     // التبويبات الأخرى تبقى في طابور الانتظار على القفل.
     // إذا أُغلق القائد، يحصل التبويب التالي في الطابور على القفل تلقائياً.

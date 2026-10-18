@@ -20,7 +20,6 @@ type AuthenticatedLayoutProps = {
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const merchantId = useMerchantIdentity()
   const dashboardQuery = useMerchantData(merchantId)
-  // الاتصال اللحظي المباشر عبر Cloudflare Durable Objects
   useRealtimeSync(merchantId, dashboardQuery.cacheReady)
   const realtimeStatus = useRealtimeStore((state) => state.status)
   const realtimeDetail = useRealtimeStore((state) => state.detail)
@@ -95,7 +94,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
             )}
             <span>
               {realtimeStatus === 'connected'
-                ? 'متصل لحظيًا'
+                ? 'متصل'
                 : realtimeStatus === 'connecting'
                   ? 'جاري الاتصال'
                   : realtimeStatus === 'offline'

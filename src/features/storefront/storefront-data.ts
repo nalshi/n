@@ -36,6 +36,9 @@ const THEME_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,79}$/
 const THEME_FILE_PATTERN =
   /^\/templates\/(?:themes\/)?[a-z0-9][a-z0-9_-]{0,79}\.json$/
 
+export const storefrontLibraryQueryKey = (merchantId: string) =>
+  ['merchant-storefront-library', merchantId] as const
+
 function asRecord(value: unknown): ApiRecord | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as ApiRecord)
@@ -112,17 +115,32 @@ function readThemeRows(value: unknown): StorefrontTheme[] {
   return themes
 }
 
-async function getJson(url: string): Promise<unknown> {
-  const response = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    credentials: 'same-origin',
-  })
-  if (!response.ok) throw new Error(`تعذر تحميل ${url} (${response.status}).`)
-  try {
-    return (await response.json()) as unknown
-  } catch {
-    throw new Error('أعاد الخادم ملف إعدادات غير صالح.')
+const STOREFRONT_PUBLIC_BASE = 'https://appi.dpdns.org'
+
+async function getJson(path: string): Promise<unknown> {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  const urls = [
+    normalizedPath,
+    `${STOREFRONT_PUBLIC_BASE}${normalizedPath}`,
+  ]
+
+  let lastError: unknown = null
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+      })
+      if (response.ok) {
+        return (await response.json()) as unknown
+      }
+    } catch (error) {
+      lastError = error
+    }
   }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`تعذر قراءة ملف المتجر (${normalizedPath}).`)
 }
 
 async function loadThemes(): Promise<StorefrontTheme[]> {
@@ -130,12 +148,10 @@ async function loadThemes(): Promise<StorefrontTheme[]> {
     const catalog = await getJson('/templates/themes.json')
     const record = asRecord(catalog)
     return readThemeRows(record ? { items: record.items } : catalog)
-  } catch {
-    const result = await authApiRequest('get_storefront_themes', {})
-    if (result.status !== 'success' && result.status !== 'ok') {
-      throw new Error(result.message || 'تعذر تحميل مكتبة القوالب.')
-    }
-    return readThemeRows(result)
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : 'تعذر تحميل مكتبة القوالب من ملف المتجر.'
+    )
   }
 }
 
@@ -197,10 +213,12 @@ export async function loadStorefrontThemeConfig(
   theme: StorefrontTheme
 ): Promise<ApiRecord> {
   if (theme.config) return theme.config
-  if (!theme.sourceFile || !THEME_FILE_PATTERN.test(theme.sourceFile)) {
-    throw new Error('ملف إعدادات القالب غير متوفر.')
-  }
-  const file = asRecord(await getJson(theme.sourceFile))
+  const sourcePath =
+    theme.sourceFile && THEME_FILE_PATTERN.test(theme.sourceFile)
+      ? theme.sourceFile
+      : `/templates/themes/${theme.id}.json`
+
+  const file = asRecord(await getJson(sourcePath))
   const config = asRecord(file?.config)
   if (file?.id !== theme.id || !config) {
     throw new Error('ملف القالب لا يطابق القالب المحدد أو إعداداته غير صالحة.')

@@ -3,14 +3,22 @@
 // ========================================================
 
 export async function writeToRealtimeDb(env, path, data, method = 'PUT') {
-  try {
-    if (!env.FIREBASE_DB_URL || !env.FIREBASE_DB_SECRET) return;
-    const base = env.FIREBASE_DB_URL.replace(/\/$/, '');
-    await fetch(`${base}/${path}.json?auth=${env.FIREBASE_DB_SECRET}`, {
-      method,
-      body: JSON.stringify(data),
-    });
-  } catch (e) {
-    console.error('writeToRealtimeDb error:', e);
+  if (!env.FIREBASE_DB_URL || !env.FIREBASE_DB_SECRET) {
+    throw new Error('Firebase Realtime Database is not configured.');
+  }
+
+  const base = env.FIREBASE_DB_URL.replace(/\/$/, '');
+  const endpoint = new URL(`${base}/${path}.json`);
+  endpoint.searchParams.set('auth', env.FIREBASE_DB_SECRET);
+  const response = await fetch(endpoint, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const details = (await response.text()).slice(0, 300);
+    throw new Error(
+      `Firebase Realtime Database returned ${response.status}${details ? `: ${details}` : ''}.`
+    );
   }
 }

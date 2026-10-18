@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "items": [
+    { "id": "grid-3", "name": "شبكة ثلاثية", "description": "عرض المنتجات في شبكة مرنة.", "config": { "products_settings": { "display_mode": "by_categories_sections", "portrait": { "grid_columns": 2, "card_orientation": "portrait", "card_style": "classic" }, "landscape": { "grid_columns": 4, "card_orientation": "landscape", "card_style": "classic" } } } },
+    { "id": "magazine", "name": "مجلة فاخرة", "description": "منتجات بارزة بتخطيط واسع.", "config": { "products_settings": { "display_mode": "featured_first", "portrait": { "grid_columns": 2, "card_orientation": "portrait", "card_style": "magazine" }, "landscape": { "grid_columns": 3, "card_orientation": "landscape", "card_style": "magazine" } } } },
+    { "id": "compact", "name": "شبكة مدمجة", "description": "مزيد من المنتجات في مساحة أقل.", "config": { "products_settings": { "display_mode": "all_flat_grid", "portrait": { "grid_columns": 2, "card_orientation": "portrait", "card_style": "minimal" }, "landscape": { "grid_columns": 5, "card_orientation": "landscape", "card_style": "minimal" } } } }
+  ]
+}

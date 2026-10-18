@@ -1,11 +1,12 @@
 import {
   useDeferredValue,
+  useEffect,
   useMemo,
   useState,
   type ChangeEvent,
   type FormEvent,
 } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import {
   Barcode,
@@ -27,6 +28,7 @@ import { toast } from 'sonner'
 import { clearAuthApiCache } from '@/lib/auth-api'
 import {
   merchantQueryKeys,
+  refreshMerchantSnapshot,
   useMerchantIdentity,
 } from '@/hooks/useMerchantRealtime'
 import { Button } from '@/components/ui/button'
@@ -68,6 +70,7 @@ import {
   fetchDashboardProducts,
   fetchDashboardUsername,
   saveDashboardProduct,
+  updateDashboardProductStock,
   type DashboardCategory,
   type DashboardProduct,
   type ProductOption,
@@ -97,6 +100,17 @@ type ProductDraft = {
   isAvailable: boolean
   variantsEnabled: boolean
   options: DraftOption[]
+}
+
+type StockDraft = {
+  quantity: number
+  quantityType: 'tracked' | 'unlimited'
+  options: Array<{
+    id: string
+    name: string
+    quantity: number
+    quantityType: 'tracked' | 'unlimited'
+  }>
 }
 
 const currencies = [
@@ -158,10 +172,41 @@ function flattenCategories(
     ])
 }
 
-function categoryTitle(category: DashboardCategory) {
-  return category.id.startsWith('NEW:')
-    ? `${category.name} (ستُحفظ مع أول منتج)`
-    : category.name
+function categoryPath(
+  category: DashboardCategory,
+  categories: DashboardCategory[]
+) {
+  const byId = new Map(categories.map((item) => [item.id, item]))
+  const path: string[] = []
+  const visited = new Set<string>()
+  let current: DashboardCategory | undefined = category
+
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id)
+    path.unshift(current.name)
+    current = current.parentId ? byId.get(current.parentId) : undefined
+  }
+
+  return path.join(' / ')
+}
+
+function selectedCategoryPath(
+  categoryId: string,
+  categories: DashboardCategory[]
+) {
+  const byId = new Map(categories.map((category) => [category.id, category]))
+  const path: DashboardCategory[] = []
+  const visited = new Set<string>()
+  let currentId = categoryId
+
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId)
+    const category = byId.get(currentId)
+    if (!category) break
+    path.unshift(category)
+    currentId = category.parentId
+  }
+  return path
 }
 
 function formatPrice(price: number, currency: string) {
@@ -180,18 +225,98 @@ function getStock(product: DashboardProduct) {
     : `المخزون ${product.quantity}`
 }
 
+function stockDraftFromProduct(product: DashboardProduct): StockDraft {
+  return {
+    quantity: product.quantity,
+    quantityType: product.quantityType,
+    options: product.options.map((option) => ({
+      id: option.id,
+      name: option.name,
+      quantity: option.quantity,
+      quantityType: option.quantityType,
+    })),
+  }
+}
+
 function approvalLabel(status: string) {
   if (status === 'pending') return 'بانتظار النشر'
   if (status === 'rejected') return 'مرفوض'
   return 'منشور'
 }
 
+function CategoryPicker({
+  categories,
+  value,
+  loading,
+  onChange,
+}: {
+  categories: DashboardCategory[]
+  value: string
+  loading: boolean
+  onChange: (categoryId: string) => void
+}) {
+  const selectedPath = selectedCategoryPath(value, categories)
+  const parentIds = ['', ...selectedPath.map((category) => category.id)]
+  const levels = parentIds
+    .map((parentId, depth) => ({
+      parentId,
+      depth,
+      options: categories.filter((category) => category.parentId === parentId),
+    }))
+    .filter(({ depth, options }) => depth === 0 || options.length > 0)
+
+  return (
+    <div className='grid min-w-0 flex-1 gap-2'>
+      {levels.map(({ depth, options }) => {
+        const selectedId = selectedPath[depth]?.id || '__none__'
+        return (
+          <Select
+            key={depth}
+            value={selectedId}
+            disabled={loading}
+            onValueChange={(categoryId) => {
+              if (categoryId === '__none__') {
+                onChange(depth === 0 ? '' : selectedPath[depth - 1]?.id || '')
+              } else {
+                onChange(categoryId)
+              }
+            }}
+          >
+            <SelectTrigger className='w-full'>
+              <SelectValue
+                placeholder={
+                  loading
+                    ? 'جارٍ تحميل الفئات...'
+                    : depth === 0
+                      ? 'اختر الفئة الرئيسية'
+                      : `اختر فئة فرعية - المستوى ${depth + 1}`
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='__none__'>
+                {depth === 0 ? 'اختر الفئة' : 'بدون فئة فرعية'}
+              </SelectItem>
+              {options.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      })}
+    </div>
+  )
+}
+
 export function Products() {
-  const { create, manageCategories } = useSearch({
+  const { tab, create, manageCategories } = useSearch({
     from: '/_authenticated/products',
   })
   return (
     <ProductsWorkspace
+      tab={tab}
       create={create === true}
       manageCategories={manageCategories === true}
     />
@@ -199,18 +324,19 @@ export function Products() {
 }
 
 export function ProductCatalog() {
-  return <ProductsWorkspace catalogOnly />
+  return <ProductsWorkspace />
 }
 
 function ProductsWorkspace({
-  catalogOnly = false,
+  tab,
   create = false,
   manageCategories = false,
 }: {
-  catalogOnly?: boolean
+  tab?: string
   create?: boolean
   manageCategories?: boolean
 }) {
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const merchantId = useMerchantIdentity()
   const [search, setSearch] = useState('')
@@ -223,27 +349,59 @@ function ProductsWorkspace({
     null
   )
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false)
+  const [inventoryView, setInventoryView] = useState(tab === 'inventory')
+  const [stockDrafts, setStockDrafts] = useState<Record<string, StockDraft>>({})
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [categories, setCategories] = useState<DashboardCategory[]>([])
   const [qrProduct, setQrProduct] = useState<DashboardProduct | null>(null)
   const [deleteProduct, setDeleteProduct] = useState<DashboardProduct | null>(
     null
   )
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase())
+
+  useEffect(() => {
+    if (tab === 'inventory') {
+      setInventoryView(true)
+    } else if (tab === 'catalog') {
+      setInventoryView(false)
+    }
+  }, [tab])
+
+  useEffect(() => {
+    if (manageCategories || tab === 'categories') {
+      setCategoryManagerOpen(true)
+    }
+  }, [manageCategories, tab])
+
+  useEffect(() => {
+    if (create || tab === 'new') {
+      setEditorOpen(true)
+    }
+  }, [create, tab])
+
   const clearCreateShortcut = () => {
-    if (create) {
+    if (create || tab === 'new') {
       void navigate({
         to: '/products',
-        search: { create: undefined },
+        search: (prev) => ({
+          ...prev,
+          create: undefined,
+          tab: prev.tab === 'new' ? undefined : prev.tab,
+        }),
         replace: true,
       })
     }
   }
 
   const clearCategoryShortcut = () => {
-    if (manageCategories) {
+    if (manageCategories || tab === 'categories') {
       void navigate({
         to: '/products',
-        search: { manageCategories: undefined },
+        search: (prev) => ({
+          ...prev,
+          manageCategories: undefined,
+          tab: prev.tab === 'categories' ? undefined : prev.tab,
+        }),
         replace: true,
       })
     }
@@ -290,6 +448,17 @@ function ProductsWorkspace({
     [categoryList]
   )
   const products = useMemo(() => productsQuery.data || [], [productsQuery.data])
+  const refreshMerchantData = async () => {
+    try {
+      await refreshMerchantSnapshot(queryClient, merchantId)
+    } catch (error) {
+      toast.error(
+        `تم حفظ التغيير، لكن تعذر تحديث بيانات اللوحة: ${
+          error instanceof Error ? error.message : 'خطأ غير معروف.'
+        }`
+      )
+    }
+  }
   const filteredProducts = useMemo(() => {
     const matching = products.filter((product) => {
       const matchesSearch =
@@ -392,51 +561,59 @@ function ProductsWorkspace({
       if (draft.variantsEnabled) {
         if (!draft.options.length)
           throw new Error('أضف خياراً واحداً على الأقل.')
-        const options = await Promise.all(
-          draft.options.map(async (option) => {
-            if (!option.name.trim()) throw new Error('اكتب اسم كل خيار للمنتج.')
-            const image = option.imageFile
-              ? await uploadDashboardImage(option.imageFile)
-              : option.image
-            return {
-              id: option.id,
-              name: option.name.trim(),
-              quantity_type: option.quantityType,
-              quantity:
-                option.quantityType === 'unlimited' ? 9999 : option.quantity,
-              use_main_image: option.useMainImage,
-              image: option.useMainImage ? null : image || null,
-              custom_price: option.customPrice,
-              currency: draft.currency,
-            }
+        const options: Record<string, unknown>[] = []
+        for (const option of draft.options) {
+          if (!option.name.trim()) throw new Error('اكتب اسم كل خيار للمنتج.')
+          if (option.imageFile) setUploadProgress(0)
+          const image = option.imageFile
+            ? await uploadDashboardImage(option.imageFile, setUploadProgress)
+            : option.image
+          options.push({
+            id: option.id,
+            name: option.name.trim(),
+            quantity_type: option.quantityType,
+            quantity:
+              option.quantityType === 'unlimited' ? 9999 : option.quantity,
+            use_main_image: option.useMainImage,
+            image: option.useMainImage ? null : image || null,
+            custom_price: option.customPrice,
+            currency: draft.currency,
           })
-        )
+        }
         payload.set('sizes', JSON.stringify(options))
       }
 
+      setUploadProgress(draft.imageFile ? 0 : null)
       if (draft.imageFile) {
-        const webp = await compressDashboardImage(draft.imageFile)
-        payload.set('image_file', webp, 'product.webp')
+        payload.set('image_file', draft.imageFile, draft.imageFile.name)
       }
-      return saveDashboardProduct(payload)
+      return saveDashboardProduct(
+        payload,
+        draft.imageFile ? setUploadProgress : undefined
+      )
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      setUploadProgress(null)
       toast.success(
         editingProduct ? 'تم تحديث المنتج بنجاح.' : 'تم حفظ المنتج ونشره بنجاح.'
       )
+      await refreshMerchantData()
       setEditorOpen(false)
       setEditingProduct(null)
       clearCreateShortcut()
     },
-    onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'تعذر حفظ المنتج.'),
+    onError: (error) => {
+      setUploadProgress(null)
+      toast.error(error instanceof Error ? error.message : 'تعذر حفظ المنتج.')
+    },
   })
 
   const deleteMutation = useMutation({
     mutationFn: (product: DashboardProduct) =>
       deleteDashboardProduct(product.id),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('تم حذف المنتج.')
+      await refreshMerchantData()
       setDeleteProduct(null)
     },
     onError: (error) =>
@@ -446,8 +623,9 @@ function ProductsWorkspace({
   const availabilityMutation = useMutation({
     mutationFn: (product: DashboardProduct) =>
       updateDashboardAvailability(product.id, !product.isAvailable),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('تم تحديث إتاحة المنتج.')
+      await refreshMerchantData()
     },
     onError: (error) =>
       toast.error(
@@ -455,7 +633,43 @@ function ProductsWorkspace({
       ),
   })
 
+  const stockMutation = useMutation({
+    mutationFn: ({
+      product,
+      stock,
+    }: {
+      product: DashboardProduct
+      stock: StockDraft
+    }) => updateDashboardProductStock(product, stock),
+    onSuccess: async (message, { product }) => {
+      toast.success(message || 'تم تحديث مخزون المنتج.')
+      setStockDrafts((current) => {
+        const next = { ...current }
+        delete next[product.id]
+        return next
+      })
+      await refreshMerchantData()
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof Error ? error.message : 'تعذر تحديث مخزون المنتج.'
+      ),
+  })
+
+  const changeStockDraft = (
+    product: DashboardProduct,
+    update: (stock: StockDraft) => StockDraft
+  ) => {
+    setStockDrafts((current) => ({
+      ...current,
+      [product.id]: update(
+        current[product.id] || stockDraftFromProduct(product)
+      ),
+    }))
+  }
+
   const openEditor = (product: DashboardProduct | null = null) => {
+    setUploadProgress(null)
     setEditingProduct(product)
     setEditorOpen(true)
     if (!categoriesQuery.data && !categoriesQuery.isLoading) {
@@ -471,28 +685,39 @@ function ProductsWorkspace({
       <Main className='merchant-content'>
         <div className='mb-6'>
           <MerchantPageHeading
-            section={{ title: 'المنتجات', url: '/product-catalog' }}
-            title={catalogOnly ? 'قائمة المنتجات' : 'إدارة المنتجات'}
+            section={{ title: 'المنتجات', url: '/products' }}
+            title={inventoryView ? 'إدارة المخزون' : 'قائمة المنتجات'}
             description={
-              catalogOnly
-                ? 'استعرض منتجات متجرك وابحث عنها وعدّل تفاصيلها.'
-                : 'نظّم المنتجات والأسعار والمخزون والفئات من مكان واحد.'
+              inventoryView
+                ? 'راجع رصيد جميع المنتجات وخياراتها، وعدّل المخزون مباشرة.'
+                : 'نظّم منتجات متجرك وأسعارها ومخزونها وفئاتها من مكان واحد.'
             }
             actions={
               <>
-                {catalogOnly ? (
-                  <Button variant='outline' asChild>
-                    <Link to='/products'>
-                      <Boxes aria-hidden='true' /> إدارة المنتجات
-                    </Link>
-                  </Button>
-                ) : (
-                  <Button variant='outline' asChild>
-                    <Link to='/product-catalog'>
-                      <List aria-hidden='true' /> قائمة المنتجات
-                    </Link>
-                  </Button>
-                )}
+                <Button
+                  variant={!inventoryView ? 'default' : 'outline'}
+                  onClick={() => {
+                    setInventoryView(false)
+                    void navigate({
+                      to: '/products',
+                      search: {},
+                    })
+                  }}
+                >
+                  <List aria-hidden='true' /> قائمة المنتجات
+                </Button>
+                <Button
+                  variant={inventoryView ? 'default' : 'outline'}
+                  onClick={() => {
+                    setInventoryView(true)
+                    void navigate({
+                      to: '/products',
+                      search: { tab: 'inventory' },
+                    })
+                  }}
+                >
+                  <Boxes aria-hidden='true' /> إدارة المخزون
+                </Button>
                 <Button
                   variant='outline'
                   onClick={() => setCategoryManagerOpen(true)}
@@ -507,55 +732,40 @@ function ProductsWorkspace({
           />
         </div>
 
-        {!catalogOnly ? (
-          <>
-            <div className='mb-5 grid grid-cols-3 gap-2 sm:gap-3'>
-              <StatCard
-                title='كل المنتجات'
-                value={products.length}
-                icon={Package}
-              />
-              <StatCard
-                title='متاحة في المتجر'
-                value={products.filter((product) => product.isAvailable).length}
-                icon={Check}
-              />
-              <StatCard
-                title='مخزون محدود'
-                value={
-                  products.filter(
-                    (product) =>
-                      product.quantityType === 'tracked' &&
-                      product.quantity <= 5 &&
-                      product.options.length === 0
-                  ).length
-                }
-                icon={Boxes}
-              />
-            </div>
-            <Card className='mb-5 gap-4 py-4'>
-              <CardContent className='flex flex-col gap-4 px-4 sm:flex-row sm:items-center sm:justify-between'>
-                <div className='flex min-w-0 items-center gap-3'>
-                  <span className='grid size-10 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground'>
-                    <Package aria-hidden='true' className='size-5' />
-                  </span>
-                  <div className='min-w-0'>
-                    <h2 className='font-semibold'>منتجات المتجر</h2>
-                    <p className='text-sm text-muted-foreground'>
-                      {products.length.toLocaleString('ar-YE')} منتج — افتح
-                      القائمة للبحث والتصفية والتعديل.
-                    </p>
-                  </div>
-                </div>
-                <Button className='w-full shrink-0 sm:w-auto' asChild>
-                  <Link to='/product-catalog'>
-                    استعراض المنتجات <List aria-hidden='true' />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </>
-        ) : (
+        <div className='mb-5 grid grid-cols-3 gap-2 sm:gap-3'>
+          <StatCard
+            title='كل المنتجات'
+            value={products.length}
+            icon={Package}
+            onClick={() => {
+              setInventoryView(false)
+              void navigate({ to: '/products', search: {} })
+            }}
+          />
+          <StatCard
+            title='متاحة في المتجر'
+            value={products.filter((product) => product.isAvailable).length}
+            icon={Check}
+          />
+          <StatCard
+            title='مخزون محدود'
+            value={
+              products.filter(
+                (product) =>
+                  product.quantityType === 'tracked' &&
+                  product.quantity <= 5 &&
+                  product.options.length === 0
+              ).length
+            }
+            icon={Boxes}
+            onClick={() => {
+              setInventoryView(true)
+              void navigate({ to: '/products', search: { tab: 'inventory' } })
+            }}
+          />
+        </div>
+
+        {!inventoryView ? (
           <Card className='mb-5 gap-4 py-4'>
             <CardContent className='grid gap-3 px-4 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_repeat(3,minmax(150px,220px))]'>
               <label className='relative sm:col-span-2 xl:col-span-1'>
@@ -587,8 +797,7 @@ function ProductsWorkspace({
                     .filter((category) => !category.id.startsWith('NEW:'))
                     .map((category) => (
                       <SelectItem key={category.id} value={category.id}>
-                        {'　'.repeat(category.depth)}
-                        {category.name}
+                        {categoryPath(category, categoryList)}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -633,15 +842,64 @@ function ProductsWorkspace({
               </Select>
             </CardContent>
           </Card>
-        )}
+        ) : null}
 
-        {catalogOnly && productsQuery.isPending ? (
+        {inventoryView ? (
+          productsQuery.isPending ? (
+            <p className='py-10 text-center text-sm text-muted-foreground'>
+              جارٍ تحميل المخزون...
+            </p>
+          ) : productsQuery.isError && !productsQuery.data ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>تعذر تحميل المخزون</CardTitle>
+                <CardDescription>
+                  {productsQuery.error instanceof Error
+                    ? productsQuery.error.message
+                    : 'تحقق من الاتصال ثم أعد المحاولة.'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  onClick={() => {
+                    clearAuthApiCache()
+                    void productsQuery.refetch()
+                  }}
+                >
+                  إعادة المحاولة
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <StockManager
+              products={products}
+              drafts={stockDrafts}
+              savingProductId={
+                stockMutation.isPending
+                  ? stockMutation.variables?.product.id
+                  : undefined
+              }
+              onChange={changeStockDraft}
+              onSave={(product) =>
+                stockMutation.mutate({
+                  product,
+                  stock:
+                    stockDrafts[product.id] || stockDraftFromProduct(product),
+                })
+              }
+            />
+          )
+        ) : null}
+
+        {!inventoryView && productsQuery.isPending ? (
           <div className='grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4'>
             {Array.from({ length: 6 }, (_, index) => (
               <Card key={index} className='h-64 bg-muted/40' />
             ))}
           </div>
-        ) : catalogOnly && productsQuery.isError && !productsQuery.data ? (
+        ) : !inventoryView &&
+          productsQuery.isError &&
+          !productsQuery.data ? (
           <Card>
             <CardHeader>
               <CardTitle>تعذر تحميل المنتجات</CardTitle>
@@ -662,13 +920,21 @@ function ProductsWorkspace({
               </Button>
             </CardContent>
           </Card>
-        ) : catalogOnly && visibleProducts.length ? (
+        ) : !inventoryView && visibleProducts.length ? (
           <>
             <div className='grid grid-cols-2 items-start gap-3 lg:grid-cols-3 2xl:grid-cols-4'>
               {visibleProducts.map((product) => (
                 <ProductCard
                   key={product.id}
                   product={product}
+                  categoryName={
+                    categoryList.find(
+                      (category) => category.id === product.categoryId
+                    )?.name ||
+                    (product.type && product.type !== 'عام'
+                      ? product.type
+                      : 'بدون فئة')
+                  }
                   onEdit={() => openEditor(product)}
                   onDelete={() => setDeleteProduct(product)}
                   onQr={() => setQrProduct(product)}
@@ -706,7 +972,7 @@ function ProductsWorkspace({
               </div>
             </div>
           </>
-        ) : catalogOnly ? (
+        ) : !inventoryView ? (
           <Card>
             <CardContent className='grid justify-items-center gap-3 py-14 text-center'>
               <span className='grid size-14 place-items-center rounded-2xl bg-muted text-muted-foreground'>
@@ -745,6 +1011,7 @@ function ProductsWorkspace({
       </Main>
 
       <ProductEditor
+        key={`${editorOpen || create === true ? 'open' : 'closed'}:${editingProduct?.id ?? 'new'}`}
         open={editorOpen || create === true}
         product={editingProduct}
         categories={categoryList}
@@ -755,6 +1022,7 @@ function ProductsWorkspace({
           void categoriesQuery.refetch()
         }}
         saving={saveMutation.isPending}
+        uploadProgress={uploadProgress}
         onOpenChange={(open) => {
           setEditorOpen(open)
           if (!open) clearCreateShortcut()
@@ -859,6 +1127,7 @@ function StatCard({
 
 function ProductCard({
   product,
+  categoryName,
   onEdit,
   onDelete,
   onQr,
@@ -866,6 +1135,7 @@ function ProductCard({
   availabilityPending,
 }: {
   product: DashboardProduct
+  categoryName: string
   onEdit: () => void
   onDelete: () => void
   onQr: () => void
@@ -874,13 +1144,13 @@ function ProductCard({
 }) {
   const discountedPrice = product.price * (1 - product.discount / 100)
   return (
-    <Card className='overflow-hidden py-0'>
-      <div className='relative aspect-video bg-muted/50'>
+    <Card className='group overflow-hidden py-0 transition-all hover:shadow-md'>
+      <div className='relative aspect-square w-full bg-muted/20 dark:bg-muted/10 overflow-hidden flex items-center justify-center p-2.5 rounded-t-lg border-b'>
         {product.image ? (
           <img
             src={product.image}
             alt={product.name}
-            className='size-full object-cover'
+            className='max-h-full max-w-full w-auto h-auto object-contain transition-transform duration-300 group-hover:scale-105 drop-shadow-sm'
             loading='lazy'
           />
         ) : (
@@ -889,16 +1159,16 @@ function ProductCard({
           </div>
         )}
         <span
-          className={`absolute start-2 top-2 rounded-full px-2 py-1 text-[10px] font-semibold sm:start-3 sm:top-3 sm:px-2.5 sm:text-xs ${
+          className={`absolute start-2 top-2 z-10 rounded-full px-2 py-1 text-[10px] font-semibold sm:start-3 sm:top-3 sm:px-2.5 sm:text-xs shadow-xs ${
             product.isAvailable
-              ? 'bg-emerald-600 text-white'
-              : 'bg-background/90 text-muted-foreground'
+              ? 'bg-emerald-600/95 text-white'
+              : 'bg-background/90 text-muted-foreground border'
           }`}
         >
           {product.isAvailable ? 'متاح في المتجر' : 'غير متاح'}
         </span>
         {product.discount > 0 && (
-          <span className='absolute end-2 top-2 rounded-full bg-destructive px-2 py-1 text-[10px] font-semibold text-white sm:end-3 sm:top-3 sm:px-2.5 sm:text-xs'>
+          <span className='absolute end-2 top-2 z-10 rounded-full bg-destructive/95 px-2 py-1 text-[10px] font-semibold text-white sm:end-3 sm:top-3 sm:px-2.5 sm:text-xs shadow-xs'>
             خصم {product.discount}%
           </span>
         )}
@@ -907,7 +1177,7 @@ function ProductCard({
         <div className='flex items-center justify-between gap-1.5'>
           <span className='flex min-w-0 items-center gap-1 truncate text-[11px] text-muted-foreground sm:gap-1.5 sm:text-xs'>
             <Tags className='size-3 shrink-0 sm:size-3.5' />
-            {product.type}
+            {categoryName}
           </span>
           <span className='shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:px-2 sm:py-1 sm:text-[11px]'>
             {approvalLabel(product.approvalStatus)}
@@ -994,6 +1264,7 @@ function ProductEditor({
   categoriesError,
   onRetryCategories,
   saving,
+  uploadProgress,
   onOpenChange,
   onSave,
   onCategoryAdded,
@@ -1006,44 +1277,47 @@ function ProductEditor({
   categoriesError: boolean
   onRetryCategories: () => void
   saving: boolean
+  uploadProgress: number | null
   onOpenChange: (open: boolean) => void
   onSave: (draft: ProductDraft) => void
   onCategoryAdded: (category: DashboardCategory) => void
   onManageCategories: () => void
 }) {
-  const [draft, setDraft] = useState<ProductDraft>(emptyDraft)
+  const [draft, setDraft] = useState<ProductDraft>(() =>
+    product ? draftFromProduct(product) : emptyDraft()
+  )
   const [newCategoryName, setNewCategoryName] = useState('')
   const [newCategoryParent, setNewCategoryParent] = useState('')
   const [addCategoryOpen, setAddCategoryOpen] = useState(false)
-  const [imagePreview, setImagePreview] = useState('')
+  const [imagePreview, setImagePreview] = useState(product?.image || '')
+  const [imageProcessing, setImageProcessing] = useState(false)
+  const [processingOptionImages, setProcessingOptionImages] = useState(
+    new Set<string>()
+  )
   const flatCategories = useMemo(
     () => flattenCategories(categories),
     [categories]
   )
 
   const resetEditor = (isOpen: boolean) => {
-    if (isOpen) {
-      setDraft(product ? draftFromProduct(product) : emptyDraft())
-      setImagePreview(product?.image || '')
-      setNewCategoryName('')
-      setNewCategoryParent('')
-      setAddCategoryOpen(false)
-    }
     onOpenChange(isOpen)
   }
 
   const handleImage = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
+    setImageProcessing(true)
     try {
-      const preview = await readImagePreview(file)
-      setDraft((current) => ({ ...current, imageFile: file }))
-      setImagePreview(preview)
+      const prepared = await prepareDashboardImage(file)
+      setDraft((current) => ({ ...current, imageFile: prepared.file }))
+      setImagePreview(prepared.preview)
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'تعذرت قراءة الصورة.'
       )
       event.target.value = ''
+    } finally {
+      setImageProcessing(false)
     }
   }
 
@@ -1148,37 +1422,27 @@ function ProductEditor({
               </Field>
               <Field label='فئة المنتج' required>
                 <div className='flex gap-2'>
-                  <Select
+                  <CategoryPicker
+                    categories={categories}
                     value={draft.categoryId}
-                    onValueChange={(categoryId) => {
-                      if (categoryId === 'add-category') {
-                        setAddCategoryOpen(true)
-                        return
-                      }
+                    loading={categoriesLoading}
+                    onChange={(categoryId) =>
                       setDraft((current) => ({ ...current, categoryId }))
+                    }
+                  />
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='icon'
+                    aria-label='إضافة فئة فرعية'
+                    title='إضافة فئة ضمن الفئة المحددة'
+                    onClick={() => {
+                      setNewCategoryParent(draft.categoryId)
+                      setAddCategoryOpen(true)
                     }}
                   >
-                    <SelectTrigger className='min-w-0 flex-1'>
-                      <SelectValue
-                        placeholder={
-                          categoriesLoading
-                            ? 'جارٍ تحميل الفئات...'
-                            : 'اختر الفئة'
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {flatCategories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          {'　'.repeat(category.depth)}
-                          {categoryTitle(category)}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value='add-category'>
-                        + إضافة فئة جديدة
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <Plus />
+                  </Button>
                   <Button
                     type='button'
                     variant='outline'
@@ -1240,8 +1504,38 @@ function ProductEditor({
                     className='max-w-sm file:me-3'
                   />
                   <p className='text-xs text-muted-foreground'>
-                    الصور تُراجع وتُضغط إلى WebP قبل الرفع (حد أقصى 1200px).
+                    تُحوّل الصور إلى WebP وتُضغط قبل رفعها (بحد أقصى 1200px).
                   </p>
+                  {imageProcessing && (
+                    <div className='grid gap-1' role='status'>
+                      <span className='text-xs text-muted-foreground'>
+                        جارٍ ضغط الصورة وتحويلها إلى WebP...
+                      </span>
+                      <div className='h-1.5 overflow-hidden rounded-full bg-muted'>
+                        <div className='h-full w-2/3 animate-pulse rounded-full bg-primary' />
+                      </div>
+                    </div>
+                  )}
+                  {uploadProgress !== null && (
+                    <div className='grid gap-1' role='status'>
+                      <span className='text-xs text-muted-foreground'>
+                        جارٍ رفع الصورة والمنتج: {uploadProgress}٪
+                      </span>
+                      <div
+                        className='h-1.5 overflow-hidden rounded-full bg-muted'
+                        role='progressbar'
+                        aria-label='تقدم رفع الصورة'
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={uploadProgress}
+                      >
+                        <div
+                          className='h-full rounded-full bg-primary transition-[width] duration-200'
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </Field>
@@ -1389,6 +1683,14 @@ function ProductEditor({
                     index={index}
                     currency={draft.currency}
                     onChange={(update) => updateOption(index, update)}
+                    onProcessingChange={(processing) =>
+                      setProcessingOptionImages((current) => {
+                        const next = new Set(current)
+                        if (processing) next.add(option.id)
+                        else next.delete(option.id)
+                        return next
+                      })
+                    }
                     onRemove={() => removeOption(index)}
                   />
                 ))}
@@ -1420,7 +1722,15 @@ function ProductEditor({
             >
               إلغاء
             </Button>
-            <Button type='submit' disabled={saving || categoriesLoading}>
+            <Button
+              type='submit'
+              disabled={
+                saving ||
+                categoriesLoading ||
+                imageProcessing ||
+                processingOptionImages.size > 0
+              }
+            >
               {saving ? <LoaderCircle className='animate-spin' /> : <Check />}
               {saving
                 ? 'جارٍ الحفظ...'
@@ -1436,7 +1746,9 @@ function ProductEditor({
             <DialogHeader>
               <DialogTitle>إضافة فئة</DialogTitle>
               <DialogDescription>
-                تظهر الفئة الآن مباشرة، وتحفظ نهائياً مع أول منتج تستخدم فيه.
+                اختر أي مستوى كفئة أب لإنشاء فئات متداخلة، مثل إلكترونيات /
+                جوالات / سامسونج / جالكسي. تحفظ الفئات الجديدة مع أول منتج
+                يستخدمها.
               </DialogDescription>
             </DialogHeader>
             <div className='grid gap-4'>
@@ -1449,7 +1761,7 @@ function ProductEditor({
                   placeholder='مثال: سامسونج'
                 />
               </Field>
-              <Field label='الفئة الأم (اختياري)'>
+              <Field label='تتبع الفئة (اختياري)'>
                 <Select
                   value={newCategoryParent || 'root'}
                   onValueChange={(value) =>
@@ -1463,13 +1775,30 @@ function ProductEditor({
                     <SelectItem value='root'>فئة رئيسية</SelectItem>
                     {flatCategories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
-                        {'　'.repeat(category.depth)}
-                        {category.name}
+                        {categoryPath(category, categories)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
+              {newCategoryName.trim() && (
+                <p className='text-xs text-muted-foreground' aria-live='polite'>
+                  المسار:{' '}
+                  {newCategoryParent
+                    ? `${categoryPath(
+                        categories.find(
+                          (category) => category.id === newCategoryParent
+                        ) || {
+                          id: newCategoryParent,
+                          name: '',
+                          parentId: '',
+                        },
+                        categories
+                      )} / `
+                    : ''}
+                  {newCategoryName.trim()}
+                </p>
+              )}
             </div>
             <DialogFooter>
               <Button
@@ -1492,27 +1821,36 @@ function VariantEditor({
   index,
   currency,
   onChange,
+  onProcessingChange,
   onRemove,
 }: {
   option: DraftOption
   index: number
   currency: string
   onChange: (update: Partial<DraftOption>) => void
+  onProcessingChange: (processing: boolean) => void
   onRemove: () => void
 }) {
   const [preview, setPreview] = useState(option.image)
+  const [imageProcessing, setImageProcessing] = useState(false)
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
+    setImageProcessing(true)
+    onProcessingChange(true)
     try {
-      setPreview(await readImagePreview(file))
-      onChange({ imageFile: file, useMainImage: false })
+      const prepared = await prepareDashboardImage(file)
+      setPreview(prepared.preview)
+      onChange({ imageFile: prepared.file, useMainImage: false })
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'تعذرت قراءة الصورة.'
       )
       event.target.value = ''
+    } finally {
+      setImageProcessing(false)
+      onProcessingChange(false)
     }
   }
 
@@ -1621,9 +1959,191 @@ function VariantEditor({
                 onChange={handleFile}
               />
             </Field>
+            {imageProcessing && (
+              <div className='grid gap-1' role='status'>
+                <span className='text-xs text-muted-foreground'>
+                  جارٍ ضغط الصورة وتحويلها إلى WebP...
+                </span>
+                <div className='h-1.5 overflow-hidden rounded-full bg-muted'>
+                  <div className='h-full w-2/3 animate-pulse rounded-full bg-primary' />
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+function StockManager({
+  products,
+  drafts,
+  savingProductId,
+  onChange,
+  onSave,
+}: {
+  products: DashboardProduct[]
+  drafts: Record<string, StockDraft>
+  savingProductId?: string
+  onChange: (
+    product: DashboardProduct,
+    update: (stock: StockDraft) => StockDraft
+  ) => void
+  onSave: (product: DashboardProduct) => void
+}) {
+  if (!products.length) {
+    return (
+      <p className='rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground'>
+        لا توجد منتجات لإدارة مخزونها.
+      </p>
+    )
+  }
+
+  return (
+    <div className='divide-y rounded-xl border px-4 sm:px-5'>
+      {products.map((product) => {
+        const stock = drafts[product.id] || stockDraftFromProduct(product)
+        const saving = savingProductId === product.id
+        return (
+          <section key={product.id} className='grid gap-4 py-5'>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <div>
+                <h2 className='font-semibold'>{product.name}</h2>
+                <p className='mt-1 text-sm text-muted-foreground'>
+                  {product.options.length
+                    ? `${product.options.length} خيارات`
+                    : product.quantityType === 'unlimited'
+                      ? 'مخزون متجدد'
+                      : `المتاح حالياً: ${product.quantity}`}
+                </p>
+              </div>
+              <Button
+                disabled={saving}
+                onClick={() => onSave(product)}
+                className='min-w-28'
+              >
+                {saving ? (
+                  <>
+                    <LoaderCircle className='animate-spin' aria-hidden='true' />
+                    جارٍ الحفظ
+                  </>
+                ) : (
+                  'حفظ المخزون'
+                )}
+              </Button>
+            </div>
+
+            {product.options.length ? (
+              <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
+                {stock.options.map((option, index) => (
+                  <div
+                    key={option.id}
+                    className='grid gap-3 rounded-lg border bg-muted/20 p-3'
+                  >
+                    <h3 className='text-sm font-medium'>
+                      {option.name || `الخيار ${index + 1}`}
+                    </h3>
+                    <Field label='نوع المخزون'>
+                      <Select
+                        value={option.quantityType}
+                        onValueChange={(value: 'tracked' | 'unlimited') =>
+                          onChange(product, (current) => ({
+                            ...current,
+                            options: current.options.map((item) =>
+                              item.id === option.id
+                                ? { ...item, quantityType: value }
+                                : item
+                            ),
+                          }))
+                        }
+                      >
+                        <SelectTrigger className='w-full'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='tracked'>كمية محدودة</SelectItem>
+                          <SelectItem value='unlimited'>
+                            متجدد دائماً
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    {option.quantityType === 'tracked' && (
+                      <Field label='الكمية'>
+                        <Input
+                          aria-label={`مخزون ${option.name}`}
+                          type='number'
+                          min='0'
+                          step='1'
+                          value={option.quantity}
+                          onChange={(event) => {
+                            const quantity = Math.max(
+                              0,
+                              Number(event.target.value) || 0
+                            )
+                            onChange(product, (current) => ({
+                              ...current,
+                              options: current.options.map((item) =>
+                                item.id === option.id
+                                  ? { ...item, quantity }
+                                  : item
+                              ),
+                            }))
+                          }}
+                        />
+                      </Field>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className='grid gap-3 sm:grid-cols-[minmax(180px,240px)_minmax(180px,240px)]'>
+                <Field label='نوع المخزون'>
+                  <Select
+                    value={stock.quantityType}
+                    onValueChange={(quantityType: 'tracked' | 'unlimited') =>
+                      onChange(product, (current) => ({
+                        ...current,
+                        quantityType,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className='w-full'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='tracked'>كمية محدودة</SelectItem>
+                      <SelectItem value='unlimited'>متجدد دائماً</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                {stock.quantityType === 'tracked' && (
+                  <Field label='الكمية'>
+                    <Input
+                      aria-label={`مخزون ${product.name}`}
+                      type='number'
+                      min='0'
+                      step='1'
+                      value={stock.quantity}
+                      onChange={(event) => {
+                        const quantity = Math.max(
+                          0,
+                          Number(event.target.value) || 0
+                        )
+                        onChange(product, (current) => ({
+                          ...current,
+                          quantity,
+                        }))
+                      }}
+                    />
+                  </Field>
+                )}
+              </div>
+            )}
+          </section>
+        )
+      })}
     </div>
   )
 }
@@ -1706,8 +2226,8 @@ function CategoryManager({
         <DialogHeader>
           <DialogTitle>إدارة الفئات</DialogTitle>
           <DialogDescription>
-            نظّم المنتجات ضمن فئات رئيسية وفرعية. الفئات الجديدة تحفظ نهائياً مع
-            أول منتج تستخدم فيه.
+            أنشئ مستويات متداخلة باختيار أي فئة كأب، مثل إلكترونيات / جوالات /
+            سامسونج / جالكسي. تحفظ الفئات الجديدة مع أول منتج يستخدمها.
           </DialogDescription>
         </DialogHeader>
         <div className='grid gap-5 md:grid-cols-[minmax(230px,0.8fr)_minmax(0,1.2fr)]'>
@@ -1746,21 +2266,34 @@ function CategoryManager({
               </div>
             </fieldset>
             {mode === 'sub' && (
-              <Field label='الفئة الرئيسية'>
+              <Field label='تتبع الفئة'>
                 <Select value={parentId} onValueChange={setParentId}>
                   <SelectTrigger className='w-full'>
-                    <SelectValue placeholder='اختر الفئة الأم' />
+                    <SelectValue placeholder='اختر الفئة الأب' />
                   </SelectTrigger>
                   <SelectContent>
                     {flatCategories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
-                        {'　'.repeat(category.depth)}
-                        {category.name}
+                        {categoryPath(category, categories)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
+            )}
+            {mode === 'sub' && parentId && (
+              <p className='text-xs text-muted-foreground' aria-live='polite'>
+                المسار:{' '}
+                {categoryPath(
+                  categories.find((category) => category.id === parentId) || {
+                    id: parentId,
+                    name: '',
+                    parentId: '',
+                  },
+                  categories
+                )}
+                {name.trim() ? ` / ${name.trim()}` : ''}
+              </p>
             )}
             <Button onClick={add}>
               <Plus aria-hidden='true' /> إضافة الفئة
@@ -1788,7 +2321,7 @@ function CategoryManager({
                     }}
                   >
                     <span className='min-w-0 flex-1 truncate'>
-                      {category.name}
+                      {categoryPath(category, categories)}
                     </span>
                     {category.id.startsWith('NEW:') ? (
                       <>
@@ -1847,10 +2380,10 @@ function QrDialog({
   const [sharing, setSharing] = useState(false)
   if (!product) return null
   const productReference = product.productNumber || product.id
-  const url =
-    typeof window !== 'undefined' && username
-      ? `${window.location.origin}/${encodeURIComponent(username.replace(/^@/, ''))}/p${encodeURIComponent(productReference)}`
-      : ''
+  const storeBaseUrl = 'https://appi.dpdns.org'
+  const url = username
+    ? `${storeBaseUrl}/${encodeURIComponent(username.replace(/^@/, ''))}/p${encodeURIComponent(productReference)}`
+    : ''
   const qrUrl = `${qrService}?size=280x280&format=svg&data=${encodeURIComponent(url)}`
 
   const share = async () => {
@@ -1984,8 +2517,19 @@ function Field({
   )
 }
 
-async function readImagePreview(file: File): Promise<string> {
-  await compressDashboardImage(file, 0.8)
+async function prepareDashboardImage(
+  file: File
+): Promise<{ file: File; preview: string }> {
+  const webp = await compressDashboardImage(file, 0.8)
+  const compressedFile = new File([webp], 'product.webp', {
+    type: 'image/webp',
+    lastModified: Date.now(),
+  })
+  const preview = await readImagePreview(webp)
+  return { file: compressedFile, preview }
+}
+
+async function readImagePreview(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "items": [
+    { "id": "sales", "name": "مساعد المبيعات", "description": "يساعد العميل على اختيار المنتج.", "config": { "assistant": { "enabled": true, "name": "مساعد المتجر", "behavior_mode": "sales", "conversation_style": "balanced", "button_style": "pill" } } },
+    { "id": "concierge", "name": "المساعد الراقي", "description": "نبرة احترافية للمتاجر الفاخرة.", "config": { "assistant": { "enabled": true, "name": "المستشار", "behavior_mode": "concierge", "conversation_style": "detailed", "button_style": "bubble" } } }
+  ]
+}

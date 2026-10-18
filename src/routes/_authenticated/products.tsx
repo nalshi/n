@@ -4,6 +4,7 @@ import { Products } from '@/features/products'
 export const Route = createFileRoute('/_authenticated/products')({
   validateSearch: (search: Record<string, unknown>) =>
     ({
+      tab: typeof search.tab === 'string' ? search.tab : undefined,
       create:
         search.create === true || search.create === 'true' ? true : undefined,
       manageCategories:
@@ -11,6 +12,7 @@ export const Route = createFileRoute('/_authenticated/products')({
           ? true
           : undefined,
     }) as {
+      tab?: string
       create?: true
       manageCategories?: true
     },

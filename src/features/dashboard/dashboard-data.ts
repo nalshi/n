@@ -139,6 +139,13 @@ function readString(...values: unknown[]): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function readProductImage(...values: unknown[]): string {
+  const image = readString(...values)
+  return /^https?:\/\/(?:[^/]+\.)?loremflickr\.com(?:\/|$)/i.test(image)
+    ? ''
+    : image
+}
+
 function readIdentifier(...values: unknown[]): string {
   const value = values.find(
     (candidate) =>
@@ -278,10 +285,16 @@ function normalizeProducts(result: ApiResult): DashboardProduct[] {
       name: readString(product.name, product.product_name) || 'منتج بدون اسم',
       description: readString(product.description, product.mainDescription),
       type:
-        readString(product.type, product.category_name, product.category) ||
-        'عام',
+        readString(product.type, product.category_name, product.category) ===
+        'عام'
+          ? ''
+          : readString(product.type, product.category_name, product.category),
       categoryId: readIdentifier(product.category_id),
-      image: readString(product.image, product.image_url, product.imageUrl),
+      image: readProductImage(
+        product.image,
+        product.image_url,
+        product.imageUrl
+      ),
       price: readNumber(product.price),
       costPrice: readNumber(product.cost_price),
       discount: readNumber(product.discount),
@@ -422,7 +435,7 @@ function normalizeOrderItems(value: unknown): DashboardOrderItem[] {
       {
         id: readIdentifier(item.id, item.product_id) || `item-${index}`,
         name: readString(item.product_name, item.name) || 'منتج',
-        image: readString(item.image, item.image_url),
+        image: readProductImage(item.image, item.image_url),
         quantity: Math.max(1, readNumber(item.quantity) || 1),
         price: readNumber(item.price),
         costPrice: readNumber(item.cost_price),
@@ -592,8 +605,13 @@ export async function fetchDashboardCategories(): Promise<DashboardCategory[]> {
 export async function fetchDashboardOrders(
   filter: 'active' | 'archived'
 ): Promise<DashboardOrder[]> {
-  const dashboard = (await fetchDashboardInitialization()).dashboard
-  return filter === 'active' ? dashboard.activeOrders : dashboard.archivedOrders
+  const result = await authApiRequest('get_orders', { filter })
+  const orders = normalizeOrders(result)
+  return filter === 'active'
+    ? orders.filter(
+        (order) => order.status !== 'completed' && order.status !== 'cancelled'
+      )
+    : orders
 }
 
 export async function updateDashboardOrderStatus(
@@ -648,8 +666,13 @@ export async function fetchDashboardUsername(): Promise<string> {
   return username
 }
 
-export async function saveDashboardProduct(payload: FormData): Promise<string> {
-  const result = await authApiRequest('save_product', payload)
+export async function saveDashboardProduct(
+  payload: FormData,
+  onUploadProgress?: (progress: number) => void
+): Promise<string> {
+  const result = onUploadProgress
+    ? await authApiRequest('save_product', payload, onUploadProgress)
+    : await authApiRequest('save_product', payload)
   if (result.status !== 'success' && result.status !== 'ok') {
     throw new Error(result.message || 'تعذر حفظ المنتج.')
   }
@@ -684,6 +707,35 @@ export async function updateDashboardAvailability(
   clearDashboardInitializationCache()
 }
 
+export async function updateDashboardProductStock(
+  product: DashboardProduct,
+  stock: {
+    quantity: number
+    quantityType: 'tracked' | 'unlimited'
+    options: Array<{
+      id: string
+      quantity: number
+      quantityType: 'tracked' | 'unlimited'
+    }>
+  }
+): Promise<string> {
+  const result = await authApiRequest('update_product_stock', {
+    product_id: product.id,
+    quantity: stock.quantity,
+    quantity_type: stock.quantityType,
+    options: stock.options.map((option) => ({
+      id: option.id,
+      quantity: option.quantity,
+      quantity_type: option.quantityType,
+    })),
+  })
+  if (result.status !== 'success' && result.status !== 'ok') {
+    throw new Error(result.message || 'تعذر تحديث مخزون المنتج.')
+  }
+  clearDashboardInitializationCache()
+  return result.message || ''
+}
+
 export async function compressDashboardImage(
   file: File,
   quality = 0.8
@@ -707,28 +759,49 @@ export async function compressDashboardImage(
   try {
     image.src = objectUrl
     await image.decode()
-    const scale = Math.min(1, 1200 / Math.max(image.width, image.height))
+    const baseScale = Math.min(1, 1200 / Math.max(image.width, image.height))
     const canvas = document.createElement('canvas')
-    canvas.width = Math.max(1, Math.round(image.width * scale))
-    canvas.height = Math.max(1, Math.round(image.height * scale))
     const context = canvas.getContext('2d')
     if (!context) throw new Error('تعذر تجهيز الصورة.')
-    context.drawImage(image, 0, 0, canvas.width, canvas.height)
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/webp', quality)
-    )
-    if (!blob) throw new Error('تعذر ضغط الصورة.')
-    return blob
+    const scales = [1, 0.85, 0.7, 0.55]
+    const qualities = [quality, 0.72, 0.62, 0.52]
+    let smallestBlob: Blob | null = null
+    for (const scaleFactor of scales) {
+      const scale = baseScale * scaleFactor
+      canvas.width = Math.max(1, Math.round(image.width * scale))
+      canvas.height = Math.max(1, Math.round(image.height * scale))
+      context.clearRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+      for (const candidateQuality of qualities) {
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, 'image/webp', candidateQuality)
+        )
+        if (!blob || blob.type !== 'image/webp') {
+          throw new Error('تعذر تحويل الصورة إلى WebP في هذا المتصفح.')
+        }
+        if (!smallestBlob || blob.size < smallestBlob.size) smallestBlob = blob
+        if (blob.size <= 700 * 1024) return blob
+      }
+    }
+    if (!smallestBlob) throw new Error('تعذر ضغط الصورة.')
+    return smallestBlob
   } finally {
     URL.revokeObjectURL(objectUrl)
   }
 }
 
-export async function uploadDashboardImage(file: File): Promise<string> {
-  const webp = await compressDashboardImage(file)
+export async function uploadDashboardImage(
+  file: File,
+  onUploadProgress?: (progress: number) => void
+): Promise<string> {
+  const webp =
+    file.type === 'image/webp' ? file : await compressDashboardImage(file)
   const payload = new FormData()
   payload.append('image_data', webp, 'product.webp')
-  const result = await authApiRequest('upload_image', payload)
+  const result = onUploadProgress
+    ? await authApiRequest('upload_image', payload, onUploadProgress)
+    : await authApiRequest('upload_image', payload)
   const record = asRecord(result.data)
   const url = readString(result.url, record?.url, record?.image)
   if (result.status !== 'success' || !url) {

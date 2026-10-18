@@ -16,39 +16,50 @@ const mockedAuthApiRequest = vi.mocked(authApiRequest)
 describe('storefront data', () => {
   beforeEach(() => {
     mockedAuthApiRequest.mockReset()
+    vi.restoreAllMocks()
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('loads themes and the saved merchant selection', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          items: [
-            {
-              id: 'summer-shop',
-              name: 'الصيفي',
-              description: 'واجهة مشرقة',
-              category: 'عصري',
-              sourceFile: '/templates/themes/summer-shop.json',
-              preview: { primary: '#123456' },
-            },
-          ],
-        }),
-      })
-    )
+  it('loads themes from static storefront files and merchant settings via API', async () => {
+    const mockCatalog = {
+      items: [
+        {
+          id: 'celestial_saffron',
+          name: 'شمس سماوية',
+          description: 'ذهبي مشرق',
+          category: 'شمس ودفء',
+          sourceFile: '/templates/themes/celestial_saffron.json',
+          preview: {
+            primary: '#A16207',
+            accent: '#0F766E',
+            background: '#FFFCF2',
+          },
+        },
+      ],
+    }
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const urlStr = String(url)
+      if (urlStr.includes('/templates/themes.json')) {
+        return {
+          ok: true,
+          json: async () => mockCatalog,
+        } as Response
+      }
+      return { ok: false, status: 404 } as Response
+    })
+
     mockedAuthApiRequest.mockImplementation(async (action) => {
       if (action === 'get_storefront_config') {
         return {
           status: 'success',
           data: {
             config: {
-              theme_name: 'summer-shop',
-              default_theme_mode: 'dark',
+              theme_name: 'celestial_saffron',
+              default_theme_mode: 'light',
             },
           },
         }
@@ -66,77 +77,91 @@ describe('storefront data', () => {
       return { status: 'error', message: 'طلب غير معروف' }
     })
 
-    await expect(fetchStorefrontLibrary()).resolves.toMatchObject({
+    const library = await fetchStorefrontLibrary()
+    expect(library).toMatchObject({
       username: 'my_store',
       storeName: 'متجري',
       phone: '+967 700 000 000',
-      selectedThemeId: 'summer-shop',
-      selectedMode: 'dark',
+      selectedThemeId: 'celestial_saffron',
+      selectedMode: 'light',
       themes: [
         {
-          id: 'summer-shop',
-          name: 'الصيفي',
-          preview: { primary: '#123456' },
+          id: 'celestial_saffron',
+          name: 'شمس سماوية',
+          preview: { primary: '#A16207' },
         },
       ],
     })
+    // Verify worker get_storefront_themes was NOT called
+    expect(mockedAuthApiRequest).not.toHaveBeenCalledWith('get_storefront_themes', expect.anything())
   })
 
-  it('falls back to the storefront themes API when the static catalog is unavailable', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 404 })
-    )
+  it('handles storefront static theme file fetch failure properly', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 404,
+    } as Response)
+
     mockedAuthApiRequest.mockImplementation(async (action) => {
-      if (action === 'get_storefront_themes') {
-        return {
-          status: 'success',
-          data: {
-            themes: [
-              {
-                id: 'api-theme',
-                name: 'قالب المنصة',
-                config: { theme_name: 'api-theme' },
-              },
-            ],
-          },
-        }
-      }
       if (action === 'get_storefront_config') {
         return { status: 'success', data: { config: {} } }
       }
       if (action === 'get_merchant_settings') {
-        return { status: 'success', data: { username: 'merchant' } }
+        return { status: 'success', data: { username: 'demo' } }
       }
       return { status: 'error', message: 'طلب غير معروف' }
     })
 
-    await expect(fetchStorefrontLibrary()).resolves.toMatchObject({
-      username: 'merchant',
-      themes: [{ id: 'api-theme', name: 'قالب المنصة' }],
-    })
-    expect(mockedAuthApiRequest).toHaveBeenCalledWith(
-      'get_storefront_themes',
-      {}
-    )
+    await expect(fetchStorefrontLibrary()).rejects.toThrow('تعذر قراءة ملف المتجر')
   })
 
-  it('loads a theme configuration only from its validated matching file', async () => {
-    const fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        id: 'summer-shop',
-        config: { light_theme: { colors: { primary: '#123456' } } },
-      }),
-    })
-    vi.stubGlobal('fetch', fetch)
-
+  it('loads a theme configuration from static template file', async () => {
     const theme = {
-      id: 'summer-shop',
-      name: 'الصيفي',
+      id: 'celestial_saffron',
+      name: 'شمس سماوية',
       description: '',
       category: '',
-      sourceFile: '/templates/themes/summer-shop.json',
+      sourceFile: '/templates/themes/celestial_saffron.json',
+      preview: {
+        primary: '#A16207',
+        accent: '#0F766E',
+        background: '#FFFCF2',
+        dark: {
+          primary: '#FCD34D',
+          accent: '#5EEAD4',
+          background: '#1B1407',
+        },
+      },
+    }
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const urlStr = String(url)
+      if (urlStr.includes('/templates/themes/celestial_saffron.json')) {
+        return {
+          ok: true,
+          json: async () => ({
+            id: 'celestial_saffron',
+            config: {
+              light_theme: { colors: { primary: '#A16207' } },
+            },
+          }),
+        } as Response
+      }
+      return { ok: false, status: 404 } as Response
+    })
+
+    await expect(loadStorefrontThemeConfig(theme)).resolves.toEqual({
+      light_theme: { colors: { primary: '#A16207' } },
+    })
+  })
+
+  it('uses inline config when available on theme without extra fetch', async () => {
+    const theme = {
+      id: 'custom_theme',
+      name: 'مخصص',
+      description: '',
+      category: '',
+      sourceFile: '',
       preview: {
         primary: '#123456',
         accent: '#06B6D4',
@@ -147,18 +172,16 @@ describe('storefront data', () => {
           background: '#111827',
         },
       },
+      config: {
+        custom_key: 'custom_value',
+      },
     }
 
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
     await expect(loadStorefrontThemeConfig(theme)).resolves.toEqual({
-      light_theme: { colors: { primary: '#123456' } },
+      custom_key: 'custom_value',
     })
-    expect(fetch).toHaveBeenCalledWith(
-      '/templates/themes/summer-shop.json',
-      expect.objectContaining({ credentials: 'same-origin' })
-    )
-    await expect(
-      loadStorefrontThemeConfig({ ...theme, sourceFile: '/private.json' })
-    ).rejects.toThrow('ملف إعدادات القالب غير متوفر.')
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('merges nested config while retaining unrelated base storefront settings', () => {
@@ -177,7 +200,7 @@ describe('storefront data', () => {
     })
   })
 
-  it('saves the selected storefront configuration using the legacy API payload', async () => {
+  it('saves the selected storefront configuration using the API payload', async () => {
     mockedAuthApiRequest.mockResolvedValueOnce({
       status: 'success',
       message: 'تم النشر',

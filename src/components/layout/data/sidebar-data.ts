@@ -41,14 +41,14 @@ export const sidebarData: SidebarData = {
           icon: Package,
           items: [
             {
-              title: 'إدارة المنتجات',
+              title: 'قائمة المنتجات',
               url: '/products',
-              icon: Boxes,
+              icon: List,
             },
             {
-              title: 'قائمة المنتجات',
-              url: '/product-catalog',
-              icon: List,
+              title: 'إدارة المخزون',
+              url: '/products?tab=inventory',
+              icon: Boxes,
             },
             {
               title: 'الفئات',

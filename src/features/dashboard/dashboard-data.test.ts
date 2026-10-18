@@ -15,6 +15,8 @@ import {
   confirmDashboardOrderDelivery,
   summarizeDashboardOrders,
   normalizeRealtimeOrders,
+  normalizeRealtimeProducts,
+  buildPendingCategoryChain,
 } from './dashboard-data'
 
 const { authApiRequest } = vi.hoisted(() => ({
@@ -71,6 +73,7 @@ describe('summarizeDashboardOrders', () => {
       createdAt,
       items: [],
     })
+
     const activeOrders = [
       makeOrder('active-pending', '2026-10-10', 'pending_merchant_approval'),
       makeOrder('active-delivery', '2026-10-09', 'out_for_delivery'),
@@ -97,6 +100,25 @@ describe('summarizeDashboardOrders', () => {
       'active-delivery',
       'archive-third',
     ])
+  })
+})
+
+describe('buildPendingCategoryChain', () => {
+  it('preserves an arbitrary nested category path until its saved ancestor', () => {
+    expect(
+      buildPendingCategoryChain(
+        [
+          { id: '10', name: 'إلكترونيات', parentId: '' },
+          { id: 'NEW:phones', name: 'جوالات', parentId: '10' },
+          { id: 'NEW:samsung', name: 'سامسونج', parentId: 'NEW:phones' },
+          { id: 'NEW:galaxy', name: 'جالكسي', parentId: 'NEW:samsung' },
+        ],
+        'NEW:galaxy'
+      )
+    ).toEqual({
+      names: ['جوالات', 'سامسونج', 'جالكسي'],
+      anchorId: '10',
+    })
   })
 })
 
@@ -161,7 +183,7 @@ describe('fetchDashboardData', () => {
           productNumber: '',
           name: 'منتج',
           description: '',
-          type: 'عام',
+          type: '',
           categoryId: '',
           image: '/product.png',
           price: 1200,
@@ -284,12 +306,28 @@ describe('fetchDashboardData', () => {
       total: 1200,
       items: [{ id: 'p1', name: 'منتج', quantity: 1 }],
     })
+
     expect(orders.find((order) => order.id === 'archived-1')).toMatchObject({
       customerName: 'عميل مؤرشف',
       total: 900,
       status: 'completed',
       items: [{ id: 'p2', name: 'قديم', quantity: 2 }],
     })
+  })
+
+  it('drops broken loremflickr placeholder image URLs but keeps merchant images', () => {
+    const products = normalizeRealtimeProducts([
+      {
+        id: 'broken-image',
+        image: 'https://loremflickr.com/640/640/womens-fashion,dress?lock=2003',
+      },
+      { id: 'merchant-image', image: 'https://cdn.example.com/product.jpg' },
+    ])
+
+    expect(products.map((product) => product.image)).toEqual([
+      '',
+      'https://cdn.example.com/product.jpg',
+    ])
   })
 
   it('reports API failures instead of showing empty dashboard data', async () => {
@@ -433,33 +471,32 @@ describe('fetchDashboardData', () => {
   })
 
   it('loads complete order and product item details from get_orders', async () => {
-    mockDashboardResponse(
-      dashboardSnapshot({
-        orders: [
-          {
-            id: 'ticket-1',
-            customer_name: 'سارة',
-            customer_phone: '+967700000000',
-            delivery_address_text: 'صنعاء',
-            delivery_gps_link: 'https://maps.example/order',
-            total_amount: 2750,
-            delivery_fee: 250,
-            status: 'pending_merchant_approval',
-            created_at: '2026-10-12T10:00:00Z',
-            items: JSON.stringify([
-              {
-                product_id: 9,
-                product_name: 'حقيبة',
-                image: '/bag.png',
-                quantity: 2,
-                price: 1250,
-                cost_price: 800,
-              },
-            ]),
-          },
-        ],
-      })
-    )
+    authApiRequest.mockResolvedValueOnce({
+      status: 'success',
+      data: [
+        {
+          id: 'ticket-1',
+          customer_name: 'سارة',
+          customer_phone: '+967700000000',
+          delivery_address_text: 'صنعاء',
+          delivery_gps_link: 'https://maps.example/order',
+          total_amount: 2750,
+          delivery_fee: 250,
+          status: 'pending_merchant_approval',
+          created_at: '2026-10-12T10:00:00Z',
+          items: JSON.stringify([
+            {
+              product_id: 9,
+              product_name: 'حقيبة',
+              image: '/bag.png',
+              quantity: 2,
+              price: 1250,
+              cost_price: 800,
+            },
+          ]),
+        },
+      ],
+    })
 
     await expect(fetchDashboardOrders('active')).resolves.toEqual([
       {
@@ -485,7 +522,9 @@ describe('fetchDashboardData', () => {
         ],
       },
     ])
-    expect(fetch).toHaveBeenCalledOnce()
+    expect(authApiRequest).toHaveBeenCalledWith('get_orders', {
+      filter: 'active',
+    })
   })
 
   it('sends supported order state and delivery actions with legacy payload fields', async () => {

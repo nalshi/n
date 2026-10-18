@@ -1,0 +1,143 @@
+{
+  "version": 3,
+  "updated_at": "2026-10-12T17:44:18.952Z",
+  "count": 8,
+  "items": [
+    {
+      "id": "celestial_saffron",
+      "name": "شمس سماوية",
+      "description": "ذهبي مشرق يلتقي بالتركواز في واجهة دافئة مناسبة للهدايا والضيافة.",
+      "category": "شمس ودفء",
+      "preview": {
+        "primary": "#A16207",
+        "accent": "#0F766E",
+        "background": "#FFFCF2",
+        "dark": {
+          "primary": "#FCD34D",
+          "accent": "#5EEAD4",
+          "background": "#1B1407"
+        }
+      },
+      "sourceFile": "/templates/themes/celestial_saffron.json"
+    },
+    {
+      "id": "dragonfire_ruby",
+      "name": "ياقوتة التنين",
+      "description": "أحمر ياقوتي متوهج بوهج مرجاني دافئ يمنح المتجر حضوراً جريئاً.",
+      "category": "نار وجرأة",
+      "preview": {
+        "primary": "#BE123C",
+        "accent": "#EA580C",
+        "background": "#FFF7F5",
+        "dark": {
+          "primary": "#FDA4AF",
+          "accent": "#FDBA74",
+          "background": "#1D0A10"
+        }
+      },
+      "sourceFile": "/templates/themes/dragonfire_ruby.json"
+    },
+    {
+      "id": "enchanted_emerald",
+      "name": "زمردة مسحورة",
+      "description": "أخضر زمردي غني مع بريق ذهبي يليق بالمنتجات الطبيعية والفاخرة.",
+      "category": "غابات وأحجار كريمة",
+      "preview": {
+        "primary": "#047857",
+        "accent": "#B7791F",
+        "background": "#F2FBF5",
+        "dark": {
+          "primary": "#6EE7B7",
+          "accent": "#FCD34D",
+          "background": "#071A13"
+        }
+      },
+      "sourceFile": "/templates/themes/enchanted_emerald.json"
+    },
+    {
+      "id": "faerie_rose",
+      "name": "وردة الجنيات",
+      "description": "وردي ناعم مع لمسات بنفسجية منعشة لتجربة لطيفة وأنيقة.",
+      "category": "خيال وزهور",
+      "preview": {
+        "primary": "#BE185D",
+        "accent": "#7C3AED",
+        "background": "#FFF7FB",
+        "dark": {
+          "primary": "#F9A8D4",
+          "accent": "#C4B5FD",
+          "background": "#1E0B17"
+        }
+      },
+      "sourceFile": "/templates/themes/faerie_rose.json"
+    },
+    {
+      "id": "moonlit_amethyst",
+      "name": "جمشت قمري",
+      "description": "ليلكي مخملي ولمسات فوشيا مضيئة لمتجر أنيق بلمسة ساحرة.",
+      "category": "سحر وأحجار كريمة",
+      "preview": {
+        "primary": "#7E22CE",
+        "accent": "#C026D3",
+        "background": "#FCF7FF",
+        "dark": {
+          "primary": "#D8B4FE",
+          "accent": "#F0ABFC",
+          "background": "#170B20"
+        }
+      },
+      "sourceFile": "/templates/themes/moonlit_amethyst.json"
+    },
+    {
+      "id": "nebula_sapphire",
+      "name": "سديم الياقوت",
+      "description": "أزرق ياقوتي عميق يتدرج إلى البنفسجي، مناسب لمتاجر التقنية والمنتجات العصرية.",
+      "category": "فضاء وتقنية",
+      "preview": {
+        "primary": "#1D4ED8",
+        "accent": "#7C3AED",
+        "background": "#F2F7FF",
+        "dark": {
+          "primary": "#93C5FD",
+          "accent": "#C4B5FD",
+          "background": "#081326"
+        }
+      },
+      "sourceFile": "/templates/themes/nebula_sapphire.json"
+    },
+    {
+      "id": "oceanic_mirage",
+      "name": "سراب المحيط",
+      "description": "فيروزي بحري منعش مع عمق نيلي يمنح تجربة هادئة وواضحة.",
+      "category": "محيط ونسيم",
+      "preview": {
+        "primary": "#0F766E",
+        "accent": "#2563EB",
+        "background": "#F0FDFA",
+        "dark": {
+          "primary": "#5EEAD4",
+          "accent": "#93C5FD",
+          "background": "#061816"
+        }
+      },
+      "sourceFile": "/templates/themes/oceanic_mirage.json"
+    },
+    {
+      "id": "starlit_aurora",
+      "name": "شفق النجوم",
+      "description": "بنفسجي كوني مع ومضات سماوية، بهدوء مريح للعينين في الوضعين الفاتح والداكن.",
+      "category": "خيال ونجوم",
+      "preview": {
+        "primary": "#6D28D9",
+        "accent": "#0891B2",
+        "background": "#F7F4FF",
+        "dark": {
+          "primary": "#C4B5FD",
+          "accent": "#67E8F9",
+          "background": "#10091F"
+        }
+      },
+      "sourceFile": "/templates/themes/starlit_aurora.json"
+    }
+  ]
+}

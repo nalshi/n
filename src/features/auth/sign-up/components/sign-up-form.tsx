@@ -252,7 +252,7 @@ export function SignUpForm({
                 </FormControl>
                 {username && (
                   <p className='text-xs text-muted-foreground' dir='ltr'>
-                    {window.location.host}/{username}
+                    appi.dpdns.org/{username}
                   </p>
                 )}
                 <FormMessage />

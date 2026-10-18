@@ -30,6 +30,7 @@ export const actionRegistry = {
   list_products: { handler: productController.listProducts, roles: [ROLES.MERCHANT] },
   delete_product: { handler: productController.deleteProduct, roles: [ROLES.MERCHANT] },
   toggle_availability: { handler: productController.toggleAvailability, roles: [ROLES.MERCHANT] },
+  update_product_stock: { handler: productController.updateProductStock, roles: [ROLES.MERCHANT] },
 
   // 📦 الطلبات (تاجر فقط)
   get_merchant_orders: { handler: orderController.getMerchantOrders, roles: [ROLES.MERCHANT] },
@@ -71,7 +72,9 @@ export const actionRegistry = {
   get_storefront_config: { handler: storefrontBuilderController.getStorefrontConfig, roles: [], public: true },
   save_storefront_config: { handler: storefrontBuilderController.saveStorefrontConfig, roles: [ROLES.MERCHANT] },
   update_theme_config_file: { handler: storefrontBuilderController.saveStorefrontConfig, roles: [ROLES.MERCHANT] },
-  get_storefront_themes: { handler: storefrontBuilderController.getStorefrontThemes, roles: [], public: true },
+  get_storefront_themes: { handler: storefrontBuilderController.getStorefrontThemes, roles: [ROLES.MERCHANT] },
+  get_storefront_base_config: { handler: storefrontBuilderController.getStorefrontBaseConfig, roles: [ROLES.MERCHANT] },
+  get_storefront_theme_config: { handler: storefrontBuilderController.getStorefrontThemeConfig, roles: [ROLES.MERCHANT] },
 
   // 🔄 عام / مزامنة
   sync_user: { handler: syncController.syncUser, roles: [], public: true },

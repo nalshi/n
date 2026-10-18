@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "items": [
+    { "id": "tajawal", "name": "Tajawal", "description": "خط عربي واضح ومتوازن.", "config": { "typography": { "font_family": "Tajawal", "base_size": "16px", "heading_weight": "700" } } },
+    { "id": "cairo", "name": "Cairo", "description": "خط عصري مناسب للمتاجر.", "config": { "typography": { "font_family": "Cairo", "base_size": "16px", "heading_weight": "700" } } },
+    { "id": "readex", "name": "Readex Pro", "description": "خط هندسي للهوية الفاخرة.", "config": { "typography": { "font_family": "Readex Pro", "base_size": "16px", "heading_weight": "600" } } }
+  ]
+}

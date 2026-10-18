@@ -21,11 +21,14 @@ database_id = "65f387d5-1a16-4811-bc14-1b95e91bd88b"
 [vars]
 GITHUB_OWNER = "nalshi"
 GITHUB_REPO = "Nynnl"
+# 📦 مستودع بيانات منفصل (المنتجات/الفئات/الصور) غير مربوط ببناء Vercel.
+# فعّله بعد إنشاء المستودع: لن يُطلق أي نشر لكل تعديل. راجع CHANGES.md
+# GITHUB_DATA_REPO = "Nynnl-data"
 
 # 🔒 أمان: قائمة الدومينات المسموحة بالوصول (CORS). لو تركتها فاضية،
 # يرجع السلوك القديم (*) بدون قيود.
 # ⚠️ عدّل الدومين تحت ليكون دومين لوحة التاجر الفعلي عندك
-ALLOWED_ORIGINS = "https://appi.dpdns.org"
+ALLOWED_ORIGINS = "https://appi.dpdns.org,https://dash.appi.dpdns.org"
 
 # إعدادات Firebase العامة (Client Config) -  للنشر لأنها ليست أسرار
 FCM_API_KEY = "AIzaSyCMXZAyWU6z8BfUbvG74LfVWaB36zs75E4"
@@ -44,7 +47,7 @@ API_PHP_URL = "https://api.nalsh.dpdns.org/api.php"
 # إعدادات Cloudflare Cache Purge (غير حساسة - Zone ID ورابط واجهة المتجر)
 # ⚠️ التوكن CLOUDFLARE_API_TOKEN لا يُوضع هنا إطلاقاً، شوف قسم الأسرار تحت
 CLOUDFLARE_ZONE_ID = "a9207e110f97f2e57b27643390bc4099"
-STOREFRONT_BASE_URL = "https://nalsh.dpdns.org"
+STOREFRONT_BASE_URL = "https://appi.dpdns.org"
 VERCEL_PROJECT_ID = "prj_pSmjRLRTR1W0PJYgu2Y4snjhhGVm"
 # ========================================================
 # 🔐 أسرار حقيقية - لا تضعها هنا إطلاقاً كنص صريح!
@@ -94,4 +97,3 @@ class_name = "MerchantSession"
 [[migrations]]
 tag = "v1_merchant_session"
 new_classes = ["MerchantSession"]
-

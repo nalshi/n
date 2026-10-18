@@ -6,14 +6,13 @@
  * Dexie IndexedDB   = مخزن دائم (يبقى حتى لو أُغلق المتصفح).
  *
  * تدفق البيانات:
- *  WebSocket event
+ *  Firebase RTDB signal
  *   ├─► Dexie.put()           ← الحقن الأساسي الدائم
  *   └─► QueryClient.setQueryData() ← تحديث الـ UI الفوري
  *
  * عند فتح التطبيق:
  *  IndexedDB (Dexie) ──► hydrate QueryClient ──► UI بدون أي HTTP request
  */
-
 import Dexie, { type EntityTable } from 'dexie'
 import type {
   DashboardOrder,
@@ -68,10 +67,10 @@ export class MerchantLocalDB extends Dexie {
 
     this.version(1).stores({
       // ++id = auto-increment PK | باقي الحقول = فهارس للاستعلام
-      orders:     'id, status, createdAt, total',
-      products:   'id, categoryId, isAvailable, approvalStatus',
+      orders: 'id, status, createdAt, total',
+      products: 'id, categoryId, isAvailable, approvalStatus',
       categories: 'id, parentId',
-      syncState:  'key',
+      syncState: 'key',
     })
   }
 }
@@ -118,7 +117,9 @@ export async function injectProduct(product: DashboardProduct): Promise<void> {
 /**
  * يحقن قائمة منتجات داخل IndexedDB بشكل ذري.
  */
-export async function injectProducts(products: DashboardProduct[]): Promise<void> {
+export async function injectProducts(
+  products: DashboardProduct[]
+): Promise<void> {
   if (!products.length) return
   await localDB.transaction('rw', localDB.products, async () => {
     await localDB.products.bulkPut(products)
@@ -211,7 +212,14 @@ export async function hydrateFromSnapshot(params: {
   lastEventId: number
   lastTimestamp: number
 }): Promise<void> {
-  const { merchantId, orders, products, categories, lastEventId, lastTimestamp } = params
+  const {
+    merchantId,
+    orders,
+    products,
+    categories,
+    lastEventId,
+    lastTimestamp,
+  } = params
   await localDB.transaction(
     'rw',
     localDB.orders,
@@ -226,9 +234,13 @@ export async function hydrateFromSnapshot(params: {
         localDB.categories.clear(),
       ])
       await Promise.all([
-        orders.length    ? localDB.orders.bulkPut(orders)       : Promise.resolve(),
-        products.length  ? localDB.products.bulkPut(products)   : Promise.resolve(),
-        categories.length? localDB.categories.bulkPut(categories): Promise.resolve(),
+        orders.length ? localDB.orders.bulkPut(orders) : Promise.resolve(),
+        products.length
+          ? localDB.products.bulkPut(products)
+          : Promise.resolve(),
+        categories.length
+          ? localDB.categories.bulkPut(categories)
+          : Promise.resolve(),
       ])
       await localDB.syncState.put({
         key: SYNC_CURSOR_KEY,

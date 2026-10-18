@@ -1,7 +1,8 @@
 import { HttpError } from '../security/rbac.js';
-import { syncCatalogToStorefront } from '../services/catalog/catalogSyncService.js';
-import { syncOrderTracking } from '../services/realtime/realtimeSyncService.js';
-import { signalNewOrderToFirebase } from '../services/realtime/providers/firebaseSignalProvider.js';
+import {
+  syncMerchantOrderSignal,
+  syncOrderTracking,
+} from '../services/realtime/realtimeSyncService.js';
 import { sendFcmNotification } from '../services/notifications/providers/fcmProvider.js';
 import { extractCoordsFromUrl, calculateDistance, calculateDeliveryFee } from '../services/geo/geoUtils.js';
 import { syncNewOrderToLegacyApi } from '../services/legacySync/tidbSyncService.js';
@@ -16,6 +17,16 @@ import {
 } from '../config/constants.js';
 
 function syncOrderToMerchantSession(env, ctx, order) {
+  ctx.waitUntil(
+    syncMerchantOrderSignal(env, order.merchant_id, order.ticket_id).catch(
+      (error) => {
+        console.error(
+          '[firebase-realtime] تعذر نشر إشارة الطلب:',
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    )
+  );
   if (!env.MERCHANT_SESSION) return;
 
   const doId = env.MERCHANT_SESSION.idFromName(`merchant_${order.merchant_id}`);
@@ -788,12 +799,6 @@ async function processOrderCreation({ env, ctx, user, body, customerId }) {
 // "Post-Processing" بـ api.php التي تُرسل الرد للعميل قبل هذه الخطوات).
 async function deductStockAndNotify(env, tick) {
   try {
-    // ⭐ نتتبع هل "انتهت الكمية" فعلياً لأي منتج ضمن هذا الطلب (وصلت لصفر)،
-    // لأن الشراء بحد ذاته لا يجب أن يستدعي مزامنة GitHub في كل مرة — فقط
-    // عندما يصبح المنتج (أو الخيار) غير متوفر فعلاً، حتى نقلل عدد الكوميتات
-    // غير الضرورية على المستودع ونمسح الكاش فقط عند الحاجة الحقيقية.
-    let stockDepleted = false;
-
     for (const item of tick.original_items_to_deduct) {
       if (item.qty_type !== 'tracked') continue;
       const pid = item.product_id;
@@ -810,87 +815,22 @@ async function deductStockAndNotify(env, tick) {
         await env.DB.prepare(`UPDATE products SET quantity = ?, options = ?, updated_at = ? WHERE id = ? AND merchant_id = ?`)
           .bind(totalRemainingQty, JSON.stringify(options), Date.now(), pid, tick.merchant_id)
           .run();
-        if (totalRemainingQty <= 0) stockDepleted = true;
       } else {
         await env.DB.prepare(`UPDATE products SET quantity = MAX(quantity - ?, 0), updated_at = ? WHERE id = ? AND merchant_id = ?`)
           .bind(item.quantity, Date.now(), pid, tick.merchant_id)
           .run();
 
-        const row = await env.DB.prepare(`SELECT quantity FROM products WHERE id = ? AND merchant_id = ?`)
-          .bind(pid, tick.merchant_id)
-          .first();
-        if (row && (parseInt(row.quantity, 10) || 0) <= 0) stockDepleted = true;
-      }
-    }
-
-    // 🐙 مزامنة كاش المتجر على GitHub (نفس آلية saveProduct/deleteProduct) —
-    // فقط عندما تنتهي كمية أحد المنتجات، وليس عند كل عملية شراء عادية.
-    if (stockDepleted) {
-      try {
-        const remaining = await env.DB.prepare(`SELECT * FROM products WHERE merchant_id = ? AND is_available = 1`)
-          .bind(tick.merchant_id)
-          .all();
-        await syncCatalogToStorefront(env, tick.merchant_username, tick.merchant_id, remaining.results || []);
-      } catch (e) {
-        console.error('Catalog sync after order failed:', e);
       }
     }
 
     // إشارة Firebase (لأغراض التتبع للزبون/المندوب) + تحديث لوحة التاجر اللحظية عبر DO
     try {
       await syncOrderTracking(env, tick.ticket_id, tick.status, tick.merchant_username);
-      
-      // ⭐ تحديث الـ Durable Object (In-Memory Cache) للطلبات النشطة
-      if (env.MERCHANT_SESSION) {
-        const orderRecord = await env.DB.prepare(
-          `SELECT * FROM live_tickets WHERE ticket_id = ? AND merchant_id = ?`
-        ).bind(tick.ticket_id, tick.merchant_id).first();
-        
-        if (orderRecord) {
-          const doId = env.MERCHANT_SESSION.idFromName(`merchant_${tick.merchant_id}`);
-          const doStub = env.MERCHANT_SESSION.get(doId);
-          let data = {};
-          try { data = JSON.parse(orderRecord.ticket_data || '{}'); } catch (e) { data = {}; }
-          const cust = data.customer || {};
-          const fin = data.financials || {};
-          
-          const orderObj = {
-            id: orderRecord.ticket_id,
-            order_group_id: orderRecord.order_group_id,
-            total_amount: fin.grand_total ?? 0,
-            currency: fin.currency || 'YER',
-            delivery_fee: fin.delivery_fee ?? 0,
-            delivery_address_text: cust.address_text || 'عنوان غير محدد',
-            delivery_gps_link: cust.gps_link || '',
-            status: orderRecord.status,
-            created_at: orderRecord.created_at,
-            delivery_code: orderRecord.delivery_code || '',
-            customer_name: cust.name || 'عميل',
-            customer_phone: cust.phone || '',
-            items: data.items || [],
-            is_agent_assigned: orderRecord.delivery_agent_id !== null && orderRecord.delivery_agent_id !== undefined,
-          };
-          
-          await doStub.fetch('http://internal/sync-order', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ order: orderObj })
-          });
-        }
-      }
-
-      // ⭐ إشارة Firebase RTDB (10 bytes فقط — رقم عداد بدون أي بيانات شخصية)
-      // تعمل كبديل/مكمّل للـ Durable Object WebSocket إذا كان التاجر يستخدم
-      // EventSource بدلاً من WebSocket في لوحة التحكم.
-      {
-        const seqRow = await env.DB.prepare(
-          'SELECT count(*) as total FROM live_tickets WHERE merchant_id = ?'
-        ).bind(tick.merchant_id).first().catch(() => null);
-        const seq = seqRow?.total ? Number(seqRow.total) : Date.now();
-        await signalNewOrderToFirebase(env, tick.merchant_id, seq);
-      }
     } catch (e) {
-      console.error('Realtime sync failed:', e);
+      console.error(
+        'Realtime sync failed:',
+        e instanceof Error ? e.message : String(e)
+      );
     }
 
     // إشعار FCM فوري للتاجر

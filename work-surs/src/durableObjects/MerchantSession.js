@@ -1,5 +1,4 @@
 import { getCategoriesTree } from '../services/categories/categoryService.js';
-import { updateSyncBeacon } from '../services/beaconService.js';
 
 export class MerchantSession {
   constructor(state, env) {
@@ -123,7 +122,6 @@ export class MerchantSession {
         if (url.pathname === '/sync-order') {
           const incoming = payload.order || {};
           const orderId = incoming.id || incoming.ticket_id;
-          const targetMerchantId = merchantId || payload.merchant_id || incoming.merchant_id;
           if (this.ordersCache !== null) {
              const idx = this.ordersCache.findIndex(o => String(o.id || o.ticket_id) === String(orderId));
              if (idx !== -1) {
@@ -137,24 +135,7 @@ export class MerchantSession {
             this.initialSnapshot.orders = this.ordersCache;
           }
           this.persistSnapshot();
-          const deliveredCount = this.broadcast({ event: 'order_updated', order: { ...incoming, id: orderId } });
-
-          // المنارة: إذا لم يكن التاجر متصلاً، نحدّث رقم العداد المشفر فقط على GitHub
-          if (deliveredCount === 0 && targetMerchantId) {
-            this.state.waitUntil(
-              (async () => {
-                let seq = this.ordersCache ? this.ordersCache.length : 1;
-                try {
-                  const countRow = await this.env.DB.prepare(
-                    'SELECT count(*) as total FROM live_tickets WHERE merchant_id = ?'
-                  ).bind(targetMerchantId).first();
-                  if (countRow?.total) seq = Number(countRow.total);
-                } catch (_) {}
-
-                await updateSyncBeacon(this.env, targetMerchantId, seq);
-              })()
-            );
-          }
+          this.broadcast({ event: 'order_updated', order: { ...incoming, id: orderId } });
 
           return new Response('Sync OK', { status: 200 });
         }
@@ -395,4 +376,3 @@ export class MerchantSession {
     return deliveredCount;
   }
 }
-

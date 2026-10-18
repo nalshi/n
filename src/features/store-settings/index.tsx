@@ -18,6 +18,11 @@ import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { clearAuthApiCache } from '@/lib/auth-api'
 import {
+  merchantBootstrapKey,
+  merchantQueryKeys,
+  useMerchantIdentity,
+} from '@/hooks/useMerchantRealtime'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -59,15 +64,25 @@ import {
   MerchantPageHeading,
   MerchantWorkspaceHeader,
 } from '@/components/layout/merchant-workspace'
-import { clearDashboardInitializationCache } from '@/features/dashboard/dashboard-data'
+import {
+  clearDashboardInitializationCache,
+  type DashboardData,
+  type DashboardInitialization,
+} from '@/features/dashboard/dashboard-data'
+import {
+  storefrontLibraryQueryKey,
+  type StorefrontLibrary,
+} from '@/features/storefront/storefront-data'
 import {
   fetchStoreSettings,
   logoutMerchant,
+  merchantSettingsQueryKey,
   saveAiAssistantSettings,
   saveMerchantSettings,
   saveWhatsappSettings,
   type AiAssistantSettings,
   type MerchantSettings,
+  type StoreSettingsData,
   type WhatsappSettings,
 } from './store-settings-data'
 
@@ -188,6 +203,7 @@ function shippingDescription(merchant: MerchantSettings) {
 export function StoreSettings() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const merchantId = useMerchantIdentity()
   const [dialog, setDialog] = useState<DialogName>(null)
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [merchantDraft, setMerchantDraft] = useState<MerchantSettings | null>(
@@ -200,7 +216,7 @@ export function StoreSettings() {
   )
   const [accessToken, setAccessToken] = useState('')
   const settingsQuery = useQuery({
-    queryKey: ['merchant-store-settings'],
+    queryKey: merchantSettingsQueryKey(merchantId),
     queryFn: async () => {
       const data = await fetchStoreSettings()
       localStorage.setItem(
@@ -210,26 +226,58 @@ export function StoreSettings() {
       return data
     },
     retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
   })
   const settings = settingsQuery.data
 
-  const refreshSettings = async () => {
-    clearDashboardInitializationCache()
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['merchant-store-settings'] }),
-      queryClient.invalidateQueries({ queryKey: ['merchant-dashboard-home'] }),
-      queryClient.invalidateQueries({
-        queryKey: ['merchant-storefront-library'],
-      }),
-    ])
+  const updateSettingsCache = (
+    update: (current: StoreSettingsData) => StoreSettingsData
+  ) => {
+    queryClient.setQueryData<StoreSettingsData>(
+      merchantSettingsQueryKey(merchantId),
+      (current) => (current ? update(current) : current)
+    )
+  }
+
+  const updateDashboardStore = (
+    update: (current: DashboardData) => DashboardData
+  ) => {
+    queryClient.setQueryData<DashboardData>(
+      merchantQueryKeys.dashboard(merchantId),
+      (current) => (current ? update(current) : current)
+    )
+    queryClient.setQueryData<DashboardInitialization>(
+      merchantBootstrapKey(merchantId),
+      (current) =>
+        current ? { ...current, dashboard: update(current.dashboard) } : current
+    )
   }
 
   const merchantMutation = useMutation({
     mutationFn: (draft: MerchantSettings) => saveMerchantSettings(draft),
-    onSuccess: async (message) => {
+    onSuccess: (message, draft) => {
+      updateSettingsCache((current) => ({ ...current, merchant: draft }))
+      queryClient.setQueryData<StorefrontLibrary>(
+        storefrontLibraryQueryKey(merchantId),
+        (current) =>
+          current
+            ? {
+                ...current,
+                storeName: draft.storeName,
+                phone: draft.phone,
+                slogan: draft.welcomeMessage,
+              }
+            : current
+      )
+      updateDashboardStore((current) => ({
+        ...current,
+        storeName: draft.storeName,
+        phone: draft.phone,
+      }))
+      localStorage.setItem('merchant_store_name', draft.storeName)
+      localStorage.setItem('merchant_phone', draft.phone)
       toast.success(message || 'تم حفظ إعدادات المتجر.')
       setDialog(null)
-      await refreshSettings()
     },
     onError: (error) =>
       toast.error(
@@ -239,10 +287,10 @@ export function StoreSettings() {
 
   const assistantMutation = useMutation({
     mutationFn: (draft: AiAssistantSettings) => saveAiAssistantSettings(draft),
-    onSuccess: async (message) => {
+    onSuccess: (message, draft) => {
+      updateSettingsCache((current) => ({ ...current, assistant: draft }))
       toast.success(message || 'تم حفظ إعدادات المساعد الذكي.')
       setDialog(null)
-      await refreshSettings()
     },
     onError: (error) =>
       toast.error(
@@ -258,11 +306,18 @@ export function StoreSettings() {
       draft: WhatsappSettings
       token: string
     }) => saveWhatsappSettings(draft, token),
-    onSuccess: async (message) => {
+    onSuccess: (message, variables) => {
+      updateSettingsCache((current) => ({
+        ...current,
+        whatsapp: {
+          ...variables.draft,
+          hasAccessToken:
+            variables.draft.hasAccessToken || Boolean(variables.token),
+        },
+      }))
       toast.success(message || 'تم حفظ إعدادات واتساب.')
       setAccessToken('')
       setDialog(null)
-      await refreshSettings()
     },
     onError: (error) =>
       toast.error(
@@ -287,13 +342,16 @@ export function StoreSettings() {
         pushNotifications: enabled,
       })
     },
-    onSuccess: async (message, enabled) => {
+    onSuccess: (message, enabled) => {
       localStorage.setItem(
         'merchant_push_notifications_enabled',
         String(enabled)
       )
+      updateSettingsCache((current) => ({
+        ...current,
+        merchant: { ...current.merchant, pushNotifications: enabled },
+      }))
       toast.success(message || 'تم تحديث إعدادات تنبيهات الطلبات.')
-      await refreshSettings()
     },
     onError: (error) => {
       toast.error(

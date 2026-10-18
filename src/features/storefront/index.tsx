@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { clearAuthApiCache } from '@/lib/auth-api'
+import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -38,7 +39,9 @@ import {
   loadBaseStorefrontConfig,
   loadStorefrontThemeConfig,
   mergeStorefrontConfig,
+  storefrontLibraryQueryKey,
   saveStorefrontConfig,
+  type StorefrontLibrary,
   type StorefrontTheme,
 } from './storefront-data'
 
@@ -231,15 +234,16 @@ function ThemeCard({
 
 export function Storefront() {
   const queryClient = useQueryClient()
+  const merchantId = useMerchantIdentity()
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('all')
   const [selectedThemeId, setSelectedThemeId] = useState('')
   const [selectedMode, setSelectedMode] = useState<ThemeMode | ''>('')
   const [previewing, setPreviewing] = useState(false)
   const libraryQuery = useQuery({
-    queryKey: ['merchant-storefront-library'],
+    queryKey: storefrontLibraryQueryKey(merchantId),
     queryFn: fetchStorefrontLibrary,
-    staleTime: 60_000,
+    staleTime: Number.POSITIVE_INFINITY,
     retry: false,
   })
 
@@ -291,7 +295,7 @@ export function Storefront() {
       const message = await saveStorefrontConfig(library.username, config)
       return { config, message }
     },
-    onSuccess: async ({ config, message }) => {
+    onSuccess: ({ config, message }) => {
       try {
         localStorage.setItem(
           `nalsh_storefront_config_${library?.username.toLocaleLowerCase()}`,
@@ -307,9 +311,18 @@ export function Storefront() {
         window.location.origin
       )
       toast.success(message || `تم نشر القالب "${selectedTheme?.name}" بنجاح.`)
-      await queryClient.invalidateQueries({
-        queryKey: ['merchant-storefront-library'],
-      })
+      queryClient.setQueryData<StorefrontLibrary>(
+        storefrontLibraryQueryKey(merchantId),
+        (current) =>
+          current
+            ? {
+                ...current,
+                config,
+                selectedThemeId: selectedTheme?.id || current.selectedThemeId,
+                selectedMode: activeMode,
+              }
+            : current
+      )
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'تعذر نشر القالب.'),
@@ -349,7 +362,8 @@ export function Storefront() {
         `nalsh_template_local_config_${library.username.trim().toLowerCase()}`,
         JSON.stringify(config)
       )
-      const url = `${window.location.origin}/index.html?store=${encodeURIComponent(library.username)}&template_preview=%7B%7D&local_preview=1`
+      const storeBaseUrl = 'https://appi.dpdns.org'
+      const url = `${storeBaseUrl}/index.html?store=${encodeURIComponent(library.username)}&template_preview=%7B%7D&local_preview=1`
       previewWindow.location.replace(url)
     } catch (error) {
       previewWindow.close()

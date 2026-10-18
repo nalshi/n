@@ -154,7 +154,11 @@ async function runCatalogSync(env, username, merchantId, products) {
     // الـ purge. راجع تعليق vercelDeployProvider.js لتفاصيل أكثر.
     // لو ما كانت متغيرات Vercel مهيأة، الدالة ترجع false فوراً وننتقل
     // للـ purge مباشرة (نفس السلوك القديم كـ fallback).
-    await waitForVercelDeployment(env, commitSha);
+    // ⚙️ ننتظر بناء Vercel فقط إذا كانت البيانات في نفس مستودع الكود المربوط به.
+    // مع مستودع بيانات منفصل (GITHUB_DATA_REPO) لا يبدأ أي بناء، فالانتظار يضيع 15 ثانية بلا فائدة.
+    if (!env.GITHUB_DATA_REPO || env.GITHUB_DATA_REPO === env.GITHUB_REPO) {
+      await waitForVercelDeployment(env, commitSha);
+    }
 
     // 🧹 مسح كاش Cloudflare بالكامل (Purge Everything) حتى تنعكس التحديثات
     // فوراً. تم التأكد يدوياً إن مسح روابط محددة ما يشتغل فعلياً على هذا

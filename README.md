@@ -71,9 +71,35 @@ If you want to update components using the Shadcn CLI (e.g., `npx shadcn@latest 
 
 The authenticated dashboard restores its TanStack Query cache from IndexedDB and
 uses a single bootstrap request when that merchant has no persisted snapshot.
-While the dashboard is open, D1-backed order and product changes are delivered
-over a hibernating Durable Object WebSocket and applied to the local cache.
-Reconnects replay the merchant's event journal from the saved cursor.
+The dashboard listens directly to Firebase Realtime Database for encrypted
+merchant order signals. This stream does not call the Worker or Pages Functions.
+Set `VITE_FIREBASE_DB_URL` as a Cloudflare Pages build environment variable; it
+is public configuration and is included in the browser bundle. The dashboard
+compares each signal revision with the locally saved revision and fetches orders
+from the Worker only when it receives a newer signal. This order refresh still
+uses the Worker because Firebase contains only an encrypted signal, not order
+details.
+
+Firebase RTDB rules must allow unauthenticated reads only for the encrypted
+signal path and deny client writes. Anyone who knows the public database URL can
+read encrypted signals, but cannot decrypt order identifiers without the
+server-side key. Merge these rules into the existing rules rather than
+replacing unrelated database rules:
+
+```json
+"merchant_order_signals": {
+  "$merchantId": {
+    ".read": true,
+    ".write": false
+  }
+}
+```
+
+Keep `FIREBASE_DB_URL` and `FIREBASE_DB_SECRET` on the Worker for server-side
+writes, and keep the AES key server-side. `VITE_FIREBASE_DB_URL` is not a secret.
+When no merchant WebSocket session is connected, the Durable Object republishes
+the encrypted order signal to Firebase as a fallback; it does not write a sync
+beacon file to GitHub.
 
 Before deploying the Worker, apply its D1 migration from `work-surs`:
 

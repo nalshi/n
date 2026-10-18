@@ -18,7 +18,8 @@ function githubHeaders(env) {
 // رفع/تحديث ملف واحد عبر Contents API (مناسب للصور)
 export async function putSingleFile(env, path, base64Content, commitMessage) {
   const owner = env.GITHUB_OWNER;
-  const repo = env.GITHUB_REPO;
+  // 📦 مستودع البيانات المنفصل (إن وُجد) - لا يُربط ببناء Vercel. راجع CHANGES.md
+  const repo = env.GITHUB_DATA_REPO || env.GITHUB_REPO;
   const url = `${GITHUB_API}/repos/${owner}/${repo}/contents/${path}`;
   const headers = githubHeaders(env);
 
@@ -53,7 +54,8 @@ export async function putSingleFile(env, path, base64Content, commitMessage) {
 // من جديد وإعادة البناء) لو فشل تحديث الـ ref تحديداً بسبب تعارض.
 export async function commitMultipleFiles(env, files, commitMessage) {
   const owner = env.GITHUB_OWNER;
-  const repo = env.GITHUB_REPO;
+  // 📦 مستودع البيانات المنفصل (إن وُجد) - لا يُربط ببناء Vercel. راجع CHANGES.md
+  const repo = env.GITHUB_DATA_REPO || env.GITHUB_REPO;
   const apiBase = `${GITHUB_API}/repos/${owner}/${repo}`;
   const headers = githubHeaders(env);
 

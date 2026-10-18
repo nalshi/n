@@ -1,6 +1,5 @@
 import { resolveCategoryChain } from '../services/categories/categoryService.js';
 import { uploadProductImage } from '../services/images/imageService.js';
-import { syncCatalogToStorefront } from '../services/catalog/catalogSyncService.js';
 import { HttpError } from '../security/rbac.js';
 import { ACTIVE_ORDER_STATUSES } from '../config/constants.js';
 
@@ -98,20 +97,8 @@ export async function saveProduct({ env, ctx, user, body, uploadedImageFile }) {
     throw new HttpError('لا يمكنك تعديل منتج لا يخصك.', 403);
   }
 
-  // ⭐ تحسين أداء/موارد: كانت SELECT * تجلب كل الأعمدة (بما فيها cost_price
-  // الحساس وmerchant_id/updated_at غير المستخدمين هنا) لكل منتج، رغم أن
-  // syncCatalogToStorefront (راجع catalogSyncService.js) يقرأ فقط 13 عمود
-  // محدد. لا يقلل هذا "rows_read" المحسوبة بفوترة D1 (نفس عدد الصفوف)، لكنه
-  // يقلل حجم البيانات المنقولة من D1 وحجم JSON الذي يعالجه الـ Worker لكل
-  // صف - أهم شيء بخطة مجانية سقفها 10ms وقت معالج لكامل الطلب.
-  const allProducts = await env.DB.prepare(
-    `SELECT id, name, description, price, discount, image, category_id, options, features,
-            quantity, quantity_type, is_available, currency
-     FROM products WHERE merchant_id = ? AND is_available = 1`
-  )
-    .bind(user.user_id)
-    .all();
-  ctx.waitUntil(syncCatalogToStorefront(env, user.username, user.user_id, allProducts.results));
+  // لا تُعاد بناء كتالوج GitHub هنا: المنتج يُكتب في D1 (المصدر الحقيقي) فقط،
+  // والنشر يحدث مرة واحدة عند تأكيد تسليم الطلب (راجع CHANGES.md).
 
   // ⭐ تحديث الـ Durable Object (In-Memory Cache) وبث التحديث لحظياً للداشبورد
   try {
@@ -225,14 +212,8 @@ export async function deleteProduct({ env, ctx, user, body }) {
     );
   }
 
-  const remainingProducts = await env.DB.prepare(
-    `SELECT id, name, description, price, discount, image, category_id, options, features,
-            quantity, quantity_type, is_available, currency
-     FROM products WHERE merchant_id = ? AND is_available = 1`
-  )
-    .bind(user.user_id)
-    .all();
-  ctx.waitUntil(syncCatalogToStorefront(env, user.username, user.user_id, remainingProducts.results));
+  // ⭐ لا نعيد بناء الكتالوج على GitHub عند كل تعديل: البيانات الحية تُقرأ من D1،
+  // والنشر يتم مرة واحدة عند تأكيد التسليم فقط (راجع CHANGES.md).
 
   return { message: 'تم حذف المنتج نهائياً بنجاح' };
 }
@@ -247,14 +228,8 @@ export async function toggleAvailability({ env, ctx, user, body }) {
     .bind(reqStatus, Date.now(), pid, user.user_id)
     .run();
 
-  const visibleProducts = await env.DB.prepare(
-    `SELECT id, name, description, price, discount, image, category_id, options, features,
-            quantity, quantity_type, is_available, currency
-     FROM products WHERE merchant_id = ? AND is_available = 1`
-  )
-    .bind(user.user_id)
-    .all();
-  ctx.waitUntil(syncCatalogToStorefront(env, user.username, user.user_id, visibleProducts.results));
+  // ⭐ لا نعيد بناء الكتالوج على GitHub عند كل تعديل: البيانات الحية تُقرأ من D1،
+  // والنشر يتم مرة واحدة عند تأكيد التسليم فقط (راجع CHANGES.md).
 
   if (env.MERCHANT_SESSION) {
     const updatedProduct = await env.DB.prepare(
@@ -274,4 +249,116 @@ export async function toggleAvailability({ env, ctx, user, body }) {
   }
 
   return { message: 'تم تحديث حالة عرض المنتج (إخفاء/إظهار) بنجاح' };
+}
+
+export async function updateProductStock({ env, ctx, user, body }) {
+  const productId = String(body.product_id || '');
+  if (!PRODUCT_ID_PATTERN.test(productId)) {
+    throw new HttpError('معرّف المنتج غير صالح.', 400);
+  }
+
+  const quantityType = body.quantity_type;
+  const quantity = Number(body.quantity);
+  if (
+    !['tracked', 'unlimited'].includes(quantityType) ||
+    !Number.isSafeInteger(quantity) ||
+    quantity < 0 ||
+    quantity > 1_000_000_000
+  ) {
+    throw new HttpError('بيانات المخزون غير صالحة.', 400);
+  }
+
+  const product = await env.DB.prepare(
+    `SELECT id, quantity, quantity_type, options FROM products WHERE id = ? AND merchant_id = ?`
+  )
+    .bind(productId, user.user_id)
+    .first();
+  if (!product) throw new HttpError('المنتج غير موجود.', 404);
+
+  let options = [];
+  try {
+    options = JSON.parse(product.options || '[]');
+  } catch {
+    throw new HttpError('تعذر قراءة مخزون خيارات المنتج.', 500);
+  }
+  if (!Array.isArray(options)) {
+    throw new HttpError('بيانات خيارات المنتج غير صالحة.', 500);
+  }
+
+  if (body.options !== undefined) {
+    if (!Array.isArray(body.options)) {
+      throw new HttpError('قائمة مخزون الخيارات غير صالحة.', 400);
+    }
+    const seenIds = new Set();
+    for (const stockOption of body.options) {
+      const optionId = String(stockOption?.id || '');
+      if (!optionId || seenIds.has(optionId)) {
+        throw new HttpError('معرّف خيار المخزون مفقود أو مكرر.', 400);
+      }
+      seenIds.add(optionId);
+      const option = options.find((item) => String(item?.id) === optionId);
+      if (!option) throw new HttpError('أحد خيارات المخزون غير تابع للمنتج.', 400);
+
+      const optionType = stockOption.quantity_type;
+      const optionQuantity = Number(stockOption.quantity);
+      if (
+        !['tracked', 'unlimited'].includes(optionType) ||
+        !Number.isSafeInteger(optionQuantity) ||
+        optionQuantity < 0 ||
+        optionQuantity > 1_000_000_000
+      ) {
+        throw new HttpError('كمية أحد خيارات المنتج غير صالحة.', 400);
+      }
+      option.quantity_type = optionType;
+      option.quantity = optionType === 'unlimited' ? 9999 : optionQuantity;
+    }
+  }
+
+  const hasOptions = options.length > 0;
+  const nextQuantityType = hasOptions ? 'tracked' : quantityType;
+  const nextQuantity = hasOptions
+    ? options.some((option) => option.quantity_type === 'unlimited')
+      ? 9999
+      : options.reduce(
+          (total, option) => total + (Number(option.quantity) || 0),
+          0
+        )
+    : quantityType === 'unlimited'
+      ? 9999
+      : quantity;
+
+  await env.DB.prepare(
+    `UPDATE products SET quantity = ?, quantity_type = ?, options = ?, updated_at = ? WHERE id = ? AND merchant_id = ?`
+  )
+    .bind(
+      nextQuantity,
+      nextQuantityType,
+      JSON.stringify(options),
+      Date.now(),
+      productId,
+      user.user_id
+    )
+    .run();
+
+  const updatedProduct = await env.DB.prepare(
+    `SELECT * FROM products WHERE id = ? AND merchant_id = ?`
+  )
+    .bind(productId, user.user_id)
+    .first();
+  // ⭐ لا نعيد بناء الكتالوج على GitHub عند كل تعديل: البيانات الحية تُقرأ من D1،
+  // والنشر يتم مرة واحدة عند تأكيد التسليم فقط (راجع CHANGES.md).
+
+  if (updatedProduct && env.MERCHANT_SESSION) {
+    const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
+    const doStub = env.MERCHANT_SESSION.get(doId);
+    ctx.waitUntil(
+      doStub.fetch('http://internal/sync-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product: updatedProduct }),
+      })
+    );
+  }
+
+  return { message: 'تم تحديث مخزون المنتج بنجاح.', product_id: productId };
 }

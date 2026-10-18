@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "categories": [
+    { "id": "themes", "file": "themes.json", "label": "الألوان والثيمات" },
+    { "id": "fonts", "file": "fonts.json", "label": "الخطوط" },
+    { "id": "layouts", "file": "layouts.json", "label": "تخطيط المنتجات" },
+    { "id": "navigation", "file": "navigation.json", "label": "التنقل" },
+    { "id": "bots", "file": "bots.json", "label": "الروبوتات" }
+  ],
+  "theme_files": [
+    { "id": "starlit_aurora", "file": "themes/starlit_aurora.json" },
+    { "id": "moonlit_amethyst", "file": "themes/moonlit_amethyst.json" },
+    { "id": "enchanted_emerald", "file": "themes/enchanted_emerald.json" },
+    { "id": "nebula_sapphire", "file": "themes/nebula_sapphire.json" },
+    { "id": "dragonfire_ruby", "file": "themes/dragonfire_ruby.json" },
+    { "id": "faerie_rose", "file": "themes/faerie_rose.json" },
+    { "id": "celestial_saffron", "file": "themes/celestial_saffron.json" },
+    { "id": "oceanic_mirage", "file": "themes/oceanic_mirage.json" }
+  ],
+  "presets": [
+    {
+      "id": "modern-store",
+      "name": "متجر عصري",
+      "description": "تركيبة سريعة ومتوازنة للمتاجر العامة.",
+      "selections": { "theme": "starlit_aurora", "font": "tajawal", "layout": "grid-3", "navigation": "bottom-bar", "bot": "sales" }
+    },
+    {
+      "id": "luxury-store",
+      "name": "متجر فاخر",
+      "description": "ألوان هادئة وخط أنيق وتجربة عرض راقية.",
+      "selections": { "theme": "moonlit_amethyst", "font": "readex", "layout": "magazine", "navigation": "floating", "bot": "concierge" }
+    },
+    {
+      "id": "emerald-store",
+      "name": "متجر طبيعي",
+      "description": "واجهة عضوية هادئة للمنتجات الطبيعية والصحية.",
+      "selections": { "theme": "enchanted_emerald", "font": "cairo", "layout": "compact", "navigation": "bottom-bar", "bot": "wellness" }
+    }
+  ]
+}

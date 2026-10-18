@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowLeft,
@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 import { authApiRequest } from '@/lib/auth-api'
 import {
   merchantQueryKeys,
+  refreshMerchantSnapshot,
   useMerchantData,
   useMerchantIdentity,
 } from '@/hooks/useMerchantRealtime'
@@ -125,6 +126,7 @@ function EmptyList({ children }: { children: string }) {
 
 export function Dashboard() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const merchantId = useMerchantIdentity()
   const bootstrapQuery = useMerchantData(merchantId)
   const [selectedOrder, setSelectedOrder] = useState<DashboardOrder | null>(
@@ -156,6 +158,15 @@ export function Dashboard() {
     },
     onSuccess: async (result) => {
       toast.success(result.message || 'تم تأكيد تسليم الطلب بنجاح.')
+      try {
+        await refreshMerchantSnapshot(queryClient, merchantId)
+      } catch (error) {
+        toast.error(
+          `تم تأكيد التسليم، لكن تعذر تحديث بيانات اللوحة: ${
+            error instanceof Error ? error.message : 'خطأ غير معروف.'
+          }`
+        )
+      }
       setDeliveryDialogOpen(false)
       setDeliveryCode('')
       setDeliveryOrderId('')
@@ -176,9 +187,10 @@ export function Dashboard() {
     [data]
   )
   const { awaitingOrders, deliveryOrders, recentOrders } = orderSummary
+  const storeBaseUrl = 'https://appi.dpdns.org'
   const storeUrl =
-    data?.username && typeof window !== 'undefined'
-      ? `${window.location.origin}/${encodeURIComponent(data.username)}`
+    data?.username
+      ? `${storeBaseUrl}/${encodeURIComponent(data.username.replace(/^@/, ''))}`
       : ''
   const callablePhone = data?.phone.replace(/[^\d+#*]/g, '') || ''
   const phoneHref = callablePhone ? `tel:${callablePhone}` : ''
@@ -349,37 +361,92 @@ export function Dashboard() {
               </CardContent>
             </Card>
 
-            <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
-              <StatCard
-                title='بانتظار الموافقة'
-                value={awaitingOrders}
-                note='طلبات جديدة بانتظارك'
-                icon={Bell}
-                iconClassName='bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                onClick={() => void navigate({ to: '/orders' })}
-              />
-              <StatCard
-                title='الطلبات النشطة'
-                value={data.activeOrders.length}
-                note='طلبات تحتاج إلى متابعة'
-                icon={ShoppingBag}
-                onClick={() => void navigate({ to: '/orders' })}
-              />
-              <StatCard
-                title='في الطريق'
-                value={deliveryOrders.length}
-                note='طلبات خرجت للتوصيل'
-                icon={Store}
-                iconClassName='bg-blue-500/10 text-blue-700 dark:text-blue-300'
-                onClick={() => void navigate({ to: '/orders' })}
-              />
-              <StatCard
-                title='المنتجات'
-                value={data.products.length}
-                note='إجمالي المنتجات في متجرك'
-                icon={Package}
-                onClick={() => void navigate({ to: '/product-catalog' })}
-              />
+            <section
+              aria-labelledby='quick-actions-title'
+              className='space-y-3'
+            >
+              <div>
+                <h2 id='quick-actions-title' className='text-lg font-semibold'>
+                  إجراءات سريعة
+                </h2>
+                <p className='text-sm text-muted-foreground'>
+                  أنجز أهم مهام المتجر مباشرة
+                </p>
+              </div>
+              <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+                <QuickAction
+                  icon={Plus}
+                  title='إضافة منتج جديد'
+                  description='أضف سلعة إلى متجرك'
+                  onClick={() =>
+                    void navigate({
+                      to: '/products',
+                      search: { create: true },
+                    })
+                  }
+                />
+                <QuickAction
+                  icon={ShoppingBag}
+                  title='متابعة الطلبات'
+                  description='راجع الواردة والجارية'
+                  onClick={() => void navigate({ to: '/orders' })}
+                />
+                <QuickAction
+                  icon={Palette}
+                  title='قوالب المتجر'
+                  description='اختر مظهر متجرك'
+                  onClick={() => void navigate({ to: '/storefront' })}
+                />
+                <QuickAction
+                  icon={QrCode}
+                  title='تسليم فوري'
+                  description='تحقق من كود الاستلام'
+                  onClick={openDeliveryDialog}
+                />
+              </div>
+            </section>
+
+            <div className='space-y-3'>
+              <div>
+                <h2 className='text-lg font-semibold'>
+                  إحصائيات المتجر
+                </h2>
+                <p className='text-sm text-muted-foreground'>
+                  نظرة سريعة على أرقام الطلبات والمنتجات
+                </p>
+              </div>
+              <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+                <StatCard
+                  title='بانتظار الموافقة'
+                  value={awaitingOrders}
+                  note='طلبات جديدة بانتظارك'
+                  icon={Bell}
+                  iconClassName='bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                  onClick={() => void navigate({ to: '/orders' })}
+                />
+                <StatCard
+                  title='الطلبات النشطة'
+                  value={data.activeOrders.length}
+                  note='طلبات تحتاج إلى متابعة'
+                  icon={ShoppingBag}
+                  onClick={() => void navigate({ to: '/orders' })}
+                />
+                <StatCard
+                  title='في الطريق'
+                  value={deliveryOrders.length}
+                  note='طلبات خرجت للتوصيل'
+                  icon={Store}
+                  iconClassName='bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                  onClick={() => void navigate({ to: '/orders' })}
+                />
+                <StatCard
+                  title='المنتجات'
+                  value={data.products.length}
+                  note='إجمالي المنتجات في متجرك'
+                  icon={Package}
+                  onClick={() => void navigate({ to: '/products' })}
+                />
+              </div>
             </div>
 
             <div className='grid gap-4 lg:grid-cols-7'>
@@ -394,7 +461,7 @@ export function Dashboard() {
                   <Button
                     variant='ghost'
                     size='sm'
-                    onClick={() => void navigate({ to: '/product-catalog' })}
+                    onClick={() => void navigate({ to: '/products' })}
                   >
                     عرض الكل <ArrowLeft aria-hidden='true' />
                   </Button>
@@ -406,7 +473,7 @@ export function Dashboard() {
                         key={product.id}
                         type='button'
                         onClick={() =>
-                          void navigate({ to: '/product-catalog' })
+                          void navigate({ to: '/products' })
                         }
                         className='flex min-w-0 items-center gap-3 rounded-lg border border-transparent bg-muted/40 p-2 text-start transition-colors hover:border-border hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-ring'
                       >
@@ -488,51 +555,6 @@ export function Dashboard() {
                 </CardContent>
               </Card>
             </div>
-
-            <section
-              aria-labelledby='quick-actions-title'
-              className='space-y-3'
-            >
-              <div>
-                <h2 id='quick-actions-title' className='text-lg font-semibold'>
-                  إجراءات سريعة
-                </h2>
-                <p className='text-sm text-muted-foreground'>
-                  أنجز أهم مهام المتجر مباشرة
-                </p>
-              </div>
-              <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
-                <QuickAction
-                  icon={Plus}
-                  title='إضافة منتج جديد'
-                  description='أضف سلعة إلى متجرك'
-                  onClick={() =>
-                    void navigate({
-                      to: '/products',
-                      search: { create: true },
-                    })
-                  }
-                />
-                <QuickAction
-                  icon={ShoppingBag}
-                  title='متابعة الطلبات'
-                  description='راجع الواردة والجارية'
-                  onClick={() => void navigate({ to: '/orders' })}
-                />
-                <QuickAction
-                  icon={Palette}
-                  title='قوالب المتجر'
-                  description='اختر مظهر متجرك'
-                  onClick={() => void navigate({ to: '/storefront' })}
-                />
-                <QuickAction
-                  icon={QrCode}
-                  title='تسليم فوري'
-                  description='تحقق من كود الاستلام'
-                  onClick={openDeliveryDialog}
-                />
-              </div>
-            </section>
           </div>
         ) : null}
       </Main>

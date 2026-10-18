@@ -50,35 +50,29 @@ describe('merchant API transport', () => {
     })
   })
 
-  it('falls back to api.php when the worker request fails', async () => {
+  it('keeps Worker actions behind the secure proxy when the Worker is unavailable', async () => {
     localStorage.setItem('merchant_token', 'merchant-token')
-    mockedFetch
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockResolvedValueOnce(
-        jsonResponse(
-          { status: 'success' },
-          { headers: { 'X-New-CSRF-Token': 'csrf-next' } }
-        )
-      )
+    mockedFetch.mockRejectedValue(new TypeError('Failed to fetch'))
+
+    await expect(
+      apiRequest('list_products', { page: 1 }, csrfToken)
+    ).rejects.toThrow('Failed to fetch')
+
+    expect(mockedFetch).toHaveBeenCalledOnce()
+    expect(mockedFetch.mock.calls[0][0]).toBe('/api/work/')
+    expect(mockedFetch.mock.calls[0][1]?.credentials).toBe('omit')
+  })
+
+  it('keeps order synchronization on the Worker without falling back to api.php', async () => {
+    localStorage.setItem('merchant_token', 'merchant-token')
+    mockedFetch.mockRejectedValue(new TypeError('Worker unavailable'))
 
     await expect(
       apiRequest('get_orders', { filter: 'active' }, csrfToken)
-    ).resolves.toEqual({ status: 'success' })
+    ).rejects.toThrow('Worker unavailable')
 
-    expect(mockedFetch).toHaveBeenCalledTimes(2)
-    expect(mockedFetch.mock.calls[1][0]).toBe(
-      'https://api.nalsh.dpdns.org/api.php'
-    )
-    expect(mockedFetch.mock.calls[1][1]?.credentials).toBe('include')
-    expect(
-      new Headers(mockedFetch.mock.calls[1][1]?.headers).get('X-CSRF-TOKEN')
-    ).toBe('csrf-initial')
-    expect(JSON.parse(String(mockedFetch.mock.calls[1][1]?.body))).toEqual({
-      action: 'get_orders',
-      auth_token: 'merchant-token',
-      filter: 'active',
-    })
-    expect(csrfToken.current).toBe('csrf-next')
+    expect(mockedFetch).toHaveBeenCalledOnce()
+    expect(mockedFetch.mock.calls[0][0]).toBe('/api/work/')
   })
 
   it('does not fall back for legacy no-fallback actions', async () => {
@@ -99,5 +93,51 @@ describe('merchant API transport', () => {
     const [url, options] = mockedFetch.mock.calls[0]
     expect(url).toBe('https://api.nalsh.dpdns.org/api.php')
     expect(options?.credentials).toBe('include')
+  })
+
+  it('reports real upload progress for multipart Worker requests', async () => {
+    class MockXhr extends EventTarget {
+      upload = new EventTarget()
+      withCredentials = false
+      status = 200
+      responseText = JSON.stringify({ status: 'success', id: 'product-1' })
+      sentBody: FormData | null = null
+      openedUrl = ''
+
+      open(_method: string, url: string) {
+        this.openedUrl = url
+      }
+
+      setRequestHeader() {}
+
+      getResponseHeader() {
+        return null
+      }
+
+      send(body: XMLHttpRequestBodyInit | Document | null) {
+        if (body instanceof FormData) this.sentBody = body
+        const progress = new Event('progress')
+        Object.defineProperties(progress, {
+          lengthComputable: { value: true },
+          loaded: { value: 50 },
+          total: { value: 100 },
+        })
+        this.upload.dispatchEvent(progress)
+        this.dispatchEvent(new Event('load'))
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', MockXhr)
+    const progress: number[] = []
+    const payload = new FormData()
+    payload.set('name', 'منتج')
+
+    await expect(
+      apiRequest('save_product', payload, csrfToken, (value) =>
+        progress.push(value)
+      )
+    ).resolves.toMatchObject({ status: 'success', id: 'product-1' })
+
+    expect(progress).toEqual([50, 100])
+    expect(payload.get('action')).toBe('save_product')
   })
 })

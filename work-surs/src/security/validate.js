@@ -18,6 +18,8 @@ const rules = {
   save_product: (body) => requireFields(body, ['name', 'price']),
   delete_product: (body) => requireFields(body, ['id']),
   toggle_availability: (body) => requireFields(body, ['id']),
+  update_product_stock: (body) =>
+    requireFields(body, ['product_id', 'quantity', 'quantity_type']),
   update_order_status: (body) => requireFields(body, ['ticket_id', 'status']),
   cancel_order: (body) => requireFields(body, ['ticket_id']),
   confirm_delivery_code: (body) => requireFields(body, ['ticket_id', 'code']),
@@ -44,6 +46,7 @@ const rules = {
   // 🎨 إضافة: مصمم المتجر والتخصيص الكلي
   save_storefront_config: (body) => requireFields(body, ['config']),
   update_theme_config_file: (body) => requireFields(body, ['config']),
+  get_storefront_theme_config: (body) => requireFields(body, ['id']),
 };
 
 export function validateAction(action, body, user) {

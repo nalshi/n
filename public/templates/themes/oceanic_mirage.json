@@ -1,0 +1,194 @@
+{
+  "id": "oceanic_mirage",
+  "name": "سراب المحيط",
+  "description": "فيروزي بحري منعش مع عمق نيلي يمنح تجربة هادئة وواضحة.",
+  "category": "محيط ونسيم",
+  "preview": {
+    "primary": "#0F766E",
+    "accent": "#2563EB",
+    "background": "#F0FDFA"
+  },
+  "config": {
+    "version": "4.0",
+    "theme_version": "4.0",
+    "theme_name": "oceanic_mirage",
+    "default_theme_mode": "light",
+    "light_theme": {
+      "colors": {
+        "primary": "#0F766E",
+        "primary_hover": "#115E59",
+        "primary_gradient_start": "#0F766E",
+        "primary_gradient_end": "#38BDF8",
+        "accent": "#2563EB",
+        "bg_body": "#F0FDFA",
+        "bg_card": "#FFFFFF",
+        "bg_surface": "#CCFBF1",
+        "text_main": "#123B3A",
+        "text_muted": "#326B68",
+        "border": "#99F6E4",
+        "navbar_bg": "#FFFFFF",
+        "navbar_text": "#123B3A",
+        "bottom_bar_bg": "#FFFFFF",
+        "bottom_bar_active": "#0F766E",
+        "bottom_bar_inactive": "#326B68",
+        "card_bg": "#FFFFFF",
+        "card_border": "#99F6E4",
+        "card_title": "#123B3A",
+        "price_color": "#0F766E",
+        "old_price_color": "#326B68",
+        "badge_bg": "#E11D48",
+        "badge_text": "#FFFFFF",
+        "section_title": "#123B3A",
+        "category_chip_bg": "#CCFBF1",
+        "category_chip_active": "#0F766E",
+        "category_chip_text": "#123B3A",
+        "modal_bg": "#FFFFFF",
+        "modal_overlay": "rgba(18, 59, 58, 0.6)",
+        "modal_handle": "#99F6E4",
+        "btn_primary_bg": "#0F766E",
+        "btn_primary_text": "#FFFFFF",
+        "chatbot_btn_bg": "#0F766E"
+      }
+    },
+    "dark_theme": {
+      "colors": {
+        "primary": "#5EEAD4",
+        "primary_hover": "#99F6E4",
+        "primary_gradient_start": "#5EEAD4",
+        "primary_gradient_end": "#60A5FA",
+        "accent": "#93C5FD",
+        "bg_body": "#061816",
+        "bg_card": "#0D2926",
+        "bg_surface": "#14413D",
+        "text_main": "#ECFEFF",
+        "text_muted": "#A7F3D0",
+        "border": "#26756C",
+        "navbar_bg": "#0D2926",
+        "navbar_text": "#ECFEFF",
+        "bottom_bar_bg": "#0D2926",
+        "bottom_bar_active": "#5EEAD4",
+        "bottom_bar_inactive": "#A7F3D0",
+        "card_bg": "#0D2926",
+        "card_border": "#26756C",
+        "card_title": "#ECFEFF",
+        "price_color": "#5EEAD4",
+        "old_price_color": "#A7F3D0",
+        "badge_bg": "#F43F5E",
+        "badge_text": "#FFFFFF",
+        "section_title": "#ECFEFF",
+        "category_chip_bg": "#14413D",
+        "category_chip_active": "#5EEAD4",
+        "category_chip_text": "#ECFEFF",
+        "modal_bg": "#0D2926",
+        "modal_overlay": "rgba(0, 0, 0, 0.85)",
+        "modal_handle": "#26756C",
+        "btn_primary_bg": "#5EEAD4",
+        "btn_primary_text": "#061816",
+        "chatbot_btn_bg": "#5EEAD4"
+      }
+    },
+    "typography": {
+      "font_family": "Cairo",
+      "base_size": "16px",
+      "heading_weight": "800",
+      "heading_size_mobile": "1.2rem",
+      "heading_size_desktop": "1.5rem",
+      "price_size_mobile": "1.15rem",
+      "price_size_desktop": "1.3rem"
+    },
+    "shapes": {
+      "card_radius": "24px",
+      "button_radius": "14px",
+      "button_style": "rounded",
+      "card_style": "magazine",
+      "navbar_style": "floating",
+      "section_spacing": "relaxed"
+    },
+    "animations": {
+      "card_hover": "scale"
+    },
+    "products_settings": {
+      "display_mode": "featured_first",
+      "sort_by": "latest",
+      "out_of_stock_display": "badge_at_end",
+      "show_quick_add": true,
+      "show_stock_badge": true,
+      "show_discount_badge": true,
+      "show_category_tag": true,
+      "show_old_price": true,
+      "show_currency": true,
+      "show_actions": true,
+      "portrait": {
+        "grid_columns": 2,
+        "card_orientation": "portrait",
+        "card_style": "magazine"
+      },
+      "landscape": {
+        "grid_columns": 3,
+        "card_orientation": "landscape",
+        "card_style": "magazine"
+      },
+      "add_to_cart_btn": {
+        "style": "rounded_box",
+        "action_animation": "scale"
+      }
+    },
+    "navigation_settings": {
+      "bottom_bar": {
+        "style": "floating",
+        "items": [
+          {
+            "id": "home",
+            "label": "الرئيسية",
+            "icon": "fa-home",
+            "visible": true,
+            "order": 1
+          },
+          {
+            "id": "search",
+            "label": "بحث",
+            "icon": "fa-search",
+            "visible": true,
+            "order": 2
+          },
+          {
+            "id": "orders",
+            "label": "طلباتي",
+            "icon": "fa-box-open",
+            "visible": true,
+            "order": 3
+          },
+          {
+            "id": "favorites",
+            "label": "المفضلة",
+            "icon": "fa-heart",
+            "visible": true,
+            "order": 4
+          },
+          {
+            "id": "cart",
+            "label": "السلة",
+            "icon": "fa-shopping-cart",
+            "visible": true,
+            "order": 5
+          }
+        ]
+      },
+      "top_bar": {
+        "show_logo_icon": true,
+        "logo_icon": "fa-crown",
+        "show_profile_btn": true,
+        "show_search_btn": true,
+        "navbar_style": "floating"
+      }
+    },
+    "assistant": {
+      "enabled": true,
+      "name": "مستشار الفخامة",
+      "persona": "luxury",
+      "button_style": "bubble",
+      "avatar_style": "halo",
+      "accent_color": "#0F766E"
+    }
+  }
+}

@@ -188,13 +188,49 @@ export async function saveStorefrontConfig({ env, ctx, user, body }) {
   };
 }
 
-/**
- * جلب قائمة الثيمات الجاهزة
- */
+function serializeThemePreset(theme) {
+  const lightColors = theme.light_theme?.colors || {};
+  const darkColors = theme.dark_theme?.colors || {};
+  return {
+    id: theme.id,
+    name: theme.name,
+    description: theme.description,
+    category: theme.category || '',
+    sourceFile: '',
+    preview: {
+      primary: lightColors.primary,
+      accent: lightColors.accent,
+      background: lightColors.bg_body,
+      dark: {
+        primary: darkColors.primary,
+        accent: darkColors.accent,
+        background: darkColors.bg_body,
+      },
+    },
+    config: {
+      light_theme: theme.light_theme,
+      dark_theme: theme.dark_theme,
+      typography: theme.typography,
+      shapes: theme.shapes,
+    },
+  };
+}
+
 export async function getStorefrontThemes() {
   return {
     data: {
-      themes: THEME_PRESETS,
+      themes: THEME_PRESETS.map(serializeThemePreset),
     },
   };
+}
+
+export async function getStorefrontBaseConfig() {
+  return { config: DEFAULT_STOREFRONT_CONFIG };
+}
+
+export async function getStorefrontThemeConfig({ body }) {
+  const id = String(body.id || '');
+  const theme = THEME_PRESETS.find((preset) => preset.id === id);
+  if (!theme) throw new HttpError('القالب المطلوب غير موجود.', 404);
+  return { id: theme.id, config: serializeThemePreset(theme).config };
 }

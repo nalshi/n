@@ -37,6 +37,9 @@ export type StoreSettingsData = {
   whatsapp: WhatsappSettings
 }
 
+export const merchantSettingsQueryKey = (merchantId: string) =>
+  ['merchant-store-settings', merchantId] as const
+
 function asRecord(value: unknown): ApiRecord | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as ApiRecord)

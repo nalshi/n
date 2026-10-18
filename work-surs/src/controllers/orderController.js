@@ -1,4 +1,7 @@
-import { syncOrderTracking } from '../services/realtime/realtimeSyncService.js';
+import {
+  syncMerchantOrderSignal,
+  syncOrderTracking,
+} from '../services/realtime/realtimeSyncService.js';
 import {
   notifyOrderStatusUpdate,
   notifyMerchantOrderUpdate,
@@ -127,6 +130,16 @@ export async function updateOrderStatus({ env, ctx, user, body }) {
 
   if (order) {
     ctx.waitUntil(syncOrderTracking(env, body.ticket_id, body.status, user.username));
+    ctx.waitUntil(
+      syncMerchantOrderSignal(env, user.user_id, body.ticket_id).catch(
+        (error) => {
+          console.error(
+            '[firebase-realtime] تعذر نشر إشارة الطلب:',
+            error instanceof Error ? error.message : String(error)
+          );
+        }
+      )
+    );
     ctx.waitUntil(notifyOrderStatusUpdate(env, order.customer_id, body.status, body.ticket_id));
     ctx.waitUntil(notifyMerchantOrderUpdate(env, user.user_id, body.status, body.ticket_id));
 
@@ -205,7 +218,6 @@ export async function cancelOrder({ env, ctx, user, body }) {
     ticketData = {};
   }
   const items = ticketData.items || [];
-  let inventoryChanged = false;
 
   for (const item of items) {
     const prod = await env.DB.prepare(`SELECT quantity, quantity_type, options FROM products WHERE id = ? AND merchant_id = ?`)
@@ -213,7 +225,6 @@ export async function cancelOrder({ env, ctx, user, body }) {
       .first();
 
     if (prod && prod.quantity_type === 'tracked') {
-      inventoryChanged = true;
       if (item.size_id) {
         let options = [];
         try {
@@ -240,6 +251,16 @@ export async function cancelOrder({ env, ctx, user, body }) {
   }
 
   ctx.waitUntil(syncOrderTracking(env, body.ticket_id, 'cancelled', user.username));
+  ctx.waitUntil(
+    syncMerchantOrderSignal(env, user.user_id, body.ticket_id).catch(
+      (error) => {
+        console.error(
+          '[firebase-realtime] تعذر نشر إشارة الطلب:',
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    )
+  );
   // ⭐ إلغاء الطلب هو أيضاً "تغيير حالة من قبل التاجر"، فيجب أن يصل إشعار للعميل.
   ctx.waitUntil(notifyOrderStatusUpdate(env, ticket.customer_id, 'cancelled', body.ticket_id));
 
@@ -256,24 +277,6 @@ export async function cancelOrder({ env, ctx, user, body }) {
         })
       );
     } catch (e) { console.error('DO sync error:', e); }
-  }
-
-  if (inventoryChanged) {
-    // ⭐ إصلاح فعلي (خطأ منطقي): كان هذا الاستعلام الوحيد بالمشروع الذي يغذّي
-    // syncCatalogToStorefront بدون شرط `is_available = 1` (كل نقاط المزامنة
-    // الأخرى بـ productController.js تضيفه). النتيجة: إلغاء أي طلب كان يعيد
-    // نشر كل منتجات التاجر بالكتالوج العام - **حتى المنتجات المخفية عمداً**
-    // (is_available = 0) - لأن catalogSyncService.js ينسخ قيمة is_available
-    // كما هي بدل تصفيتها. أضفنا نفس الشرط المستخدم بكل مكان آخر، مع نفس
-    // تقليص الأعمدة (راجع تعليق saveProduct لتفاصيل سبب ذلك).
-    const allProducts = await env.DB.prepare(
-      `SELECT id, name, description, price, discount, image, category_id, options, features,
-              quantity, quantity_type, is_available, currency
-       FROM products WHERE merchant_id = ? AND is_available = 1`
-    )
-      .bind(user.user_id)
-      .all();
-    ctx.waitUntil(syncCatalogToStorefront(env, user.username, user.user_id, allProducts.results));
   }
 
   return { message: 'تم إلغاء الطلب بنجاح وإعادة المنتجات للمخزون.' };
@@ -383,71 +386,49 @@ export async function confirmDeliveryCode({ env, ctx, user, body }) {
   const currency = ticketData.financials?.currency || 'YER';
   const grandTotal = ticketData.financials?.grand_total || 0;
 
-  for (const item of items) {
+  // ⭐ كل كتابات D1 لهذا التسليم في دفعة واحدة (batch): إما تُكتب كلها أو لا شيء.
+  // قبل ذلك كانت كل عملية INSERT منفصلة، فيحدث نصف تسجيل عند أي خطأ في المنتصف.
+  const writes = items.map((item) => {
     const saleId = 'SALE-' + crypto.randomUUID();
     const totalPrice = item.price * item.quantity;
     const costAtSale = (item.cost_price || 0) * item.quantity;
-    // ⭐ إصلاح: نخزّن اسم المنتج (snapshot) هنا وقت البيع بدل الاعتماد على
-    // JOIN مع جدول products عند عرض الإحصائيات لاحقاً. لو التاجر حذف
-    // المنتج بعدين، الإحصائيات القديمة كانت تختفي كلياً لأن الـ JOIN ما
-    // يلقى صف المنتج. الاسم متوفر أصلاً بـ item.product_name من لحظة
-    // إنشاء الطلب (createOrder بـ customerController.js)، فلا داعي لأي
-    // استعلام إضافي على products هنا.
-    await env.DB.prepare(
+    return env.DB.prepare(
       `INSERT INTO sales_log (id, user_id, product_id, product_name, size_id, quantity, price_per_item, total_price, currency, type, cost_at_sale, order_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sale', ?, ?, ?)`
-    )
-      .bind(
-        saleId,
-        user.user_id,
-        item.product_id,
-        item.product_name || 'منتج',
-        item.size_id || null,
-        item.quantity,
-        item.price,
-        totalPrice,
-        currency,
-        costAtSale,
-        ticketId,
-        Date.now()
-      )
-      .run();
-  }
-
-  await env.DB.prepare(
-    `INSERT INTO orders_archive (ticket_id, order_group_id, customer_id, merchant_id, final_status, total_amount, archived_data, archived_at)
-     VALUES (?, ?, ?, ?, 'completed', ?, ?, ?)`
-  )
-    .bind(ticketId, ticket.order_group_id, ticket.customer_id, user.user_id, grandTotal, JSON.stringify(ticketData), Date.now())
-    .run();
-
-  ctx.waitUntil(syncOrderTracking(env, ticketId, 'completed', user.username));
-  // ⭐ عند اتمام الطلب فعلياً، يصل إشعار صحيح للعميل (تم التسليم) وللتاجر
-  // (توثيق المبلغ في رصيده) معاً.
-  ctx.waitUntil(
-    notifyOrderCompleted(env, {
-      customerId: ticket.customer_id,
-      merchantId: user.user_id,
+    ).bind(
+      saleId,
+      user.user_id,
+      item.product_id,
+      item.product_name || 'منتج',
+      item.size_id || null,
+      item.quantity,
+      item.price,
+      totalPrice,
+      currency,
+      costAtSale,
       ticketId,
+      now
+    );
+  });
+  writes.push(
+    env.DB.prepare(
+      `INSERT INTO orders_archive (ticket_id, order_group_id, customer_id, merchant_id, final_status, total_amount, archived_data, archived_at)
+       VALUES (?, ?, ?, ?, 'completed', ?, ?, ?)`
+    ).bind(ticketId, ticket.order_group_id, ticket.customer_id, user.user_id, grandTotal, JSON.stringify(ticketData), now)
+  );
+  await env.DB.batch(writes);
+
+  // ⭐ دمج كل ما بعد التسليم في مهمة واحدة بالخلفية بدل 5 مهام منفصلة.
+  // الرد للتاجر لا ينتظر أي منها.
+  ctx.waitUntil(
+    runDeliveryFollowUp(env, {
+      ticketId,
+      customerId: ticket.customer_id,
+      merchant: user,
       grandTotal,
       currency,
     })
   );
-
-  // ⭐ تحديث الـ Durable Object
-  if (env.MERCHANT_SESSION) {
-    try {
-      const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
-      const doStub = env.MERCHANT_SESSION.get(doId);
-      ctx.waitUntil(
-        doStub.fetch('http://internal/sync-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ order: { ticket_id: ticketId, status: 'completed' } })
-        })
-      );
-    } catch (e) { console.error('DO sync error:', e); }
-  }
 
   return { message: 'تم تأكيد التسليم بنجاح وتوثيق الأرباح في رصيدك!' };
 }
@@ -502,3 +483,49 @@ export async function getOrdersDelta({ env, user, body }) {
   return { data: orders };
 }
 
+// ========================================================
+// 🧩 مهمة موحّدة بعد تأكيد التسليم (طلب واحد في الخلفية)
+// كل خطوة في try/catch مستقل: فشل الإشعارات مثلاً لا يمنع نشر الكتالوج.
+// الترتيب: الخفيفة أولاً (تتبع، إشعارات، Durable Object)، والأثقل أخيراً (نشر GitHub).
+// نشر الكتالوج والفئات يحدث هنا فقط، مرة واحدة لكل طلب مكتمل.
+// ========================================================
+async function runDeliveryFollowUp(env, { ticketId, customerId, merchant, grandTotal, currency }) {
+  const safe = async (label, fn) => {
+    try {
+      await fn();
+    } catch (e) {
+      console.error(`[delivery:${label}]`, e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  await safe('tracking', () => syncOrderTracking(env, ticketId, 'completed', merchant.username));
+  await safe('signal', () => syncMerchantOrderSignal(env, merchant.user_id, ticketId));
+  await safe('notify', () =>
+    notifyOrderCompleted(env, {
+      customerId,
+      merchantId: merchant.user_id,
+      ticketId,
+      grandTotal,
+      currency,
+    })
+  );
+  await safe('durable-object', () => {
+    if (!env.MERCHANT_SESSION) return;
+    const stub = env.MERCHANT_SESSION.get(env.MERCHANT_SESSION.idFromName(`merchant_${merchant.user_id}`));
+    return stub.fetch('http://internal/sync-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: { ticket_id: ticketId, status: 'completed' } }),
+    });
+  });
+  await safe('publish-catalog', async () => {
+    const rows = await env.DB.prepare(
+      `SELECT id, name, description, price, discount, image, category_id, options, features,
+              quantity, quantity_type, is_available, currency
+       FROM products WHERE merchant_id = ? AND is_available = 1`
+    )
+      .bind(merchant.user_id)
+      .all();
+    await syncCatalogToStorefront(env, merchant.username, merchant.user_id, rows.results || []);
+  });
+}
