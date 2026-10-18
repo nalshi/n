@@ -119,9 +119,11 @@ const STOREFRONT_PUBLIC_BASE = 'https://appi.dpdns.org'
 
 async function getJson(path: string): Promise<unknown> {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  // Try the storefront public base first (works cross-origin), then fall back
+  // to a relative path (works when dashboard is served from the same origin).
   const urls = [
-    normalizedPath,
     `${STOREFRONT_PUBLIC_BASE}${normalizedPath}`,
+    normalizedPath,
   ]
 
   let lastError: unknown = null
@@ -146,8 +148,9 @@ async function getJson(path: string): Promise<unknown> {
 async function loadThemes(): Promise<StorefrontTheme[]> {
   try {
     const catalog = await getJson('/templates/themes.json')
-    const record = asRecord(catalog)
-    return readThemeRows(record ? { items: record.items } : catalog)
+    // themes.json structure: { version, count, items: [...] }
+    // readThemeRows handles both array and object-with-items forms.
+    return readThemeRows(catalog)
   } catch (error) {
     throw new Error(
       error instanceof Error ? error.message : 'تعذر تحميل مكتبة القوالب من ملف المتجر.'

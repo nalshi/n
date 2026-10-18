@@ -337,14 +337,6 @@ export function Storefront() {
       toast.error('تعذر تحديد رابط متجرك للمعاينة.')
       return
     }
-    const previewWindow = window.open('about:blank', '_blank')
-    if (!previewWindow) {
-      toast.error('اسمح بفتح نافذة جديدة لمعاينة المتجر.')
-      return
-    }
-    previewWindow.opener = null
-    previewWindow.document.title = 'جاري تجهيز معاينة المتجر'
-    previewWindow.document.body.textContent = 'جاري تجهيز معاينة المتجر…'
     setPreviewing(true)
     try {
       const [baseConfig, themeConfig] = await Promise.all([
@@ -358,15 +350,44 @@ export function Storefront() {
         activeMode,
         library
       )
-      localStorage.setItem(
-        `nalsh_template_local_config_${library.username.trim().toLowerCase()}`,
-        JSON.stringify(config)
-      )
+
       const storeBaseUrl = 'https://appi.dpdns.org'
+      const storageKey = `nalsh_template_local_config_${library.username.trim().toLowerCase()}`
+      const configJson = JSON.stringify(config)
+
+      // Build the preview URL
       const url = `${storeBaseUrl}/index.html?store=${encodeURIComponent(library.username)}&template_preview=%7B%7D&local_preview=1`
-      previewWindow.location.replace(url)
+
+      // Open the store window directly to the preview URL (no about:blank detour).
+      // Do NOT null out opener – we need it to stay connected so postMessage works
+      // across origins after the page loads.
+      const previewWindow = window.open(url, '_blank')
+      if (!previewWindow) {
+        toast.error('اسمح بفتح نافذة جديدة لمعاينة المتجر.')
+        return
+      }
+
+      // Send the config to the store window via postMessage once it has loaded.
+      // The store page listens for NALSH_CONFIG_UPDATE and applies it immediately.
+      // We retry a few times to handle slow loading.
+      let attempts = 0
+      const maxAttempts = 10
+      const interval = window.setInterval(() => {
+        attempts++
+        try {
+          previewWindow.postMessage(
+            { type: 'NALSH_CONFIG_UPDATE', config, storageKey, configJson },
+            storeBaseUrl
+          )
+        } catch {
+          // Window may not be ready yet – keep retrying
+        }
+        if (attempts >= maxAttempts || previewWindow.closed) {
+          window.clearInterval(interval)
+        }
+      }, 800)
+
     } catch (error) {
-      previewWindow.close()
       toast.error(
         error instanceof Error ? error.message : 'تعذر تجهيز المعاينة.'
       )
