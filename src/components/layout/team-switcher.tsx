@@ -29,12 +29,14 @@ export function TeamSwitcher({ teams }: TeamSwitcherProps) {
           }`}
         >
           <span
-            className={`grid shrink-0 place-items-center bg-sidebar-primary text-sidebar-primary-foreground ${
+            className={`grid shrink-0 place-items-center overflow-hidden ${
               isCollapsed ? 'size-8 rounded-lg' : 'size-10 rounded-xl'
             }`}
           >
-            <activeTeam.logo
-              className={isCollapsed ? 'size-4' : 'size-5'}
+            <img
+              src='/images/favicon.svg'
+              alt='نالش'
+              className={isCollapsed ? 'size-8' : 'size-10'}
               aria-hidden='true'
             />
           </span>
