@@ -7,7 +7,7 @@ import {
   type FormEvent,
 } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import {
   Barcode,
   Boxes,
@@ -1100,13 +1100,18 @@ function StatCard({
   title,
   value,
   icon: Icon,
+  onClick,
 }: {
   title: string
   value: number
   icon: typeof Package
+  onClick?: () => void
 }) {
   return (
-    <Card className='gap-2 py-3 sm:gap-3 sm:py-4'>
+    <Card
+      className={`gap-2 py-3 sm:gap-3 sm:py-4${onClick ? ' cursor-pointer transition-shadow hover:shadow-md' : ''}`}
+      onClick={onClick}
+    >
       <CardHeader className='flex flex-row items-start justify-between gap-1 px-2 pb-0 sm:items-center sm:px-4'>
         <CardTitle className='text-xs leading-tight font-medium text-muted-foreground sm:text-sm'>
           {title}
