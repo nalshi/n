@@ -33,10 +33,18 @@ export function TeamSwitcher({ teams }: TeamSwitcherProps) {
               isCollapsed ? 'size-8 rounded-lg' : 'size-10 rounded-xl'
             }`}
           >
+            {/* وضع فاتح */}
+            <img
+              src='/images/favicon_light.svg'
+              alt='نالش'
+              className={`dark:hidden ${isCollapsed ? 'size-8' : 'size-10'}`}
+              aria-hidden='true'
+            />
+            {/* وضع داكن */}
             <img
               src='/images/favicon.svg'
               alt='نالش'
-              className={isCollapsed ? 'size-8' : 'size-10'}
+              className={`hidden dark:block ${isCollapsed ? 'size-8' : 'size-10'}`}
               aria-hidden='true'
             />
           </span>
