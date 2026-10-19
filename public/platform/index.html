@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f0f3f6" />
+    <title>نالش | منصة لإدارة المتجر والطلبات والمنتجات</title>
+    <meta
+      name="description"
+      content="نالش منصة لإدارة متجرك: أضف المنتجات، تابع الطلبات، واضبط واجهة المتجر وقوالبه من لوحة تاجر واحدة."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://dash.appi.dpdns.org/platform/" />
+    <link rel="icon" href="/images/favicon_light.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ar_AR" />
+    <meta property="og:site_name" content="نالش" />
+    <meta
+      property="og:title"
+      content="نالش | منصة لإدارة المتجر والطلبات والمنتجات"
+    />
+    <meta
+      property="og:description"
+      content="أضف المنتجات، تابع الطلبات، واضبط واجهة متجرك من لوحة نالش."
+    />
+    <meta property="og:url" content="https://dash.appi.dpdns.org/platform/" />
+    <meta name="twitter:card" content="summary" />
+    <meta
+      name="twitter:title"
+      content="نالش | منصة لإدارة المتجر والطلبات والمنتجات"
+    />
+    <meta
+      name="twitter:description"
+      content="أدوات إدارة المنتجات والطلبات وإعداد واجهة المتجر في مكان واحد."
+    />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "نالش",
+        "url": "https://dash.appi.dpdns.org/platform/",
+        "description": "منصة لإدارة المنتجات والطلبات وإعداد واجهة المتجر.",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web browser",
+        "inLanguage": "ar",
+        "featureList": [
+          "إدارة المنتجات والمخزون",
+          "متابعة الطلبات وحالاتها",
+          "اختيار قوالب المتجر ومعاينتها",
+          "إعداد بيانات المتجر وواجهته"
+        ]
+      }
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Cairo", sans-serif;
+        color: #142238;
+        background: #f0f3f6;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        scroll-behavior: smooth;
+        --ink: #142238;
+        --blue: #365c80;
+        --muted: #526278;
+        --line: #dce3e9;
+        --paper: #fff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-width: 320px;
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.8;
+      }
+
+      a {
+        color: inherit;
+        text-underline-offset: 0.25em;
+      }
+
+      a:focus-visible,
+      summary:focus-visible {
+        outline: 3px solid #365c80;
+        outline-offset: 4px;
+      }
+
+      ::selection {
+        color: #fff;
+        background: #365c80;
+      }
+
+      .skip-link {
+        position: absolute;
+        z-index: 2;
+        inset-block-start: 8px;
+        inset-inline-start: 8px;
+        transform: translateY(-150%);
+        padding: 8px 14px;
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      .shell {
+        width: min(1160px, calc(100% - 48px));
+        margin-inline: auto;
+      }
+
+      .topbar {
+        display: flex;
+        min-height: 82px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+      }
+
+      .brand img {
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+      }
+
+      .brand strong {
+        font-size: 21px;
+        font-weight: 900;
+      }
+
+      .navigation {
+        display: flex;
+        align-items: center;
+        gap: 28px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .navigation a {
+        text-decoration: none;
+      }
+
+      .navigation a:hover,
+      .text-link:hover {
+        color: var(--ink);
+        text-decoration: underline;
+      }
+
+      .login-link {
+        color: var(--ink) !important;
+        font-weight: 700;
+      }
+
+      .hero-window {
+        display: grid;
+        min-height: 500px;
+        grid-template-columns: 1fr 0.92fr;
+        background: var(--paper);
+        border: 1px solid var(--line);
+      }
+
+      .hero-copy {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 64px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-block-start: 0;
+      }
+
+      h1 {
+        max-width: 590px;
+        margin-block-end: 16px;
+        font-size: clamp(36px, 4.2vw, 56px);
+        font-weight: 900;
+        letter-spacing: -0.025em;
+        line-height: 1.28;
+        text-wrap: balance;
+      }
+
+      .hero-copy > p {
+        max-width: 500px;
+        margin-block-end: 26px;
+        color: var(--muted);
+        font-size: 17px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .button {
+        display: inline-flex;
+        min-height: 48px;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 20px;
+        border: 1px solid var(--ink);
+        border-radius: 7px;
+        background: var(--ink);
+        color: #fff;
+        font-weight: 800;
+        text-decoration: none;
+        transition:
+          background-color 160ms ease-out,
+          color 160ms ease-out,
+          transform 160ms ease-out;
+      }
+
+      .button:hover {
+        transform: translateY(-2px);
+        background: #263c59;
+      }
+
+      .text-link {
+        color: var(--blue);
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .preview {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 54px;
+        background: #e7edf2;
+      }
+
+      .preview-heading {
+        margin-block-end: 20px;
+      }
+
+      .preview-heading p {
+        margin-block-end: 3px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .preview-heading h2 {
+        margin-block-end: 0;
+        font-size: 23px;
+      }
+
+      .preview-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .preview-list li {
+        display: flex;
+        min-height: 76px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        border-block-start: 1px solid #cdd8e1;
+      }
+
+      .preview-list li:last-child {
+        border-block-end: 1px solid #cdd8e1;
+      }
+
+      .preview-list span {
+        font-weight: 700;
+      }
+
+      .preview-list b {
+        color: var(--blue);
+        font-size: 13px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .section {
+        padding-block: 92px;
+      }
+
+      .section-heading {
+        display: grid;
+        grid-template-columns: 1fr 0.7fr;
+        align-items: end;
+        gap: 36px;
+        margin-block-end: 28px;
+      }
+
+      .section-heading h2 {
+        max-width: 620px;
+        margin-block-end: 0;
+        font-size: clamp(28px, 3.3vw, 40px);
+        font-weight: 900;
+        line-height: 1.35;
+        text-wrap: balance;
+      }
+
+      .section-heading p {
+        margin-block-end: 0;
+        color: var(--muted);
+      }
+
+      .feature-row {
+        display: grid;
+        grid-template-columns: 0.8fr 1.3fr 0.7fr;
+        align-items: center;
+        gap: 28px;
+        padding-block: 24px;
+        border-block-start: 1px solid #cbd5de;
+      }
+
+      .feature-row:last-child {
+        border-block-end: 1px solid #cbd5de;
+      }
+
+      .feature-row h3 {
+        margin-block-end: 0;
+        font-size: 21px;
+      }
+
+      .feature-row p {
+        margin-block-end: 0;
+        color: var(--muted);
+      }
+
+      .feature-row a {
+        justify-self: start;
+        color: var(--blue);
+        font-size: 14px;
+        font-weight: 700;
+        text-decoration-thickness: 1px;
+      }
+
+      .faq {
+        background: var(--paper);
+        border-block: 1px solid var(--line);
+      }
+
+      .faq-inner {
+        padding: 72px 24px;
+      }
+
+      .faq h2 {
+        margin-block-end: 24px;
+        font-size: clamp(28px, 3vw, 38px);
+      }
+
+      details {
+        border-block-start: 1px solid var(--line);
+      }
+
+      details:last-child {
+        border-block-end: 1px solid var(--line);
+      }
+
+      summary {
+        padding-block: 17px;
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      details p {
+        max-width: 72ch;
+        padding-block-end: 12px;
+        color: var(--muted);
+      }
+
+      .closing {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 28px;
+        padding-block: 56px;
+      }
+
+      .closing h2 {
+        max-width: 620px;
+        margin-block-end: 0;
+        font-size: clamp(26px, 3vw, 36px);
+        line-height: 1.4;
+      }
+
+      footer {
+        padding-block: 22px 36px;
+        border-block-start: 1px solid #cbd5de;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      @media (max-width: 800px) {
+        .navigation {
+          gap: 14px;
+        }
+
+        .navigation a:not(.login-link) {
+          display: none;
+        }
+
+        .hero-window {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-copy {
+          padding: 46px;
+        }
+
+        .preview {
+          padding: 34px 46px;
+        }
+
+        .section-heading {
+          grid-template-columns: 1fr;
+          gap: 14px;
+        }
+      }
+
+      @media (max-width: 560px) {
+        body {
+          font-size: 15px;
+        }
+
+        .shell {
+          width: min(100% - 28px, 1160px);
+        }
+
+        .topbar {
+          min-height: 68px;
+        }
+
+        .brand strong {
+          font-size: 19px;
+        }
+
+        .hero-copy {
+          padding: 34px 23px 28px;
+        }
+
+        h1 {
+          font-size: 35px;
+        }
+
+        .hero-copy > p {
+          font-size: 15px;
+        }
+
+        .actions {
+          width: 100%;
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        .button {
+          width: 100%;
+        }
+
+        .preview {
+          padding: 28px 23px;
+        }
+
+        .preview-list li {
+          min-height: 70px;
+          gap: 10px;
+        }
+
+        .preview-list span {
+          font-size: 14px;
+        }
+
+        .preview-list b {
+          font-size: 12px;
+        }
+
+        .section {
+          padding-block: 62px;
+        }
+
+        .section-heading h2 {
+          font-size: 29px;
+        }
+
+        .feature-row {
+          grid-template-columns: 1fr;
+          gap: 7px;
+          padding-block: 19px;
+        }
+
+        .feature-row a {
+          margin-block-start: 4px;
+        }
+
+        .faq-inner {
+          padding-block: 52px;
+        }
+
+        .closing {
+          align-items: stretch;
+          flex-direction: column;
+          padding-block: 42px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">انتقل إلى المحتوى</a>
+    <header class="shell">
+      <nav class="topbar" aria-label="التنقل الرئيسي">
+        <a class="brand" href="/platform/" aria-label="نالش - الصفحة الرئيسية">
+          <img src="/images/favicon_light.svg" width="36" height="36" alt="" />
+          <strong>نالش</strong>
+        </a>
+        <div class="navigation">
+          <a href="#features">إدارة المتجر</a>
+          <a href="#how-it-works">كيف تعمل المنصة</a>
+          <a class="login-link" href="/sign-in">تسجيل الدخول</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main" class="shell">
+      <section class="hero-window" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <h1 id="hero-title">منصة نالش لإدارة متجرك من مكان واحد.</h1>
+          <p>
+            أضف منتجاتك، تابع الطلبات، واضبط واجهة متجرك وقوالبه من لوحة التاجر.
+          </p>
+          <div class="actions">
+            <a class="button" href="/sign-up">ابدأ بإعداد متجرك</a>
+            <a class="text-link" href="#features">اكتشف أدوات المنصة</a>
+          </div>
+        </div>
+        <div class="preview" aria-label="نظرة على أدوات لوحة التاجر">
+          <div class="preview-heading">
+            <p>إدارة المتجر</p>
+            <h2>أدواتك اليومية في لوحة واحدة</h2>
+          </div>
+          <ul class="preview-list">
+            <li><span>المنتجات والمخزون</span><b>إدارة المنتجات ←</b></li>
+            <li><span>طلبات المتجر</span><b>متابعة الطلبات ←</b></li>
+            <li><span>قوالب وواجهة المتجر</span><b>معاينة القوالب ←</b></li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="features" class="section" aria-labelledby="features-title">
+        <div class="section-heading">
+          <h2 id="features-title">أدوات تساعدك على إدارة متجرك يومياً.</h2>
+          <p>
+            نظّم المنتجات، اعرف حالات الطلبات، واضبط شكل واجهة متجرك من لوحة
+            واحدة.
+          </p>
+        </div>
+        <div class="feature-row">
+          <h3>المنتجات والمخزون</h3>
+          <p>أضف المنتجات ونظّم تفاصيلها وتوفرها في المتجر.</p>
+          <a href="/sign-up">إدارة منتجاتك ←</a>
+        </div>
+        <div class="feature-row">
+          <h3>الطلبات وحالاتها</h3>
+          <p>راجع الطلبات وحالتها، وتابع الإجراء المطلوب لكل طلب.</p>
+          <a href="/sign-up">تابع طلباتك ←</a>
+        </div>
+        <div class="feature-row">
+          <h3>قوالب واجهة المتجر</h3>
+          <p>اختر قالباً لمتجرك وعاينه قبل نشره.</p>
+          <a href="/sign-up">اضبط واجهة متجرك ←</a>
+        </div>
+      </section>
+
+      <section
+        id="how-it-works"
+        class="faq"
+        aria-labelledby="how-it-works-title"
+      >
+        <div class="shell faq-inner">
+          <h2 id="how-it-works-title">ابدأ من لوحة التاجر.</h2>
+          <details>
+            <summary>ما الذي أستطيع إدارته عبر نالش؟</summary>
+            <p>
+              تتيح لوحة نالش إدارة المنتجات ومتابعة الطلبات وإعدادات المتجر
+              واختيار قوالب واجهته ومعاينتها.
+            </p>
+          </details>
+          <details>
+            <summary>هل يمكنني معاينة قالب المتجر قبل نشره؟</summary>
+            <p>
+              نعم. يمكنك استعراض القوالب المتاحة وفتح معاينة لمظهر المتجر قبل
+              نشر القالب الذي تختاره.
+            </p>
+          </details>
+          <details>
+            <summary>كيف أبدأ استخدام لوحة التاجر؟</summary>
+            <p>
+              أنشئ حساب التاجر، ثم سجّل الدخول لإعداد متجرك وإدارة المنتجات
+              والطلبات.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <section class="closing" aria-labelledby="closing-title">
+        <h2 id="closing-title">ابدأ بتنظيم متجرك عبر لوحة نالش.</h2>
+        <a class="button" href="/sign-up">إنشاء حساب تاجر</a>
+      </section>
+    </main>
+
+    <footer class="shell">
+      <span>نالش — منصة لإدارة المنتجات والطلبات وإعداد واجهة المتجر.</span>
+    </footer>
+  </body>
+</html>

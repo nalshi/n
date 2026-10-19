@@ -14,6 +14,13 @@
 - تسجيل دخول التاجر وإدارة الجلسة
 - وضع فاتح/داكن ومكونات واجهة قابلة للوصول
 
+## الصفحة العامة والفهرسة
+
+- صفحة التعريف العامة موجودة على `/platform/` وتُبنى من `public/platform/index.html` كمحتوى HTML ثابت قابل للقراءة قبل تشغيل JavaScript.
+- يعرض `public/sitemap.xml` صفحة التعريف فقط. يسمح `public/robots.txt` بالزحف كي تقرأ محركات البحث وسم `noindex` في تطبيق لوحة التاجر.
+- يوجّه `public/_redirects` مسار `/platform` إلى عنوانه المعتمد `/platform/`.
+- نطاق canonical الحالي `https://dash.appi.dpdns.org` افتراض يحتاج إلى تأكيد قبل النشر. يجب أن يتطابق النطاق في بيانات الصفحة وملفي sitemap وrobots، ثم يُرسل sitemap إلى Google Search Console.
+
 <details>
 <summary>Customized Components (click to expand)</summary>
 

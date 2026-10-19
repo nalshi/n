@@ -153,8 +153,13 @@ function ThemeCard({
                 style={{ backgroundColor: accent }}
                 aria-hidden='true'
               />
-              <span className='absolute start-3 top-2 rounded bg-black/40 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-xs'>
-                {isDark ? '🌙 داكن' : '☀️ فاتح'}
+              <span className='absolute start-3 top-2 inline-flex items-center gap-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-xs'>
+                {isDark ? (
+                  <Moon className='size-3' aria-hidden='true' />
+                ) : (
+                  <Sun className='size-3' aria-hidden='true' />
+                )}
+                {isDark ? 'داكن' : 'فاتح'}
               </span>
               {active && (
                 <span className='absolute end-2 top-2 grid size-6 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm'>
@@ -226,7 +231,8 @@ function ThemeCard({
             {isSelected && selectedMode === 'light' && (
               <Check className='me-1 size-3.5' />
             )}
-            اختيار فاتح ☀️
+            <Sun className='size-3.5' aria-hidden='true' />
+            اختيار فاتح
           </Button>
           <Button
             type='button'
@@ -240,7 +246,8 @@ function ThemeCard({
             {isSelected && selectedMode === 'dark' && (
               <Check className='me-1 size-3.5' />
             )}
-            اختيار داكن 🌙
+            <Moon className='size-3.5' aria-hidden='true' />
+            اختيار داكن
           </Button>
         </div>
       </CardContent>
@@ -445,23 +452,6 @@ export function Storefront() {
             description='اختر التصميم والوضع الافتراضي لمتجرك، وعاينه قبل النشر.'
             actions={
               <>
-                <Button
-                  type='button'
-                  variant='outline'
-                  disabled={
-                    libraryQuery.isFetching || merchantSettingsQuery.isFetching
-                  }
-                  onClick={() => {
-                    clearAuthApiCache()
-                    void libraryQuery.refetch()
-                    void merchantSettingsQuery.refetch()
-                  }}
-                >
-                  <RefreshCw
-                    className={libraryQuery.isFetching ? 'animate-spin' : ''}
-                  />
-                  تحديث الثيمات
-                </Button>
                 <Button
                   variant='outline'
                   disabled={
