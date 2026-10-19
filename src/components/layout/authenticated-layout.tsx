@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useEffect } from 'react'
 import { Outlet } from '@tanstack/react-router'
 import { LoaderCircle, Wifi, WifiOff } from 'lucide-react'
 import { useRealtimeStore } from '@/stores/realtime-store'
@@ -12,7 +12,7 @@ import {
 } from '@/hooks/useMerchantRealtime'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
-import { DashboardIntro } from '@/components/layout/dashboard-intro'
+import { useDashboardIntro } from '@/components/layout/dashboard-intro-context'
 import { SkipToMain } from '@/components/skip-to-main'
 
 type AuthenticatedLayoutProps = {
@@ -20,8 +20,11 @@ type AuthenticatedLayoutProps = {
 }
 
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
-  const [introVisible, setIntroVisible] = useState(true)
-  const completeIntro = useCallback(() => setIntroVisible(false), [])
+  const {
+    isActive: introVisible,
+    startIntro,
+    setIntroReady,
+  } = useDashboardIntro()
   const merchantId = useMerchantIdentity()
   const dashboardQuery = useMerchantData(merchantId)
   useRealtimeSync(merchantId, dashboardQuery.cacheReady)
@@ -30,6 +33,14 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const dashboardInitialized = dashboardQuery.cacheReady
   const initializationError =
     dashboardQuery.error instanceof Error ? dashboardQuery.error.message : ''
+
+  useEffect(() => {
+    startIntro()
+  }, [startIntro])
+
+  useEffect(() => {
+    setIntroReady(dashboardInitialized || Boolean(initializationError))
+  }, [dashboardInitialized, initializationError, setIntroReady])
 
   return (
     <SearchProvider>
@@ -109,12 +120,6 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
                     : 'إعادة الاتصال'}
             </span>
           </div>
-          {introVisible && (
-            <DashboardIntro
-              isReady={dashboardInitialized || Boolean(initializationError)}
-              onComplete={completeIntro}
-            />
-          )}
         </SidebarProvider>
       </LayoutProvider>
     </SearchProvider>

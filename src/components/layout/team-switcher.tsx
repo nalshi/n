@@ -29,6 +29,7 @@ export function TeamSwitcher({ teams }: TeamSwitcherProps) {
           }`}
         >
           <span
+            data-merchant-intro-destination
             className={`grid shrink-0 place-items-center overflow-hidden ${
               isCollapsed ? 'size-8 rounded-lg' : 'size-10 rounded-xl'
             }`}

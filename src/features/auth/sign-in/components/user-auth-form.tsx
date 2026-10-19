@@ -20,6 +20,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { useDashboardIntro } from '@/components/layout/dashboard-intro-context'
 import { PasswordInput } from '@/components/password-input'
 
 const formSchema = z.object({
@@ -42,6 +43,7 @@ export function UserAuthForm({
   const [isPhone, setIsPhone] = useState(false)
   const navigate = useNavigate()
   const flow = useAuthFlowStore()
+  const { startIntro, finishIntro } = useDashboardIntro()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -66,7 +68,7 @@ export function UserAuthForm({
       })
       return
     }
-    const phoneIdentifier = !/[a-zA-Z]/.test(raw)
+    const phoneIdentifier = !/\p{L}/u.test(raw)
     const normalized = phoneIdentifier ? normalizePhone(raw) : raw
     if (phoneIdentifier && normalized.length !== 9) {
       form.setError('identifier', {
@@ -126,6 +128,7 @@ export function UserAuthForm({
     }
 
     setIsLoading(true)
+    startIntro()
     try {
       const response = await authApiRequest('login', {
         phone: flow.identifier,
@@ -134,6 +137,7 @@ export function UserAuthForm({
         role: 'merchant',
       })
       if (response.status === 'new_device_otp_required') {
+        finishIntro()
         flow.beginFlow({
           context: 'login_otp',
           phone: flow.identifier,
@@ -156,6 +160,7 @@ export function UserAuthForm({
       })
     } catch (error) {
       form.setValue('password', '')
+      finishIntro()
       toast.error(
         error instanceof Error ? error.message : 'تعذر الاتصال بالخادم.'
       )
@@ -170,6 +175,7 @@ export function UserAuthForm({
         onSubmit={form.handleSubmit(onSubmit)}
         className={cn('grid gap-4', className)}
         dir='rtl'
+        aria-busy={isLoading}
         {...props}
       >
         <FormField
@@ -188,6 +194,7 @@ export function UserAuthForm({
                   className='h-11 bg-background'
                   aria-required='true'
                   autoComplete='username'
+                  disabled={isLoading}
                   placeholder='أدخل رقم الجوال أو اسم المستخدم'
                   dir='auto'
                   {...field}
@@ -232,6 +239,7 @@ export function UserAuthForm({
                       aria-required='true'
                       autoComplete='current-password'
                       placeholder='أدخل كلمة المرور'
+                      disabled={isLoading}
                       {...field}
                     />
                   </FormControl>
@@ -247,6 +255,7 @@ export function UserAuthForm({
               type='button'
               variant='outline'
               className='h-11'
+              disabled={isLoading}
               onClick={() => {
                 setStep('identifier')
                 form.setValue('password', '')
@@ -264,13 +273,19 @@ export function UserAuthForm({
             disabled={isLoading}
           >
             {isLoading ? (
-              <Loader2 className='animate-spin' />
+              <Loader2 className='animate-spin' aria-hidden='true' />
             ) : step === 'identifier' ? (
               <ArrowLeft />
             ) : (
               <LogIn />
             )}
-            {step === 'identifier' ? 'متابعة' : 'تسجيل الدخول'}
+            {isLoading
+              ? step === 'identifier'
+                ? 'جارٍ التحقق...'
+                : 'جارٍ تسجيل الدخول...'
+              : step === 'identifier'
+                ? 'متابعة'
+                : 'تسجيل الدخول'}
           </Button>
         </div>
       </form>

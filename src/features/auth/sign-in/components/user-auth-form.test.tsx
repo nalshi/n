@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
 import { useAuthFlowStore } from '@/stores/auth-flow-store'
+import { DashboardIntroProvider } from '@/components/layout/dashboard-intro-provider'
 import { UserAuthForm } from './user-auth-form'
 
 const { navigate, apiRequestMock, completeAuthSessionMock } = vi.hoisted(
@@ -75,6 +76,24 @@ describe('UserAuthForm', () => {
     })
   })
 
+  it('accepts an Arabic username without treating it as a phone number', async () => {
+    const screen = await render(<UserAuthForm />)
+    const identifier = screen.getByRole('textbox', {
+      name: 'رقم الجوال أو اسم المستخدم',
+    })
+    await userEvent.fill(identifier, 'متجر النور')
+    await userEvent.click(screen.getByRole('button', { name: 'متابعة' }))
+
+    await expect
+      .element(screen.getByLabelText(/كلمة المرور/))
+      .toBeInTheDocument()
+    expect(apiRequestMock).not.toHaveBeenCalledWith(
+      'check_phone',
+      expect.anything()
+    )
+    expect(useAuthFlowStore.getState().identifier).toBe('متجر النور')
+  })
+
   it('authenticates and redirects to the default route', async () => {
     const screen = await render(<UserAuthForm />)
     await userEvent.fill(
@@ -97,6 +116,55 @@ describe('UserAuthForm', () => {
       })
     )
     expect(completeAuthSessionMock).toHaveBeenCalledOnce()
+    await vi.waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
+    )
+  })
+
+  it('shows the intro while the login request is loading', async () => {
+    let resolveLogin: (response: {
+      status: string
+      token: string
+    }) => void = () => undefined
+    apiRequestMock.mockImplementation((action: string) =>
+      action === 'check_phone'
+        ? Promise.resolve({ status: 'user_found', name: 'متجر الاختبار' })
+        : new Promise<{ status: string; token: string }>((resolve) => {
+            resolveLogin = resolve
+          })
+    )
+    const screen = await render(
+      <DashboardIntroProvider>
+        <UserAuthForm />
+      </DashboardIntroProvider>
+    )
+    await userEvent.fill(
+      screen.getByRole('textbox', { name: 'رقم الجوال أو اسم المستخدم' }),
+      '771234567'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'متابعة' }))
+    await userEvent.fill(
+      screen.getByLabelText(/كلمة المرور لـ متجر الاختبار/),
+      'secret'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'تسجيل الدخول' }))
+
+    await expect
+      .element(screen.getByRole('status', { name: 'جارٍ تجهيز لوحة التاجر' }))
+      .toBeInTheDocument()
+    expect(
+      apiRequestMock.mock.calls.filter(([action]) => action === 'login')
+    ).toHaveLength(1)
+    await expect
+      .element(screen.getByRole('button', { name: 'جارٍ تسجيل الدخول...' }))
+      .toBeDisabled()
+    expect(
+      apiRequestMock.mock.calls.filter(([action]) => action === 'login')
+    ).toHaveLength(1)
+    resolveLogin({
+      status: 'success',
+      token: `head.${btoa(JSON.stringify({ exp: 2000000000 }))}.sig`,
+    })
     await vi.waitFor(() =>
       expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
     )
@@ -199,7 +267,11 @@ describe('UserAuthForm', () => {
             state_token: 'device-state',
           }
     )
-    const screen = await render(<UserAuthForm redirectTo='/orders' />)
+    const screen = await render(
+      <DashboardIntroProvider>
+        <UserAuthForm redirectTo='/orders' />
+      </DashboardIntroProvider>
+    )
     await userEvent.fill(
       screen.getByRole('textbox', { name: 'رقم الجوال أو اسم المستخدم' }),
       '771234567'
@@ -212,5 +284,8 @@ describe('UserAuthForm', () => {
       expect(navigate).toHaveBeenCalledWith({ to: '/otp' })
     )
     expect(useAuthFlowStore.getState().redirectTo).toBe('/orders')
+    await expect
+      .element(screen.getByRole('status', { name: 'جارٍ تجهيز لوحة التاجر' }))
+      .not.toBeInTheDocument()
   })
 })

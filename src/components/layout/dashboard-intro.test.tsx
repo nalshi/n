@@ -15,7 +15,7 @@ describe('DashboardIntro', () => {
     await expect.element(screen.getByText('نالش')).toBeInTheDocument()
 
     await vi.waitFor(() => expect(onComplete).toHaveBeenCalledOnce(), {
-      timeout: 2_200,
+      timeout: 800,
     })
   })
 
@@ -28,7 +28,7 @@ describe('DashboardIntro', () => {
     await expect
       .element(screen.getByRole('status', { name: 'جارٍ تجهيز لوحة التاجر' }))
       .toBeInTheDocument()
-    await new Promise((resolve) => window.setTimeout(resolve, 1_800))
+    await new Promise((resolve) => window.setTimeout(resolve, 500))
 
     expect(onComplete).not.toHaveBeenCalled()
   })
