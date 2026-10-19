@@ -102,7 +102,7 @@ function StatCard({
               iconClassName || 'bg-primary/10 text-primary'
             }`}
           >
-            <Icon className='size-4' aria-hidden='true' />
+            <Icon className='merchant-stat-icon size-4' aria-hidden='true' />
           </span>
         </CardHeader>
         <CardContent className='px-4 pb-4 sm:px-5 sm:pb-5'>
@@ -188,10 +188,9 @@ export function Dashboard() {
   )
   const { awaitingOrders, deliveryOrders, recentOrders } = orderSummary
   const storeBaseUrl = 'https://appi.dpdns.org'
-  const storeUrl =
-    data?.username
-      ? `${storeBaseUrl}/${encodeURIComponent(data.username.replace(/^@/, ''))}`
-      : ''
+  const storeUrl = data?.username
+    ? `${storeBaseUrl}/${encodeURIComponent(data.username.replace(/^@/, ''))}`
+    : ''
   const callablePhone = data?.phone.replace(/[^\d+#*]/g, '') || ''
   const phoneHref = callablePhone ? `tel:${callablePhone}` : ''
 
@@ -269,7 +268,7 @@ export function Dashboard() {
             </CardContent>
           </Card>
         ) : data ? (
-          <div className='space-y-6'>
+          <div className='merchant-dashboard-enter space-y-6'>
             <section
               aria-labelledby='order-attention-title'
               className={`flex flex-col gap-4 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 ${
@@ -373,7 +372,7 @@ export function Dashboard() {
                   أنجز أهم مهام المتجر مباشرة
                 </p>
               </div>
-              <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+              <div className='merchant-stat-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
                 <QuickAction
                   icon={Plus}
                   title='إضافة منتج جديد'
@@ -408,9 +407,7 @@ export function Dashboard() {
 
             <div className='space-y-3'>
               <div>
-                <h2 className='text-lg font-semibold'>
-                  إحصائيات المتجر
-                </h2>
+                <h2 className='text-lg font-semibold'>إحصائيات المتجر</h2>
                 <p className='text-sm text-muted-foreground'>
                   نظرة سريعة على أرقام الطلبات والمنتجات
                 </p>
@@ -472,9 +469,7 @@ export function Dashboard() {
                       <button
                         key={product.id}
                         type='button'
-                        onClick={() =>
-                          void navigate({ to: '/products' })
-                        }
+                        onClick={() => void navigate({ to: '/products' })}
                         className='flex min-w-0 items-center gap-3 rounded-lg border border-transparent bg-muted/40 p-2 text-start transition-colors hover:border-border hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-ring'
                       >
                         {product.image ? (
@@ -691,10 +686,10 @@ function QuickAction({
     <Button
       variant='outline'
       onClick={onClick}
-      className='h-auto min-h-20 justify-start gap-3 rounded-lg p-4 text-start'
+      className='merchant-quick-action h-auto min-h-20 justify-start gap-3 rounded-lg p-4 text-start'
     >
       <span className='grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary'>
-        <Icon className='size-5' aria-hidden='true' />
+        <Icon className='merchant-action-icon size-5' aria-hidden='true' />
       </span>
       <span className='grid flex-1 justify-items-start gap-1 whitespace-normal'>
         <span className='font-semibold'>{title}</span>

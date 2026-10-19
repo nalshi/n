@@ -22,6 +22,50 @@ type RealtimeMessage = Record<string, unknown> & {
   type?: string
 }
 
+const MAX_ALERTED_ORDER_IDS = 100
+
+function readAlertedOrderIds(merchantId: string): Set<string> {
+  try {
+    const stored = localStorage.getItem(`merchant_alerted_orders:${merchantId}`)
+    if (!stored) return new Set()
+    const parsed: unknown = JSON.parse(stored)
+    if (!Array.isArray(parsed)) {
+      toast.error('بيانات تنبيهات الطلبات غير صالحة؛ قد يتكرر تنبيه سابق.')
+      return new Set()
+    }
+    return new Set(
+      parsed
+        .filter((id): id is string => typeof id === 'string')
+        .slice(-MAX_ALERTED_ORDER_IDS)
+    )
+  } catch (error) {
+    toast.error(
+      `تعذر قراءة سجل تنبيهات الطلبات: ${
+        error instanceof Error ? error.message : 'خطأ تخزين غير معروف.'
+      }`
+    )
+    return new Set()
+  }
+}
+
+function persistAlertedOrderIds(
+  merchantId: string,
+  alertedOrderIds: Set<string>
+) {
+  try {
+    localStorage.setItem(
+      `merchant_alerted_orders:${merchantId}`,
+      JSON.stringify([...alertedOrderIds].slice(-MAX_ALERTED_ORDER_IDS))
+    )
+  } catch (error) {
+    toast.error(
+      `تعذر حفظ حالة تنبيه الطلب: ${
+        error instanceof Error ? error.message : 'خطأ تخزين غير معروف.'
+      }`
+    )
+  }
+}
+
 function getSessionIdentity(token: string) {
   try {
     const encoded = token.split('.')[1]
@@ -93,7 +137,11 @@ function syncSnapshot(
   queryClient.setQueryData(['merchant-product-categories'], categories)
 }
 
-function syncEvent(queryClient: QueryClient, message: RealtimeMessage) {
+function syncEvent(
+  queryClient: QueryClient,
+  merchantId: string,
+  message: RealtimeMessage
+) {
   const product = readRecord(message.product)
   const order = readRecord(message.order)
 
@@ -172,7 +220,14 @@ function syncEvent(queryClient: QueryClient, message: RealtimeMessage) {
           : current
     )
 
-    if (!wasKnown && normalized.status === 'pending_merchant_approval') {
+    const alertedOrderIds = readAlertedOrderIds(merchantId)
+    if (
+      !wasKnown &&
+      !alertedOrderIds.has(normalized.id) &&
+      normalized.status === 'pending_merchant_approval'
+    ) {
+      alertedOrderIds.add(normalized.id)
+      persistAlertedOrderIds(merchantId, alertedOrderIds)
       toast.info(`وصل طلب جديد من ${normalized.customerName}.`, {
         duration: 8_000,
       })
@@ -288,7 +343,7 @@ export function startMerchantRealtime(
       } finally {
         resyncInProgress = false
         for (const event of bufferedEvents.splice(0)) {
-          syncEvent(queryClient, event)
+          syncEvent(queryClient, merchantId, event)
         }
         resyncPromise = null
       }
@@ -330,7 +385,7 @@ export function startMerchantRealtime(
     }
     if (!message.event || !allowedEvents.has(message.event)) return
     if (resyncInProgress) bufferedEvents.push(message)
-    else syncEvent(queryClient, message)
+    else syncEvent(queryClient, merchantId, message)
   }
 
   async function fetchTicket() {

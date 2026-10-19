@@ -4,6 +4,15 @@ import { useRealtimeStore } from '@/stores/realtime-store'
 import { clearDashboardInitializationCache } from '@/features/dashboard/dashboard-data'
 import { startMerchantRealtime } from './merchant-realtime'
 
+const { infoToast } = vi.hoisted(() => ({ infoToast: vi.fn() }))
+
+vi.mock('sonner', () => ({
+  toast: {
+    info: infoToast,
+    error: vi.fn(),
+  },
+}))
+
 class FakeWebSocket extends EventTarget {
   static readonly CONNECTING = 0
   static readonly OPEN = 1
@@ -126,6 +135,7 @@ describe('merchant realtime synchronization', () => {
     localStorage.clear()
     sessionStorage.clear()
     FakeNotification.instances = []
+    infoToast.mockClear()
     vi.stubGlobal('Notification', FakeNotification)
     localStorage.setItem('merchant_token', makeToken())
     FakeWebSocket.instances = []
@@ -235,6 +245,33 @@ describe('merchant realtime synchronization', () => {
         tag: 'merchant-order-12',
       },
     })
+  })
+
+  it('does not repeat a new-order toast after a duplicate event or page refresh', async () => {
+    cleanup = startMerchantRealtime(queryClient)
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+
+    const orderEvent = {
+      event: 'order_created',
+      order: {
+        id: 12,
+        customer_name: 'عميل جديد',
+        status: 'pending_merchant_approval',
+      },
+    }
+    FakeWebSocket.instances[0].open()
+    FakeWebSocket.instances[0].receive(orderEvent)
+    FakeWebSocket.instances[0].receive(orderEvent)
+    expect(infoToast).toHaveBeenCalledTimes(1)
+
+    cleanup()
+    queryClient.clear()
+    cleanup = startMerchantRealtime(queryClient)
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2))
+    FakeWebSocket.instances[1].open()
+    FakeWebSocket.instances[1].receive(orderEvent)
+
+    expect(infoToast).toHaveBeenCalledTimes(1)
   })
 
   it('does not expose the token in a WebSocket URL when ticket provisioning fails', async () => {
