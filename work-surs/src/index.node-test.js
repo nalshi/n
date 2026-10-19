@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import test from 'node:test';
-import worker from './index.js';
-import { MerchantSession } from './durableObjects/MerchantSession.js';
 import { updateProductStock } from './controllers/productController.js';
 import { buildCorsHeaders } from './core/response.js';
+import { MerchantSession } from './durableObjects/MerchantSession.js';
+import worker from './index.js';
 import { assertRateLimitOk } from './services/ai/rateLimiter.js';
 import { syncMerchantOrderSignal } from './services/realtime/realtimeSyncService.js';
 
@@ -19,9 +19,7 @@ function createToken({ user_id = 'merchant-1', role = 'merchant' } = {}) {
     username: 'merchant',
     exp: Math.floor(Date.now() / 1000) + 60,
   });
-  const signature = createHmac('sha256', APP_SECRET_KEY)
-    .update(`${header}.${payload}`)
-    .digest('base64url');
+  const signature = createHmac('sha256', APP_SECRET_KEY).update(`${header}.${payload}`).digest('base64url');
 
   return `${header}.${payload}.${signature}`;
 }
@@ -32,9 +30,7 @@ function createGatewayHeaders(url, method, body = '') {
   const bodyHash = createHash('sha256').update(body).digest('hex');
   const target = new URL(url);
   const payload = `${timestamp}:${nonce}:${method}:${target.pathname}:${target.search}:${bodyHash}`;
-  const signature = createHmac('sha256', 'gateway-secret')
-    .update(payload)
-    .digest('hex');
+  const signature = createHmac('sha256', 'gateway-secret').update(payload).digest('hex');
   return {
     'X-Gateway-Secret': 'gateway-secret',
     'X-Gateway-Timestamp': timestamp,
@@ -112,24 +108,15 @@ function createDatabase() {
   };
 }
 
-async function requestBootstrap({
-  token = createToken(),
-  merchantId = 'merchant-1',
-} = {}) {
-  const request = new Request(
-    'https://worker.example/api/merchant/bootstrap',
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...createGatewayHeaders(
-          'https://worker.example/api/merchant/bootstrap',
-          'GET'
-        ),
-        'X-Merchant-Id': merchantId,
-      },
-    }
-  );
+async function requestBootstrap({ token = createToken(), merchantId = 'merchant-1' } = {}) {
+  const request = new Request('https://worker.example/api/merchant/bootstrap', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...createGatewayHeaders('https://worker.example/api/merchant/bootstrap', 'GET'),
+      'X-Merchant-Id': merchantId,
+    },
+  });
   return worker.fetch(
     request,
     {
@@ -147,9 +134,18 @@ test('merchant bootstrap returns all top-level dashboard data collections', asyn
 
   assert.equal(response.status, 200);
   assert.equal(body.status, 'success');
-  assert.deepEqual(body.products.map(({ id }) => id), ['product-1']);
-  assert.deepEqual(body.orders.map(({ id }) => id), ['order-1']);
-  assert.deepEqual(body.archivedOrders.map(({ id }) => id), ['archived-1']);
+  assert.deepEqual(
+    body.products.map(({ id }) => id),
+    ['product-1']
+  );
+  assert.deepEqual(
+    body.orders.map(({ id }) => id),
+    ['order-1']
+  );
+  assert.deepEqual(
+    body.archivedOrders.map(({ id }) => id),
+    ['archived-1']
+  );
   assert.deepEqual(body.categories, [{ id: 1, name: 'عام', parent_id: 0 }]);
   assert.equal(body.settings.store_name, 'متجري');
 });
@@ -169,20 +165,93 @@ test('merchant bootstrap rejects a merchant ID that differs from the token', asy
   assert.equal(response.status, 403);
 });
 
-test('gateway rejects HTTP requests with a tampered signed path', async () => {
-  const request = new Request(
-    'https://worker.example/api/merchant/bootstrap',
-    {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer ' + createToken(),
-        ...createGatewayHeaders(
-          'https://worker.example/api/merchant/other',
-          'GET'
-        ),
+test('save_product accepts option image files in the same multipart request', async () => {
+  const formData = new FormData();
+  formData.set('action', 'save_product');
+  formData.set('name', 'منتج');
+  formData.set('price', '10');
+  formData.set('sizes', JSON.stringify([{ id: 'blue', name: 'أزرق', image_file_key: 'option_image_0' }]));
+  formData.set('option_image_0', new File(['image'], 'blue.webp', { type: 'image/webp' }));
+
+  const unsignedRequest = new Request('https://worker.example/', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + createToken() },
+    body: formData,
+  });
+  const body = Buffer.from(await unsignedRequest.clone().arrayBuffer());
+  const headers = new Headers(unsignedRequest.headers);
+  for (const [key, value] of Object.entries(createGatewayHeaders(unsignedRequest.url, 'POST', body))) {
+    headers.set(key, value);
+  }
+  const request = new Request(unsignedRequest, { headers });
+  let savedOptions = '';
+  const env = {
+    APP_SECRET_KEY,
+    PROXY_SECRET: 'gateway-secret',
+    GITHUB_OWNER: 'nalshi',
+    GITHUB_REPO: 'Nynnl',
+    GITHUB_DATA_REPO: 'Nynnl-data',
+    GITHUB_TOKEN: 'token',
+    DB: {
+      prepare(query) {
+        let bindings = [];
+        return {
+          bind(...values) {
+            bindings = values;
+            return this;
+          },
+          async run() {
+            assert.match(query, /INSERT INTO products/);
+            savedOptions = bindings[12];
+            return { meta: { changes: 1 } };
+          },
+          async first() {
+            assert.match(query, /SELECT \* FROM products WHERE id/);
+            return { id: bindings[0], options: savedOptions };
+          },
+        };
       },
+    },
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/contents/') && (init.method || 'GET') === 'GET') {
+      return new Response(JSON.stringify({ message: 'Not Found' }), {
+        status: 404,
+      });
     }
-  );
+    if (requestUrl.includes('/contents/') && init.method === 'PUT') {
+      return new Response(JSON.stringify({ content: { path: requestUrl } }), {
+        status: 201,
+      });
+    }
+    throw new Error(`Unexpected network request: ${init.method || 'GET'} ${requestUrl}`);
+  };
+
+  try {
+    const response = await worker.fetch(request, env, {});
+    const result = await response.json();
+    const [savedOption] = JSON.parse(savedOptions);
+
+    assert.equal(response.status, 200);
+    assert.equal(result.status, 'success');
+    assert.match(savedOption.image, /-option-0\.webp$/);
+    assert.equal('image_file_key' in savedOption, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('gateway rejects HTTP requests with a tampered signed path', async () => {
+  const request = new Request('https://worker.example/api/merchant/bootstrap', {
+    method: 'GET',
+    headers: {
+      Authorization: 'Bearer ' + createToken(),
+      ...createGatewayHeaders('https://worker.example/api/merchant/other', 'GET'),
+    },
+  });
   const response = await worker.fetch(
     request,
     {
@@ -210,9 +279,7 @@ test('websocket ticket endpoint issues a short-lived merchant ticket', async () 
   );
   const body = await response.json();
   const ticketParts = body.ticket.split('.');
-  const ticketClaims = JSON.parse(
-    Buffer.from(ticketParts[1], 'base64url').toString('utf8')
-  );
+  const ticketClaims = JSON.parse(Buffer.from(ticketParts[1], 'base64url').toString('utf8'));
 
   assert.equal(response.status, 200);
   assert.notEqual(body.ticket, createToken());
@@ -386,10 +453,7 @@ test('merchant order signal reports missing Firebase configuration', async () =>
   );
 
   assert.equal(response.status, 503);
-  assert.equal(
-    (await response.json()).message,
-    'إعدادات الاتصال اللحظي غير مهيأة.'
-  );
+  assert.equal((await response.json()).message, 'إعدادات الاتصال اللحظي غير مهيأة.');
 });
 
 test('merchant order signal encrypts the ticket ID before writing Firebase', async () => {
@@ -422,25 +486,10 @@ test('merchant order signal encrypts the ticket ID before writing Firebase', asy
     assert.equal(new URL(firebaseWriteUrl).searchParams.get('auth'), 'firebase-test-secret');
     assert.equal(writtenSignal.includes('TCK-private-ticket-id'), false);
 
-    const bytes = Uint8Array.from(atob(writtenSignal), (character) =>
-      character.charCodeAt(0)
-    );
-    const digest = await crypto.subtle.digest(
-      'SHA-256',
-      new TextEncoder().encode(APP_SECRET_KEY)
-    );
-    const key = await crypto.subtle.importKey(
-      'raw',
-      digest,
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    );
-    const plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: bytes.slice(0, 12) },
-      key,
-      bytes.slice(12)
-    );
+    const bytes = Uint8Array.from(atob(writtenSignal), (character) => character.charCodeAt(0));
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(APP_SECRET_KEY));
+    const key = await crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['decrypt']);
+    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.slice(0, 12) }, key, bytes.slice(12));
     const payload = JSON.parse(new TextDecoder().decode(plaintext));
     assert.equal(payload.merchantId, 'merchant-1');
     assert.equal(payload.ticketId, 'TCK-private-ticket-id');
@@ -532,10 +581,7 @@ test('AI rate limit applies both client-wide and merchant-specific buckets', asy
     { merchantId: 'merchant-1', clientIp: '203.0.113.7' }
   );
 
-  assert.deepEqual(keys, [
-    'ai_chat:ip:203.0.113.7',
-    'ai_chat:merchant:merchant-1:203.0.113.7',
-  ]);
+  assert.deepEqual(keys, ['ai_chat:ip:203.0.113.7', 'ai_chat:merchant:merchant-1:203.0.113.7']);
 });
 
 test('AI rate limit blocks clients from bypassing limits by changing merchant IDs', async () => {
@@ -558,7 +604,10 @@ test('AI rate limit blocks clients from bypassing limits by changing merchant ID
   }
 
   await assert.rejects(
-    assertRateLimitOk(env, { merchantId: 'merchant-another', clientIp: '203.0.113.7' }),
+    assertRateLimitOk(env, {
+      merchantId: 'merchant-another',
+      clientIp: '203.0.113.7',
+    }),
     (error) => error.status === 429
   );
 });

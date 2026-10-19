@@ -1,10 +1,12 @@
+import { ROLES } from './config/constants.js';
+import { handleWhatsappWebhookVerify, handleWhatsappWebhookEvent } from './controllers/whatsappController.js';
+import { buildCorsHeaders, successResponse, errorResponse } from './core/response.js';
 import { actionRegistry } from './router.js';
 import { verifyHmacSignature, verifyJWT, timingSafeEqual } from './security/auth.js';
 import { assertAllowed, HttpError } from './security/rbac.js';
 import { validateAction } from './security/validate.js';
-import { buildCorsHeaders, successResponse, errorResponse } from './core/response.js';
-import { ROLES } from './config/constants.js';
-import { handleWhatsappWebhookVerify, handleWhatsappWebhookEvent } from './controllers/whatsappController.js'; // ⭐ إضافة: ربط واتساب
+
+// ⭐ إضافة: ربط واتساب
 
 // ========================================================
 // 🚪 نقطة الدخول الرئيسية للـ Worker
@@ -24,9 +26,7 @@ function base64UrlEncode(bytes) {
 }
 
 async function createWebSocketTicket(user, secret) {
-  const header = base64UrlEncode(
-    new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
-  );
+  const header = base64UrlEncode(new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
   const payload = base64UrlEncode(
     new TextEncoder().encode(
       JSON.stringify({
@@ -46,11 +46,7 @@ async function createWebSocketTicket(user, secret) {
     false,
     ['sign']
   );
-  const signature = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(data)
-  );
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
   return `${data}.${base64UrlEncode(new Uint8Array(signature))}`;
 }
 
@@ -63,14 +59,10 @@ async function verifyGatewayAccess(request, env, corsHeaders) {
     .split(',')
     .map((secret) => secret.trim())
     .filter(Boolean);
-  const matchedSecret = validSecrets.find((secret) =>
-    timingSafeEqual(gatewaySecret, secret)
-  );
+  const matchedSecret = validSecrets.find((secret) => timingSafeEqual(gatewaySecret, secret));
   const isTrustedGateway = Boolean(matchedSecret);
   const internalKey = request.headers.get('X-Internal-Key') || '';
-  const isTrustedLegacyServer =
-    Boolean(env.INTERNAL_SYNC_KEY) &&
-    timingSafeEqual(internalKey, env.INTERNAL_SYNC_KEY);
+  const isTrustedLegacyServer = Boolean(env.INTERNAL_SYNC_KEY) && timingSafeEqual(internalKey, env.INTERNAL_SYNC_KEY);
 
   if (!isTrustedGateway && !isTrustedLegacyServer) {
     return new Response(
@@ -92,24 +84,15 @@ async function verifyGatewayAccess(request, env, corsHeaders) {
   }
 
   const isWebSocketRequest =
-    request.headers.get('Upgrade')?.toLowerCase() === 'websocket' ||
-    new URL(request.url).pathname === '/api/worker/ws';
+    request.headers.get('Upgrade')?.toLowerCase() === 'websocket' || new URL(request.url).pathname === '/api/worker/ws';
   if (!isTrustedGateway || isWebSocketRequest) return null;
 
   if (!timestamp || !nonce || !signature) {
     return errorResponse('توقيع بوابة الحماية مفقود.', corsHeaders, 403);
   }
   const requestTime = Number.parseInt(timestamp, 10);
-  if (
-    !Number.isFinite(requestTime) ||
-    Math.abs(Date.now() - requestTime) > 60_000 ||
-    !/^[0-9a-f-]{36}$/i.test(nonce)
-  ) {
-    return errorResponse(
-      '⛔ الطلب منتهي الصلاحية أو تم التلاعب بالوقت.',
-      corsHeaders,
-      403
-    );
+  if (!Number.isFinite(requestTime) || Math.abs(Date.now() - requestTime) > 60_000 || !/^[0-9a-f-]{36}$/i.test(nonce)) {
+    return errorResponse('⛔ الطلب منتهي الصلاحية أو تم التلاعب بالوقت.', corsHeaders, 403);
   }
 
   let bodyHash = request.headers.get('X-Gateway-Body-SHA256') || '';
@@ -119,37 +102,20 @@ async function verifyGatewayAccess(request, env, corsHeaders) {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const body = await request.clone().arrayBuffer();
     if (body.byteLength > 12 * 1024 * 1024) {
-      return errorResponse(
-        'حجم البيانات المرسلة تجاوز الحد المسموح.',
-        corsHeaders,
-        413
-      );
+      return errorResponse('حجم البيانات المرسلة تجاوز الحد المسموح.', corsHeaders, 413);
     }
     const digest = await crypto.subtle.digest('SHA-256', body);
     bodyHash = Array.from(new Uint8Array(digest))
       .map((byte) => byte.toString(16).padStart(2, '0'))
       .join('');
-    if (
-      !timingSafeEqual(
-        bodyHash,
-        request.headers.get('X-Gateway-Body-SHA256')
-      )
-    ) {
-      return errorResponse(
-        'بصمة حمولة الطلب لا تطابق التوقيع.',
-        corsHeaders,
-        403
-      );
+    if (!timingSafeEqual(bodyHash, request.headers.get('X-Gateway-Body-SHA256'))) {
+      return errorResponse('بصمة حمولة الطلب لا تطابق التوقيع.', corsHeaders, 403);
     }
   }
 
   const requestUrl = new URL(request.url);
   const signaturePayload = `${timestamp}:${nonce}:${request.method}:${requestUrl.pathname}:${requestUrl.search}:${bodyHash}`;
-  const isValidSignature = await verifyHmacSignature(
-    matchedSecret,
-    signaturePayload,
-    signature
-  );
+  const isValidSignature = await verifyHmacSignature(matchedSecret, signaturePayload, signature);
   if (!isValidSignature) {
     return errorResponse('توقيع بوابة الحماية غير صالح.', corsHeaders, 403);
   }
@@ -227,42 +193,51 @@ export default {
         .map((value) => value.trim())
         .filter(Boolean);
       if (allowedOrigins.length > 0 && (!origin || !allowedOrigins.includes(origin))) {
-        return new Response('Forbidden: Invalid WebSocket origin', { status: 403 });
+        return new Response('Forbidden: Invalid WebSocket origin', {
+          status: 403,
+        });
       }
 
       // السماح بتمرير التوكن عبر الـ Header أو Query Params (لأن المتصفح لا يدعم Headers في WebSockets مباشرة)
       const authHeader = request.headers.get('Authorization') || '';
-      const token = authHeader.replace(/^Bearer\s+/i, '').trim() || url.searchParams.get('token') || url.searchParams.get('ticket');
-      const merchantId = request.headers.get('X-Merchant-ID') || url.searchParams.get('merchant_id') || url.searchParams.get('m');
+      const token =
+        authHeader.replace(/^Bearer\s+/i, '').trim() || url.searchParams.get('token') || url.searchParams.get('ticket');
+      const merchantId =
+        request.headers.get('X-Merchant-ID') || url.searchParams.get('merchant_id') || url.searchParams.get('m');
 
       if (!token || !merchantId) {
-        return new Response('Unauthorized: Missing Token or Merchant ID', { status: 401 });
+        return new Response('Unauthorized: Missing Token or Merchant ID', {
+          status: 401,
+        });
       }
 
       try {
         const user = await verifyJWT(token, env.APP_SECRET_KEY);
         // التحقق من صلاحية المستخدم
-        if (
-          !user ||
-          user.ws_ticket !== true ||
-          String(user.user_id) !== String(merchantId)
-        ) {
-           return new Response('Unauthorized: Invalid Token or ID Mismatch', { status: 401 });
+        if (!user || user.ws_ticket !== true || String(user.user_id) !== String(merchantId)) {
+          return new Response('Unauthorized: Invalid Token or ID Mismatch', {
+            status: 401,
+          });
         }
 
         // تمرير الاتصال للـ Durable Object
         const doId = env.MERCHANT_SESSION.idFromName(`merchant_${merchantId}`);
         const doStub = env.MERCHANT_SESSION.get(doId);
-        
+
         // تمرير الطلب للـ Durable Object
         const doResponse = await doStub.fetch(request);
         if (doResponse.status === 101 && doResponse.webSocket) {
-          return new Response(null, { status: 101, webSocket: doResponse.webSocket });
+          return new Response(null, {
+            status: 101,
+            webSocket: doResponse.webSocket,
+          });
         }
         return doResponse;
       } catch (error) {
         console.error('WS Auth/DO Error:', error);
-        return new Response('Unauthorized: WebSocket authentication failed', { status: 401 });
+        return new Response('Unauthorized: WebSocket authentication failed', {
+          status: 401,
+        });
       }
     }
 
@@ -284,9 +259,7 @@ export default {
 
       const merchantId = encodeURIComponent(String(user.user_id));
       const base = env.FIREBASE_DB_URL.replace(/\/$/, '');
-      const firebaseUrl = new URL(
-        `${base}/merchant_order_signals/${merchantId}.json`
-      );
+      const firebaseUrl = new URL(`${base}/merchant_order_signals/${merchantId}.json`);
       firebaseUrl.searchParams.set('auth', env.FIREBASE_DB_SECRET);
       let firebaseResponse;
       try {
@@ -300,10 +273,7 @@ export default {
         return errorResponse('تعذر فتح اتصال Firebase اللحظي.', corsHeaders, 502);
       }
       if (!firebaseResponse.ok || !firebaseResponse.body) {
-        console.error(
-          '[firebase-realtime] تعذر فتح بث إشارة الطلبات:',
-          firebaseResponse.status
-        );
+        console.error('[firebase-realtime] تعذر فتح بث إشارة الطلبات:', firebaseResponse.status);
         return errorResponse('تعذر فتح اتصال Firebase اللحظي.', corsHeaders, 502);
       }
 
@@ -317,7 +287,6 @@ export default {
         },
       });
     }
-
 
     // ⭐ درع الحماية الفائق (Zero-Trust Gateway Validation)
     // كل الطلبات (ما عدا Webhook واتساب) يجب أن تأتي حصرياً عبر البروكسي الداخلي
@@ -339,24 +308,26 @@ export default {
 
     // ⛔ حظر أي اتصال مباشر أو غير مصرح به
     if (!isTrustedGateway && !isTrustedLegacyServer) {
-      return new Response(JSON.stringify({ 
-        status: 'error', 
-        code: 'ACCESS_DENIED_DIRECT_CALL_BLOCKED',
-        message: '⛔ وصول محظور: غير مصرح بالاتصال المباشر بالخادم.' 
-      }), {
-        status: 403,
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-Content-Type-Options': 'nosniff',
-          'X-Frame-Options': 'DENY',
-          'X-Robots-Tag': 'noindex, nofollow'
+      return new Response(
+        JSON.stringify({
+          status: 'error',
+          code: 'ACCESS_DENIED_DIRECT_CALL_BLOCKED',
+          message: '⛔ وصول محظور: غير مصرح بالاتصال المباشر بالخادم.',
+        }),
+        {
+          status: 403,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
+            'X-Robots-Tag': 'noindex, nofollow',
+          },
         }
-      });
+      );
     }
 
     const isWebSocketRequest =
-      request.headers.get('Upgrade')?.toLowerCase() === 'websocket' ||
-      url.pathname === '/api/worker/ws';
+      request.headers.get('Upgrade')?.toLowerCase() === 'websocket' || url.pathname === '/api/worker/ws';
 
     // التوقيع يربط السر بالمسار والحمولة؛ السر وحده لا يكفي لقبول طلب HTTP.
     if (isTrustedGateway && !isWebSocketRequest) {
@@ -365,11 +336,7 @@ export default {
       }
       const now = Date.now();
       const reqTime = parseInt(timestamp, 10);
-      if (
-        !Number.isFinite(reqTime) ||
-        Math.abs(now - reqTime) > 60_000 ||
-        !/^[0-9a-f-]{36}$/i.test(nonce)
-      ) {
+      if (!Number.isFinite(reqTime) || Math.abs(now - reqTime) > 60_000 || !/^[0-9a-f-]{36}$/i.test(nonce)) {
         return errorResponse('⛔ الطلب منتهي الصلاحية أو تم التلاعب بالوقت.', corsHeaders, 403);
       }
 
@@ -393,11 +360,7 @@ export default {
 
       const requestUrl = new URL(request.url);
       const signaturePayload = `${timestamp}:${nonce}:${request.method}:${requestUrl.pathname}:${requestUrl.search}:${bodyHash}`;
-      const isValidSignature = await verifyHmacSignature(
-        matchedSecret,
-        signaturePayload,
-        signature
-      );
+      const isValidSignature = await verifyHmacSignature(matchedSecret, signaturePayload, signature);
       if (!isValidSignature) {
         return errorResponse('توقيع بوابة الحماية غير صالح.', corsHeaders, 403);
       }
@@ -413,33 +376,25 @@ export default {
           assertAllowed(user, [ROLES.MERCHANT]);
 
           const requestedMerchantId = request.headers.get('X-Merchant-Id');
-          if (
-            requestedMerchantId &&
-            requestedMerchantId !== String(user.user_id)
-          ) {
+          if (requestedMerchantId && requestedMerchantId !== String(user.user_id)) {
             throw new HttpError('غير مصرح', 403);
           }
 
           const context = { request, env, ctx, user, body: {} };
-          const [
-            productsResult,
-            activeOrdersResult,
-            archivedOrdersResult,
-            categoriesResult,
-            settingsResult,
-          ] = await Promise.all([
-            actionRegistry.list_products.handler(context),
-            actionRegistry.get_orders.handler({
-              ...context,
-              body: { filter: 'active' },
-            }),
-            actionRegistry.get_orders.handler({
-              ...context,
-              body: { filter: 'archived', limit: 200 },
-            }),
-            actionRegistry.get_categories_tree.handler(context),
-            actionRegistry.get_merchant_settings.handler(context),
-          ]);
+          const [productsResult, activeOrdersResult, archivedOrdersResult, categoriesResult, settingsResult] =
+            await Promise.all([
+              actionRegistry.list_products.handler(context),
+              actionRegistry.get_orders.handler({
+                ...context,
+                body: { filter: 'active' },
+              }),
+              actionRegistry.get_orders.handler({
+                ...context,
+                body: { filter: 'archived', limit: 200 },
+              }),
+              actionRegistry.get_categories_tree.handler(context),
+              actionRegistry.get_merchant_settings.handler(context),
+            ]);
 
           const bootstrap = {
             products: productsResult?.data,
@@ -457,10 +412,7 @@ export default {
             typeof bootstrap.settings !== 'object' ||
             Array.isArray(bootstrap.settings)
           ) {
-            throw new HttpError(
-              'تعذر تجهيز بيانات تهيئة لوحة التحكم.',
-              500
-            );
+            throw new HttpError('تعذر تجهيز بيانات تهيئة لوحة التحكم.', 500);
           }
 
           return successResponse(bootstrap, corsHeaders);
@@ -469,7 +421,7 @@ export default {
         return successResponse({ status: 'ok' }, corsHeaders);
       }
 
-      const { body, uploadedImageFile } = await parseRequestBody(request);
+      const { body, uploadedImageFile, uploadedOptionImageFiles } = await parseRequestBody(request);
       const action = body.action;
 
       const route = actionRegistry[action];
@@ -493,7 +445,15 @@ export default {
       validateAction(action, body, user);
 
       // --- التنفيذ ---
-      const result = await route.handler({ request, env, ctx, user, body, uploadedImageFile });
+      const result = await route.handler({
+        request,
+        env,
+        ctx,
+        user,
+        body,
+        uploadedImageFile,
+        uploadedOptionImageFiles,
+      });
       return successResponse(result || {}, corsHeaders);
     } catch (error) {
       // ⭐ إصلاح أمني (تسريب معلومات داخلية): كان أي خطأ غير متوقع (غير
@@ -517,6 +477,7 @@ export default {
 async function parseRequestBody(request) {
   let body = {};
   let uploadedImageFile = null;
+  const uploadedOptionImageFiles = {};
   const contentType = request.headers.get('content-type') || '';
 
   if (contentType.includes('multipart/form-data')) {
@@ -525,6 +486,9 @@ async function parseRequestBody(request) {
     for (const [key, value] of formData.entries()) {
       if (value instanceof File) {
         if (key === 'image_file' && value.size > 0) uploadedImageFile = value;
+        else if (/^option_image_\d+$/.test(key) && value.size > 0) {
+          uploadedOptionImageFiles[key] = value;
+        }
       } else {
         body[key] = value;
       }
@@ -532,5 +496,5 @@ async function parseRequestBody(request) {
   } else {
     body = await request.json();
   }
-  return { body, uploadedImageFile };
+  return { body, uploadedImageFile, uploadedOptionImageFiles };
 }

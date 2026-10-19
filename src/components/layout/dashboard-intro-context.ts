@@ -5,6 +5,7 @@ export type DashboardIntroContextValue = {
   startIntro: () => void
   setIntroReady: (ready: boolean) => void
   finishIntro: () => void
+  beginOperation: () => () => void
 }
 
 export const DashboardIntroContext = createContext<DashboardIntroContextValue>({
@@ -12,6 +13,7 @@ export const DashboardIntroContext = createContext<DashboardIntroContextValue>({
   startIntro: () => undefined,
   setIntroReady: () => undefined,
   finishIntro: () => undefined,
+  beginOperation: () => () => undefined,
 })
 
 export function useDashboardIntro() {

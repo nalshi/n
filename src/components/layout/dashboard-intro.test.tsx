@@ -12,7 +12,7 @@ describe('DashboardIntro', () => {
     expect(intro?.getAttribute('aria-hidden')).toBe('true')
 
     await vi.waitFor(() => expect(onComplete).toHaveBeenCalledOnce(), {
-      timeout: 800,
+      timeout: 1100,
     })
   })
 

@@ -165,7 +165,6 @@ export async function saveMerchantSettings(
     storeName: merchant.storeName.trim(),
     storeType: merchant.storeType || null,
     settings: {
-      phone: merchant.phone.trim(),
       welcome_message: merchant.welcomeMessage.trim(),
       free_shipping_enabled: merchant.freeShippingEnabled,
       free_shipping_type: merchant.freeShippingType,

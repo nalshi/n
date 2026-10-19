@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { useDashboardIntro } from '@/components/layout/dashboard-intro-context'
 
 const formSchema = z.object({
   phone: z.string().min(1, 'أدخل رقم الجوال.'),
@@ -30,6 +31,7 @@ export function ForgotPasswordForm({
   const [isLoading, setIsLoading] = useState(false)
   const navigate = useNavigate()
   const flow = useAuthFlowStore()
+  const { beginOperation } = useDashboardIntro()
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: { phone: flow.identifier },
@@ -45,6 +47,7 @@ export function ForgotPasswordForm({
     }
 
     setIsLoading(true)
+    const finishOperation = beginOperation()
     try {
       const response = await authApiRequest('recover_init', { phone })
       if (response.status !== 'success') {
@@ -63,6 +66,7 @@ export function ForgotPasswordForm({
       )
     } finally {
       setIsLoading(false)
+      finishOperation()
     }
   }
 

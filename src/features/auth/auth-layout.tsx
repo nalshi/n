@@ -1,12 +1,8 @@
-import {
-  ClipboardList,
-  Moon,
-  PackageCheck,
-  Settings2,
-  Sun,
-} from 'lucide-react'
+import { useEffect } from 'react'
+import { ClipboardList, Moon, PackageCheck, Settings2, Sun } from 'lucide-react'
 import { useTheme } from '@/context/theme-provider'
 import { Button } from '@/components/ui/button'
+import { useDashboardIntro } from '@/components/layout/dashboard-intro-context'
 
 type AuthLayoutProps = {
   children: React.ReactNode
@@ -14,6 +10,11 @@ type AuthLayoutProps = {
 
 export function AuthLayout({ children }: AuthLayoutProps) {
   const { resolvedTheme, setTheme } = useTheme()
+  const { setIntroReady } = useDashboardIntro()
+
+  useEffect(() => {
+    setIntroReady(true)
+  }, [setIntroReady])
 
   return (
     <main

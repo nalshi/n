@@ -16,7 +16,7 @@ function githubHeaders(env) {
 }
 
 // رفع/تحديث ملف واحد عبر Contents API (مناسب للصور)
-export async function putSingleFile(env, path, base64Content, commitMessage) {
+export async function putSingleFile(env, path, base64Content, commitMessage, { createOnly = false } = {}) {
   const owner = env.GITHUB_OWNER;
   // 📦 مستودع البيانات المنفصل (إن وُجد) - لا يُربط ببناء Vercel. راجع CHANGES.md
   const repo = env.GITHUB_DATA_REPO || env.GITHUB_REPO;
@@ -24,15 +24,21 @@ export async function putSingleFile(env, path, base64Content, commitMessage) {
   const headers = githubHeaders(env);
 
   let sha;
-  const existing = await fetch(url, { headers });
-  if (existing.ok) {
-    sha = (await existing.json()).sha;
+  if (!createOnly) {
+    const existing = await fetch(url, { headers });
+    if (existing.ok) {
+      sha = (await existing.json()).sha;
+    }
   }
 
   const res = await fetch(url, {
     method: 'PUT',
     headers,
-    body: JSON.stringify({ message: commitMessage, content: base64Content, sha }),
+    body: JSON.stringify({
+      message: commitMessage,
+      content: base64Content,
+      sha,
+    }),
   });
   if (!res.ok) throw new Error('فشل رفع الملف إلى GitHub: ' + (await res.text()));
 
@@ -67,7 +73,9 @@ export async function commitMultipleFiles(env, files, commitMessage) {
     const refData = await refRes.json();
     const latestCommitSha = refData.object.sha;
 
-    const commitRes = await fetch(`${apiBase}/git/commits/${latestCommitSha}`, { headers });
+    const commitRes = await fetch(`${apiBase}/git/commits/${latestCommitSha}`, {
+      headers,
+    });
     if (!commitRes.ok) throw new Error('فشل قراءة تفاصيل الكوميت من GitHub: ' + (await commitRes.text()));
     const commitData = await commitRes.json();
     const baseTreeSha = commitData.tree.sha;
@@ -77,7 +85,12 @@ export async function commitMultipleFiles(env, files, commitMessage) {
       headers,
       body: JSON.stringify({
         base_tree: baseTreeSha,
-        tree: files.map((f) => ({ path: f.path, mode: '100644', type: 'blob', content: f.content })),
+        tree: files.map((f) => ({
+          path: f.path,
+          mode: '100644',
+          type: 'blob',
+          content: f.content,
+        })),
       }),
     });
     if (!treeRes.ok) throw new Error('فشل إنشاء شجرة الملفات على GitHub: ' + (await treeRes.text()));
@@ -86,7 +99,11 @@ export async function commitMultipleFiles(env, files, commitMessage) {
     const newCommitRes = await fetch(`${apiBase}/git/commits`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ message: commitMessage, tree: treeData.sha, parents: [latestCommitSha] }),
+      body: JSON.stringify({
+        message: commitMessage,
+        tree: treeData.sha,
+        parents: [latestCommitSha],
+      }),
     });
     if (!newCommitRes.ok) throw new Error('فشل إنشاء الكوميت على GitHub: ' + (await newCommitRes.text()));
     const newCommitData = await newCommitRes.json();

@@ -88,12 +88,22 @@ import {
 
 type DialogName =
   | 'name'
-  | 'phone'
+  | 'type'
   | 'welcome'
   | 'shipping'
   | 'assistant'
   | 'whatsapp'
   | null
+
+const storeTypeOptions = [
+  'مطاعم ومأكولات',
+  'إلكترونيات وجوالات',
+  'أزياء وملابس',
+  'سوبر ماركت وبقالة',
+  'عطور وتجميل',
+  'صيدليات وأدوية',
+  'متنوع',
+]
 
 const toneLabels: Record<string, string> = {
   friendly: 'ودّي ومرح',
@@ -209,6 +219,8 @@ export function StoreSettings() {
   const [merchantDraft, setMerchantDraft] = useState<MerchantSettings | null>(
     null
   )
+  const [storeTypeSelection, setStoreTypeSelection] = useState('')
+  const [otherStoreType, setOtherStoreType] = useState('')
   const [assistantDraft, setAssistantDraft] =
     useState<AiAssistantSettings | null>(null)
   const [whatsappDraft, setWhatsappDraft] = useState<WhatsappSettings | null>(
@@ -256,7 +268,10 @@ export function StoreSettings() {
   const merchantMutation = useMutation({
     mutationFn: (draft: MerchantSettings) => saveMerchantSettings(draft),
     onSuccess: (message, draft) => {
-      updateSettingsCache((current) => ({ ...current, merchant: draft }))
+      updateSettingsCache((current) => ({
+        ...current,
+        merchant: { ...draft, phone: current.merchant.phone },
+      }))
       queryClient.setQueryData<StorefrontLibrary>(
         storefrontLibraryQueryKey(merchantId),
         (current) =>
@@ -264,7 +279,6 @@ export function StoreSettings() {
             ? {
                 ...current,
                 storeName: draft.storeName,
-                phone: draft.phone,
                 slogan: draft.welcomeMessage,
               }
             : current
@@ -272,10 +286,8 @@ export function StoreSettings() {
       updateDashboardStore((current) => ({
         ...current,
         storeName: draft.storeName,
-        phone: draft.phone,
       }))
       localStorage.setItem('merchant_store_name', draft.storeName)
-      localStorage.setItem('merchant_phone', draft.phone)
       toast.success(message || 'تم حفظ إعدادات المتجر.')
       setDialog(null)
     },
@@ -384,6 +396,12 @@ export function StoreSettings() {
     })
     setWhatsappDraft({ ...settings.whatsapp })
     setAccessToken('')
+    if (name === 'type') {
+      const currentType = settings.merchant.storeType
+      const isStandardType = storeTypeOptions.includes(currentType)
+      setStoreTypeSelection(isStandardType ? currentType : 'other')
+      setOtherStoreType(isStandardType ? '' : currentType)
+    }
     setDialog(name)
   }
 
@@ -406,7 +424,21 @@ export function StoreSettings() {
       toast.error('أدخل حداً أكبر من صفر للتوصيل المجاني.')
       return
     }
-    merchantMutation.mutate(merchantDraft)
+    const draft =
+      dialog === 'type'
+        ? {
+            ...merchantDraft,
+            storeType:
+              storeTypeSelection === 'other'
+                ? otherStoreType.trim()
+                : storeTypeSelection,
+          }
+        : merchantDraft
+    if (dialog === 'type' && !draft.storeType) {
+      toast.error('اختر نوع النشاط أو اكتب نوعاً مخصصاً.')
+      return
+    }
+    merchantMutation.mutate(draft)
   }
 
   const copyValue = async (value: string) => {
@@ -480,11 +512,28 @@ export function StoreSettings() {
                 onClick={() => openSettingsDialog('name')}
               />
               <SettingRow
-                icon={Phone}
-                title='رقم التواصل'
-                value={settings.merchant.phone || 'غير محدد'}
-                onClick={() => openSettingsDialog('phone')}
+                icon={Store}
+                title='نوع النشاط'
+                value={settings.merchant.storeType || 'غير محدد'}
+                onClick={() => openSettingsDialog('type')}
               />
+              <div className='flex min-w-0 items-center gap-3 rounded-lg p-3'>
+                <span className='grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary'>
+                  <Phone className='size-5' aria-hidden='true' />
+                </span>
+                <span className='grid min-w-0 flex-1 gap-1'>
+                  <span className='text-sm font-semibold'>رقم الجوال</span>
+                  <span
+                    className='truncate text-xs text-muted-foreground'
+                    dir='ltr'
+                  >
+                    {settings.merchant.phone || 'غير محدد'}
+                  </span>
+                </span>
+                <span className='shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground'>
+                  ثابت
+                </span>
+              </div>
             </SettingGroup>
 
             <SettingGroup
@@ -638,27 +687,50 @@ export function StoreSettings() {
       </DialogShell>
 
       <DialogShell
-        open={dialog === 'phone'}
+        open={dialog === 'type'}
         onOpenChange={(open) => !open && setDialog(null)}
-        title='رقم التواصل'
-        description='رقم واتساب/الهاتف الذي يظهر للعملاء للتواصل مع المتجر.'
+        title='نوع النشاط'
+        description='اختر التصنيف الذي يصف متجرك، أو أضف تصنيفاً مخصصاً.'
       >
-        <div className='grid gap-2'>
-          <Label htmlFor='settings-store-phone'>رقم الهاتف</Label>
-          <Input
-            id='settings-store-phone'
-            type='tel'
-            inputMode='tel'
-            maxLength={15}
-            dir='ltr'
-            value={merchantDraft?.phone || ''}
-            onChange={(event) =>
-              setMerchantDraft((current) =>
-                current ? { ...current, phone: event.target.value } : current
-              )
-            }
-            placeholder='96777XXXXXXX'
-          />
+        <div className='grid gap-4'>
+          <div className='grid gap-2'>
+            <Label htmlFor='settings-store-type'>نوع النشاط</Label>
+            <Select
+              value={storeTypeSelection}
+              onValueChange={(value) => {
+                setStoreTypeSelection(value)
+                if (value !== 'other') {
+                  setMerchantDraft((current) =>
+                    current ? { ...current, storeType: value } : current
+                  )
+                }
+              }}
+            >
+              <SelectTrigger id='settings-store-type' className='w-full'>
+                <SelectValue placeholder='اختر نوع النشاط' />
+              </SelectTrigger>
+              <SelectContent>
+                {storeTypeOptions.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type}
+                  </SelectItem>
+                ))}
+                <SelectItem value='other'>أخرى</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {storeTypeSelection === 'other' && (
+            <div className='grid gap-2'>
+              <Label htmlFor='settings-other-store-type'>اكتب نوع النشاط</Label>
+              <Input
+                id='settings-other-store-type'
+                maxLength={60}
+                value={otherStoreType}
+                onChange={(event) => setOtherStoreType(event.target.value)}
+                placeholder='نوع النشاط'
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant='outline' onClick={() => setDialog(null)}>
@@ -668,6 +740,9 @@ export function StoreSettings() {
             disabled={merchantMutation.isPending}
             onClick={saveMerchantDraft}
           >
+            {merchantMutation.isPending && (
+              <LoaderCircle className='animate-spin' />
+            )}
             حفظ
           </Button>
         </DialogFooter>

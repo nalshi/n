@@ -68,9 +68,12 @@ export async function saveMerchantSettings({ env, ctx, user, body }) {
     }
   }
 
-  const finalSettings = { ...currentSettings, ...newSettings };
+  const finalSettings = {
+    ...currentSettings,
+    ...newSettings,
+    phone: currentSettings.phone || current?.phone || null,
+  };
   if (!finalSettings.location) finalSettings.location = currentSettings.location || null;
-  if (!finalSettings.phone) finalSettings.phone = currentSettings.phone || current?.phone || null;
   const finalStoreType = storeType || current?.store_type || null;
   const settingsJson = JSON.stringify(finalSettings);
 
@@ -110,7 +113,7 @@ export async function saveMerchantSettings({ env, ctx, user, body }) {
               store_type: finalStoreType,
               settings: finalSettings,
             },
-          })
+          }),
         })
       );
     } catch (err) {
@@ -118,5 +121,8 @@ export async function saveMerchantSettings({ env, ctx, user, body }) {
     }
   }
 
-  return { message: 'تم حفظ الإعدادات وتحديث المتجر بنجاح ✅', updated_settings: finalSettings };
+  return {
+    message: 'تم حفظ الإعدادات وتحديث المتجر بنجاح ✅',
+    updated_settings: finalSettings,
+  };
 }

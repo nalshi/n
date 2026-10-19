@@ -123,7 +123,6 @@ describe('store settings data', () => {
         storeName: 'متجري',
         storeType: 'fashion',
         settings: {
-          phone: '+967 700',
           welcome_message: 'أهلاً',
           free_shipping_enabled: true,
           free_shipping_type: 'order_value',

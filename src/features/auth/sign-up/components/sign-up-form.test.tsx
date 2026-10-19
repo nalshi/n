@@ -4,12 +4,19 @@ import { userEvent } from 'vitest/browser'
 import { useAuthFlowStore } from '@/stores/auth-flow-store'
 import { SignUpForm } from './sign-up-form'
 
-const { navigate, apiRequestMock } = vi.hoisted(() => ({
-  navigate: vi.fn(),
-  apiRequestMock: vi.fn(),
-}))
+const { navigate, apiRequestMock, startIntro, setIntroReady } = vi.hoisted(
+  () => ({
+    navigate: vi.fn(),
+    apiRequestMock: vi.fn(),
+    startIntro: vi.fn(),
+    setIntroReady: vi.fn(),
+  })
+)
 
 vi.mock('@/lib/auth-api', () => ({ authApiRequest: apiRequestMock }))
+vi.mock('@/components/layout/dashboard-intro-context', () => ({
+  useDashboardIntro: () => ({ startIntro, setIntroReady }),
+}))
 vi.mock('@tanstack/react-router', async (orig) => {
   const actual = await orig<typeof import('@tanstack/react-router')>()
   return { ...actual, useNavigate: () => navigate }
@@ -18,6 +25,7 @@ vi.mock('@tanstack/react-router', async (orig) => {
 describe('SignUpForm', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setIntroReady.mockClear()
     useAuthFlowStore.setState({
       identifier: '',
       phone: '',
@@ -85,6 +93,8 @@ describe('SignUpForm', () => {
     )
     expect(useAuthFlowStore.getState().context).toBe('register')
     expect(useAuthFlowStore.getState().stateToken).toBe('register-state')
+    expect(startIntro).toHaveBeenCalledOnce()
+    expect(setIntroReady).toHaveBeenCalledWith(true)
     expect(navigate).toHaveBeenCalledWith({ to: '/otp' })
   })
 })

@@ -1,7 +1,8 @@
+import { ACTIVE_ORDER_STATUSES } from '../config/constants.js';
+import { HttpError } from '../security/rbac.js';
 import { resolveCategoryChain } from '../services/categories/categoryService.js';
 import { uploadProductImage } from '../services/images/imageService.js';
-import { HttpError } from '../security/rbac.js';
-import { ACTIVE_ORDER_STATUSES } from '../config/constants.js';
+import { invalidatePublicProductsCache } from '../services/store/publicProductsCache.js';
 
 // ========================================================
 // 🏪 تحكم المنتجات (تاجر فقط)
@@ -15,7 +16,7 @@ import { ACTIVE_ORDER_STATUSES } from '../config/constants.js';
 // النظام نفسه (حروف/أرقام/شرطات فقط) لإغلاق هذا المسار نهائياً.
 const PRODUCT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
-export async function saveProduct({ env, ctx, user, body, uploadedImageFile }) {
+export async function saveProduct({ env, ctx, user, body, uploadedImageFile, uploadedOptionImageFiles = {} }) {
   let pid;
   if (body.id) {
     if (!PRODUCT_ID_PATTERN.test(String(body.id))) {
@@ -41,7 +42,39 @@ export async function saveProduct({ env, ctx, user, body, uploadedImageFile }) {
 
   let imageUrl = body.existing_image || null;
   if (uploadedImageFile) {
-    imageUrl = await uploadProductImage(env, user.username, pid, uploadedImageFile);
+    imageUrl = await uploadProductImage(env, user.username, pid, uploadedImageFile, '', !body.id);
+  }
+
+  let optionsJson = body.sizes || JSON.stringify(body.options || []);
+  if (Object.keys(uploadedOptionImageFiles).length > 0) {
+    let options;
+    try {
+      options = JSON.parse(optionsJson);
+    } catch {
+      throw new HttpError('صيغة خيارات المنتج غير صالحة.', 400);
+    }
+    if (!Array.isArray(options)) {
+      throw new HttpError('صيغة خيارات المنتج غير صالحة.', 400);
+    }
+
+    const usedFileKeys = new Set();
+    for (const [index, option] of options.entries()) {
+      const imageFileKey = option?.image_file_key;
+      if (!imageFileKey) continue;
+      const imageFile = uploadedOptionImageFiles[imageFileKey];
+      if (!imageFile) {
+        throw new HttpError('تعذر استلام صورة أحد خيارات المنتج.', 400);
+      }
+      option.image = await uploadProductImage(env, user.username, pid, imageFile, `option-${index}`, !body.id);
+      delete option.image_file_key;
+      usedFileKeys.add(imageFileKey);
+    }
+    if (usedFileKeys.size !== Object.keys(uploadedOptionImageFiles).length) {
+      throw new HttpError('تعذر مطابقة صور خيارات المنتج.', 400);
+    }
+    optionsJson = JSON.stringify(options);
+  } else if (/"image_file_key"\s*:/.test(optionsJson)) {
+    throw new HttpError('تعذر استلام صورة أحد خيارات المنتج.', 400);
   }
 
   // ⭐ إصلاح أمني (ثغرة IDOR/Broken Access Control): كانت جملة الـ UPSERT
@@ -87,7 +120,7 @@ export async function saveProduct({ env, ctx, user, body, uploadedImageFile }) {
       body.quantity_type || 'tracked',
       body.currency || 'YER',
       finalCategoryId,
-      body.sizes || JSON.stringify(body.options || []),
+      optionsJson,
       body.isAvailable === '0' ? 0 : 1,
       Date.now()
     )
@@ -97,25 +130,27 @@ export async function saveProduct({ env, ctx, user, body, uploadedImageFile }) {
     throw new HttpError('لا يمكنك تعديل منتج لا يخصك.', 403);
   }
 
+  await invalidatePublicProductsCache(user.username);
+
   // لا تُعاد بناء كتالوج GitHub هنا: المنتج يُكتب في D1 (المصدر الحقيقي) فقط،
   // والنشر يحدث مرة واحدة عند تأكيد تسليم الطلب (راجع CHANGES.md).
 
   // ⭐ تحديث الـ Durable Object (In-Memory Cache) وبث التحديث لحظياً للداشبورد
   try {
-    const savedProduct = await env.DB.prepare(
-      `SELECT * FROM products WHERE id = ? AND merchant_id = ?`
-    ).bind(pid, user.user_id).first();
-    
+    const savedProduct = await env.DB.prepare(`SELECT * FROM products WHERE id = ? AND merchant_id = ?`)
+      .bind(pid, user.user_id)
+      .first();
+
     if (savedProduct && env.MERCHANT_SESSION) {
       const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
       const doStub = env.MERCHANT_SESSION.get(doId);
-      
+
       // لا نستخدم await لتجنب تأخير الرد على العميل
       ctx.waitUntil(
         doStub.fetch('http://internal/sync-product', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ product: savedProduct })
+          body: JSON.stringify({ product: savedProduct }),
         })
       );
     }
@@ -131,9 +166,7 @@ export async function saveProduct({ env, ctx, user, body, uploadedImageFile }) {
 }
 
 export async function listProducts({ env, user }) {
-  const myProducts = await env.DB.prepare(
-    `SELECT * FROM products WHERE merchant_id = ? ORDER BY updated_at DESC`
-  )
+  const myProducts = await env.DB.prepare(`SELECT * FROM products WHERE merchant_id = ? ORDER BY updated_at DESC`)
     .bind(user.user_id)
     .all();
 
@@ -192,13 +225,12 @@ export async function deleteProduct({ env, ctx, user, body }) {
       .first();
 
     if (stillExists) {
-      throw new HttpError(
-        'لا يمكنك حذف هذا المنتج حالياً لأنه ضمن طلب نشط لزبون. أنهِ الطلب أو ألغِه أولاً.',
-        409
-      );
+      throw new HttpError('لا يمكنك حذف هذا المنتج حالياً لأنه ضمن طلب نشط لزبون. أنهِ الطلب أو ألغِه أولاً.', 409);
     }
     throw new HttpError('المنتج غير موجود.', 404);
   }
+
+  await invalidatePublicProductsCache(user.username);
 
   if (env.MERCHANT_SESSION) {
     const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
@@ -222,19 +254,19 @@ export async function toggleAvailability({ env, ctx, user, body }) {
   const pid = body.id;
   const reqStatus = parseInt(body.isAvailable) ? 1 : 0;
 
-  await env.DB.prepare(
-    `UPDATE products SET is_available = ?, updated_at = ? WHERE id = ? AND merchant_id = ?`
-  )
+  await env.DB.prepare(`UPDATE products SET is_available = ?, updated_at = ? WHERE id = ? AND merchant_id = ?`)
     .bind(reqStatus, Date.now(), pid, user.user_id)
     .run();
+
+  await invalidatePublicProductsCache(user.username);
 
   // ⭐ لا نعيد بناء الكتالوج على GitHub عند كل تعديل: البيانات الحية تُقرأ من D1،
   // والنشر يتم مرة واحدة عند تأكيد التسليم فقط (راجع CHANGES.md).
 
   if (env.MERCHANT_SESSION) {
-    const updatedProduct = await env.DB.prepare(
-      `SELECT * FROM products WHERE id = ? AND merchant_id = ?`
-    ).bind(pid, user.user_id).first();
+    const updatedProduct = await env.DB.prepare(`SELECT * FROM products WHERE id = ? AND merchant_id = ?`)
+      .bind(pid, user.user_id)
+      .first();
     if (updatedProduct) {
       const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
       const doStub = env.MERCHANT_SESSION.get(doId);
@@ -319,10 +351,7 @@ export async function updateProductStock({ env, ctx, user, body }) {
   const nextQuantity = hasOptions
     ? options.some((option) => option.quantity_type === 'unlimited')
       ? 9999
-      : options.reduce(
-          (total, option) => total + (Number(option.quantity) || 0),
-          0
-        )
+      : options.reduce((total, option) => total + (Number(option.quantity) || 0), 0)
     : quantityType === 'unlimited'
       ? 9999
       : quantity;
@@ -330,19 +359,12 @@ export async function updateProductStock({ env, ctx, user, body }) {
   await env.DB.prepare(
     `UPDATE products SET quantity = ?, quantity_type = ?, options = ?, updated_at = ? WHERE id = ? AND merchant_id = ?`
   )
-    .bind(
-      nextQuantity,
-      nextQuantityType,
-      JSON.stringify(options),
-      Date.now(),
-      productId,
-      user.user_id
-    )
+    .bind(nextQuantity, nextQuantityType, JSON.stringify(options), Date.now(), productId, user.user_id)
     .run();
 
-  const updatedProduct = await env.DB.prepare(
-    `SELECT * FROM products WHERE id = ? AND merchant_id = ?`
-  )
+  await invalidatePublicProductsCache(user.username);
+
+  const updatedProduct = await env.DB.prepare(`SELECT * FROM products WHERE id = ? AND merchant_id = ?`)
     .bind(productId, user.user_id)
     .first();
   // ⭐ لا نعيد بناء الكتالوج على GitHub عند كل تعديل: البيانات الحية تُقرأ من D1،

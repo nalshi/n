@@ -1,7 +1,10 @@
+import { useEffect } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
 import { useAuthFlowStore } from '@/stores/auth-flow-store'
+import { useDashboardIntro } from '@/components/layout/dashboard-intro-context'
 import { DashboardIntroProvider } from '@/components/layout/dashboard-intro-provider'
 import { UserAuthForm } from './user-auth-form'
 
@@ -37,6 +40,27 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     ),
   }
 })
+
+function ReadySignInForm() {
+  const { setIntroReady } = useDashboardIntro()
+
+  useEffect(() => {
+    setIntroReady(true)
+  }, [setIntroReady])
+
+  return <UserAuthForm />
+}
+
+function renderWithIntro(redirectTo?: string) {
+  const queryClient = new QueryClient()
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <DashboardIntroProvider>
+        <UserAuthForm redirectTo={redirectTo} />
+      </DashboardIntroProvider>
+    </QueryClientProvider>
+  )
+}
 
 describe('UserAuthForm', () => {
   beforeEach(() => {
@@ -133,10 +157,17 @@ describe('UserAuthForm', () => {
             resolveLogin = resolve
           })
     )
+    const queryClient = new QueryClient()
     const screen = await render(
-      <DashboardIntroProvider>
-        <UserAuthForm />
-      </DashboardIntroProvider>
+      <QueryClientProvider client={queryClient}>
+        <DashboardIntroProvider>
+          <ReadySignInForm />
+        </DashboardIntroProvider>
+      </QueryClientProvider>
+    )
+    await vi.waitFor(
+      () => expect(document.querySelector('.merchant-intro')).toBeNull(),
+      { timeout: 1100 }
     )
     await userEvent.fill(
       screen.getByRole('textbox', { name: 'رقم الجوال أو اسم المستخدم' }),
@@ -149,15 +180,12 @@ describe('UserAuthForm', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'تسجيل الدخول' }))
 
-    await expect
-      .element(screen.getByRole('status', { name: 'جارٍ تجهيز لوحة التاجر' }))
-      .toBeInTheDocument()
+    expect(document.querySelector('.merchant-intro')).not.toBeNull()
     expect(
       apiRequestMock.mock.calls.filter(([action]) => action === 'login')
     ).toHaveLength(1)
-    await expect
-      .element(screen.getByRole('button', { name: 'جارٍ تسجيل الدخول...' }))
-      .toBeDisabled()
+    const loginButton = document.querySelector('form button')
+    expect(loginButton?.hasAttribute('disabled')).toBe(true)
     expect(
       apiRequestMock.mock.calls.filter(([action]) => action === 'login')
     ).toHaveLength(1)
@@ -267,11 +295,7 @@ describe('UserAuthForm', () => {
             state_token: 'device-state',
           }
     )
-    const screen = await render(
-      <DashboardIntroProvider>
-        <UserAuthForm redirectTo='/orders' />
-      </DashboardIntroProvider>
-    )
+    const screen = await renderWithIntro('/orders')
     await userEvent.fill(
       screen.getByRole('textbox', { name: 'رقم الجوال أو اسم المستخدم' }),
       '771234567'

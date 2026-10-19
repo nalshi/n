@@ -75,7 +75,6 @@ import {
   type DashboardProduct,
   type ProductOption,
   updateDashboardAvailability,
-  uploadDashboardImage,
   compressDashboardImage,
 } from '@/features/dashboard/dashboard-data'
 
@@ -562,12 +561,12 @@ function ProductsWorkspace({
         if (!draft.options.length)
           throw new Error('أضف خياراً واحداً على الأقل.')
         const options: Record<string, unknown>[] = []
-        for (const option of draft.options) {
+        for (const [index, option] of draft.options.entries()) {
           if (!option.name.trim()) throw new Error('اكتب اسم كل خيار للمنتج.')
-          if (option.imageFile) setUploadProgress(0)
-          const image = option.imageFile
-            ? await uploadDashboardImage(option.imageFile, setUploadProgress)
-            : option.image
+          const imageFileKey = option.imageFile ? `option_image_${index}` : null
+          if (option.imageFile && imageFileKey) {
+            payload.set(imageFileKey, option.imageFile, option.imageFile.name)
+          }
           options.push({
             id: option.id,
             name: option.name.trim(),
@@ -575,21 +574,25 @@ function ProductsWorkspace({
             quantity:
               option.quantityType === 'unlimited' ? 9999 : option.quantity,
             use_main_image: option.useMainImage,
-            image: option.useMainImage ? null : image || null,
+            image: option.useMainImage ? null : option.image || null,
             custom_price: option.customPrice,
             currency: draft.currency,
+            ...(imageFileKey ? { image_file_key: imageFileKey } : {}),
           })
         }
         payload.set('sizes', JSON.stringify(options))
       }
 
-      setUploadProgress(draft.imageFile ? 0 : null)
+      const hasImageUploads =
+        Boolean(draft.imageFile) ||
+        draft.options.some((option) => Boolean(option.imageFile))
+      setUploadProgress(hasImageUploads ? 0 : null)
       if (draft.imageFile) {
         payload.set('image_file', draft.imageFile, draft.imageFile.name)
       }
       return saveDashboardProduct(
         payload,
-        draft.imageFile ? setUploadProgress : undefined
+        hasImageUploads ? setUploadProgress : undefined
       )
     },
     onSuccess: async () => {
@@ -892,14 +895,12 @@ function ProductsWorkspace({
         ) : null}
 
         {!inventoryView && productsQuery.isPending ? (
-          <div className='grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4'>
-            {Array.from({ length: 6 }, (_, index) => (
+          <div className='grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 xl:grid-cols-4 2xl:grid-cols-5'>
+            {Array.from({ length: 10 }, (_, index) => (
               <Card key={index} className='h-64 bg-muted/40' />
             ))}
           </div>
-        ) : !inventoryView &&
-          productsQuery.isError &&
-          !productsQuery.data ? (
+        ) : !inventoryView && productsQuery.isError && !productsQuery.data ? (
           <Card>
             <CardHeader>
               <CardTitle>تعذر تحميل المنتجات</CardTitle>
@@ -922,7 +923,7 @@ function ProductsWorkspace({
           </Card>
         ) : !inventoryView && visibleProducts.length ? (
           <>
-            <div className='grid grid-cols-2 items-start gap-3 lg:grid-cols-3 2xl:grid-cols-4'>
+            <div className='grid grid-cols-2 items-start gap-2 sm:grid-cols-3 sm:gap-3 xl:grid-cols-4 2xl:grid-cols-5'>
               {visibleProducts.map((product) => (
                 <ProductCard
                   key={product.id}
@@ -1109,7 +1110,7 @@ function StatCard({
 }) {
   return (
     <Card
-      className={`gap-2 py-3 sm:gap-3 sm:py-4${onClick ? ' cursor-pointer transition-shadow hover:shadow-md' : ''}`}
+      className={`gap-2 py-3 sm:gap-3 sm:py-4${onClick ? 'cursor-pointer transition-shadow hover:shadow-md' : ''}`}
       onClick={onClick}
     >
       <CardHeader className='flex flex-row items-start justify-between gap-1 px-2 pb-0 sm:items-center sm:px-4'>
@@ -1149,78 +1150,78 @@ function ProductCard({
 }) {
   const discountedPrice = product.price * (1 - product.discount / 100)
   return (
-    <Card className='group overflow-hidden py-0 transition-all hover:shadow-md'>
-      <div className='relative aspect-square w-full bg-muted/20 dark:bg-muted/10 overflow-hidden flex items-center justify-center p-2.5 rounded-t-lg border-b'>
+    <Card className='group min-w-0 overflow-hidden py-0 transition-shadow hover:shadow-md'>
+      <div className='relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-t-lg border-b bg-muted/20 p-2 sm:p-2.5 dark:bg-muted/10'>
         {product.image ? (
           <img
             src={product.image}
             alt={product.name}
-            className='max-h-full max-w-full w-auto h-auto object-contain transition-transform duration-300 group-hover:scale-105 drop-shadow-sm'
+            className='h-auto max-h-full w-auto max-w-full object-contain drop-shadow-sm transition-transform duration-300 group-hover:scale-105'
             loading='lazy'
           />
         ) : (
           <div className='grid size-full place-items-center text-muted-foreground'>
-            <Package className='size-10' aria-hidden='true' />
+            <Package className='size-8 sm:size-10' aria-hidden='true' />
           </div>
         )}
         <span
-          className={`absolute start-2 top-2 z-10 rounded-full px-2 py-1 text-[10px] font-semibold sm:start-3 sm:top-3 sm:px-2.5 sm:text-xs shadow-xs ${
+          className={`absolute start-1.5 top-1.5 z-10 max-w-[calc(100%-0.75rem)] truncate rounded-full px-1.5 py-0.5 text-[9px] font-semibold shadow-xs sm:start-2 sm:top-2 sm:px-2 sm:text-[10px] ${
             product.isAvailable
               ? 'bg-emerald-600/95 text-white'
-              : 'bg-background/90 text-muted-foreground border'
+              : 'border bg-background/90 text-muted-foreground'
           }`}
         >
           {product.isAvailable ? 'متاح في المتجر' : 'غير متاح'}
         </span>
         {product.discount > 0 && (
-          <span className='absolute end-2 top-2 z-10 rounded-full bg-destructive/95 px-2 py-1 text-[10px] font-semibold text-white sm:end-3 sm:top-3 sm:px-2.5 sm:text-xs shadow-xs'>
+          <span className='absolute end-1.5 top-1.5 z-10 rounded-full bg-destructive/95 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-xs sm:end-2 sm:top-2 sm:px-2 sm:text-[10px]'>
             خصم {product.discount}%
           </span>
         )}
       </div>
-      <CardHeader className='gap-1.5 px-3 pt-3 pb-1 sm:gap-2 sm:px-4 sm:pt-4'>
-        <div className='flex items-center justify-between gap-1.5'>
-          <span className='flex min-w-0 items-center gap-1 truncate text-[11px] text-muted-foreground sm:gap-1.5 sm:text-xs'>
-            <Tags className='size-3 shrink-0 sm:size-3.5' />
+      <CardHeader className='gap-1 px-2.5 pt-2.5 pb-1 sm:gap-1.5 sm:px-3 sm:pt-3'>
+        <div className='flex min-w-0 items-center justify-between gap-1'>
+          <span className='flex min-w-0 items-center gap-1 truncate text-[10px] text-muted-foreground sm:text-[11px]'>
+            <Tags className='size-3 shrink-0' />
             {categoryName}
           </span>
-          <span className='shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:px-2 sm:py-1 sm:text-[11px]'>
+          <span className='max-w-[45%] shrink-0 truncate rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground sm:text-[10px]'>
             {approvalLabel(product.approvalStatus)}
           </span>
         </div>
-        <CardTitle className='line-clamp-1 text-sm sm:text-base'>
+        <CardTitle className='line-clamp-1 text-xs leading-5 sm:text-sm'>
           {product.name}
         </CardTitle>
         {product.description && (
-          <CardDescription className='line-clamp-1 text-xs sm:line-clamp-2 sm:min-h-10 sm:text-sm'>
+          <CardDescription className='line-clamp-1 text-[10px] leading-4 sm:text-xs'>
             {product.description}
           </CardDescription>
         )}
       </CardHeader>
-      <CardContent className='grid gap-2 px-3 pt-2 pb-3 sm:gap-3 sm:px-4 sm:pb-4'>
-        <div className='flex flex-wrap items-end justify-between gap-1.5 sm:gap-2'>
+      <CardContent className='grid gap-1.5 px-2.5 pt-1.5 pb-2.5 sm:gap-2 sm:px-3 sm:pb-3'>
+        <div className='flex min-w-0 flex-wrap items-end justify-between gap-1'>
           <div className='grid gap-0.5'>
-            <bdi className='text-sm font-bold text-primary sm:text-lg'>
+            <bdi className='text-xs font-bold text-primary sm:text-sm'>
               {formatPrice(discountedPrice, product.currency)}
             </bdi>
             {product.discount > 0 && (
-              <bdi className='text-xs text-muted-foreground line-through'>
+              <bdi className='text-[10px] text-muted-foreground line-through'>
                 {formatPrice(product.price, product.currency)}
               </bdi>
             )}
           </div>
-          <span className='text-[10px] text-muted-foreground sm:text-xs'>
+          <span className='text-[9px] text-muted-foreground sm:text-[10px]'>
             {getStock(product)}
           </span>
         </div>
         {product.options.length > 0 && (
-          <p className='text-xs text-muted-foreground'>
+          <p className='line-clamp-1 text-[10px] text-muted-foreground'>
             {product.options.length} خيارات:{' '}
             {product.options.map((option) => option.name).join('، ')}
           </p>
         )}
-        <div className='flex flex-wrap items-center justify-between gap-1.5 border-t pt-2 sm:gap-2 sm:pt-3'>
-          <label className='flex min-h-10 cursor-pointer items-center gap-1.5 text-[10px] sm:gap-2 sm:text-xs'>
+        <div className='flex flex-wrap items-center justify-between gap-1 border-t pt-1.5 sm:gap-2 sm:pt-2'>
+          <label className='flex min-h-11 cursor-pointer items-center gap-1 text-[9px] sm:gap-1.5 sm:text-[10px]'>
             <Checkbox
               checked={product.isAvailable}
               disabled={availabilityPending}
@@ -1229,10 +1230,11 @@ function ProductCard({
             />
             إتاحة المنتج
           </label>
-          <div className='flex gap-1'>
+          <div className='flex gap-0'>
             <Button
               variant='ghost'
               size='icon'
+              className='size-11 sm:size-9'
               aria-label='تعديل المنتج'
               onClick={onEdit}
             >
@@ -1241,6 +1243,7 @@ function ProductCard({
             <Button
               variant='ghost'
               size='icon'
+              className='size-11 sm:size-9'
               aria-label='مشاركة وباركود'
               onClick={onQr}
             >
@@ -1249,6 +1252,7 @@ function ProductCard({
             <Button
               variant='ghost'
               size='icon'
+              className='size-11 sm:size-9'
               aria-label='حذف المنتج'
               onClick={onDelete}
             >

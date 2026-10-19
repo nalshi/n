@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useDashboardIntro } from '@/components/layout/dashboard-intro-context'
 import { PasswordInput } from '@/components/password-input'
 import { TermsDialog } from '@/features/auth/terms-dialog'
 
@@ -80,6 +81,7 @@ export function SignUpForm({
   const [locating, setLocating] = useState(false)
   const navigate = useNavigate()
   const flow = useAuthFlowStore()
+  const { startIntro, setIntroReady } = useDashboardIntro()
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -153,6 +155,7 @@ export function SignUpForm({
       store_type: resolvedStoreType,
     }
     setIsLoading(true)
+    startIntro()
     try {
       const response = await authApiRequest('register_init', registration)
       if (response.status !== 'success_otp_sent') {
@@ -165,8 +168,10 @@ export function SignUpForm({
         registration,
       })
       toast.success('أرسلنا رمز التحقق إلى رقم جوالك.')
+      setIntroReady(true)
       await navigate({ to: '/otp' })
     } catch (error) {
+      setIntroReady(true)
       toast.error(
         error instanceof Error ? error.message : 'تعذر الاتصال بالخادم.'
       )

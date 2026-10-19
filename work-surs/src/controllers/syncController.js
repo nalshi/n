@@ -1,9 +1,10 @@
-import { HttpError } from '../security/rbac.js';
-import { getCategoriesTree } from '../services/categories/categoryService.js';
 import { ROLES } from '../config/constants.js';
-import { syncStoreInfoToStorefront } from '../services/store/storeInfoSyncService.js';
-import { syncCatalogToStorefront } from '../services/catalog/catalogSyncService.js';
 import { timingSafeEqual } from '../security/auth.js';
+import { HttpError } from '../security/rbac.js';
+import { syncCatalogToStorefront } from '../services/catalog/catalogSyncService.js';
+import { getCategoriesTree } from '../services/categories/categoryService.js';
+import { publicProductsCacheKey } from '../services/store/publicProductsCache.js';
+import { syncStoreInfoToStorefront } from '../services/store/storeInfoSyncService.js';
 
 // ⭐ إصلاح أمني: التحقق من X-Internal-Key كان بمقارنة `!==` العادية
 // (غير ثابتة الزمن) - نستخدم نفس المقارنة الآمنة المستخدمة أصلاً بتوقيع
@@ -181,11 +182,7 @@ export async function getPublicProducts({ env, ctx, request, user, body }) {
   // قديمة محدوداً بـ 30 ثانية كحد أقصى. فشل آمن (fail-open): أي عطل
   // بالتخزين المؤقت نفسه لا يمنع القراءة المباشرة من D1 كما كانت دائماً.
   const cacheApi = typeof caches !== 'undefined' ? caches.default : null;
-  const cacheKey = cacheApi
-    ? new Request(`https://cache.internal/get_public_products?u=${encodeURIComponent(storeUsername)}`, {
-        method: 'GET',
-      })
-    : null;
+  const cacheKey = cacheApi ? publicProductsCacheKey(storeUsername) : null;
 
   if (cacheApi && cacheKey) {
     try {
@@ -233,7 +230,10 @@ export async function getPublicProducts({ env, ctx, request, user, body }) {
           await cacheApi.put(
             cacheKey,
             new Response(JSON.stringify(result), {
-              headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=30' },
+              headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'max-age=30',
+              },
             })
           );
         } catch (e) {

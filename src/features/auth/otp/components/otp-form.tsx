@@ -20,6 +20,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { useDashboardIntro } from '@/components/layout/dashboard-intro-context'
 import { PasswordInput } from '@/components/password-input'
 
 const otpSchema = z.object({
@@ -41,6 +42,7 @@ type OtpFormProps = React.HTMLAttributes<HTMLFormElement>
 export function OtpForm({ className, ...props }: OtpFormProps) {
   const navigate = useNavigate()
   const flow = useAuthFlowStore()
+  const { beginOperation } = useDashboardIntro()
   const [isLoading, setIsLoading] = useState(false)
   const [remainingSeconds, setRemainingSeconds] = useState(
     flow.context === 'login_otp' ? 300 : 120
@@ -104,6 +106,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
               },
             }
     setIsLoading(true)
+    const finishOperation = beginOperation()
     try {
       const response = await authApiRequest(request.action, request.payload)
       if (response.status !== 'success') {
@@ -133,6 +136,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
       otpForm.setValue('otp', '')
     } finally {
       setIsLoading(false)
+      finishOperation()
     }
   }
 
@@ -156,6 +160,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
     }
 
     setIsLoading(true)
+    const finishOperation = beginOperation()
     try {
       const response = await authApiRequest(action, payload)
       if (
@@ -175,11 +180,13 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
       )
     } finally {
       setIsLoading(false)
+      finishOperation()
     }
   }
 
   async function onPasswordSubmit(values: z.infer<typeof passwordSchema>) {
     setIsLoading(true)
+    const finishOperation = beginOperation()
     try {
       const response = await authApiRequest('recover_set_password', {
         password: values.password,
@@ -197,6 +204,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
       )
     } finally {
       setIsLoading(false)
+      finishOperation()
     }
   }
 
