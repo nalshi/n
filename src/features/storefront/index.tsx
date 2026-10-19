@@ -34,26 +34,19 @@ import {
   MerchantPageHeading,
   MerchantWorkspaceHeader,
 } from '@/components/layout/merchant-workspace'
+import { buildSelectedConfig, type ThemeMode } from './storefront-config'
 import {
+  fetchStorefrontMerchantSettings,
   fetchStorefrontLibrary,
   loadBaseStorefrontConfig,
   loadStorefrontThemeConfig,
-  mergeStorefrontConfig,
+  STOREFRONT_PUBLIC_BASE,
   storefrontLibraryQueryKey,
+  storefrontMerchantSettingsQueryKey,
   saveStorefrontConfig,
-  type StorefrontLibrary,
+  type StorefrontMerchantSettings,
   type StorefrontTheme,
 } from './storefront-data'
-
-type ThemeMode = 'light' | 'dark'
-type ConfigRecord = Record<string, unknown>
-
-function record(value: unknown): ConfigRecord {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return {}
-  }
-  return value as ConfigRecord
-}
 
 function ColorSwatches({
   theme,
@@ -73,7 +66,10 @@ function ColorSwatches({
   ]
 
   return (
-    <div className='flex items-center gap-1.5' aria-label={`معاينة ألوان ${isDark ? 'الداكن' : 'الفاتح'}`}>
+    <div
+      className='flex items-center gap-1.5'
+      aria-label={`معاينة ألوان ${isDark ? 'الداكن' : 'الفاتح'}`}
+    >
       {swatches.map((s, index) => (
         <span
           key={`${s.color}-${index}`}
@@ -85,153 +81,6 @@ function ColorSwatches({
       ))}
     </div>
   )
-}
-
-function buildSelectedConfig(
-  base: ConfigRecord,
-  themeConfig: ConfigRecord,
-  theme: StorefrontTheme,
-  mode: ThemeMode,
-  identity: { storeName: string; phone: string; slogan: string }
-): ConfigRecord {
-  const config = JSON.parse(JSON.stringify(base)) as ConfigRecord
-  const modes = record(config.modes)
-  const lightMode = record(modes.light)
-  const darkMode = record(modes.dark)
-  const lightColors = record(lightMode.colors)
-  const darkColors = record(darkMode.colors)
-  if (Object.keys(lightColors).length) {
-    const lightTheme = record(config.light_theme)
-    config.light_theme = { ...lightTheme, colors: { ...lightColors } }
-  }
-  if (Object.keys(darkColors).length) {
-    const darkTheme = record(config.dark_theme)
-    config.dark_theme = { ...darkTheme, colors: { ...darkColors } }
-  }
-
-  // دمج إعدادات الثيم الكاملة
-  mergeStorefrontConfig(config, themeConfig)
-
-  // تطبيق النمط المختار والوضع الأساسي
-  config.default_theme_mode = mode
-  config.theme_name = theme.id
-  config.theme_selection = { light: theme.id, dark: theme.id }
-  config.theme_display_names = { light: theme.name, dark: theme.name }
-
-  // تطبيق إعدادات الروبوت الذكي (ai_assistant) كما في الاستديو تماماً
-  const themeAssistant = record(themeConfig.assistant)
-  if (Object.keys(themeAssistant).length) {
-    const messages = record(config.messages)
-    const existingAssistant = record(messages.ai_assistant)
-    config.messages = {
-      ...messages,
-      ai_assistant: {
-        ...existingAssistant,
-        ...themeAssistant,
-        accent_color:
-          mode === 'dark'
-            ? theme.preview.dark.primary
-            : theme.preview.primary,
-      },
-    }
-    // حفظ نسخة أيضاً في الجذر لتوافق كافة المشغلات
-    config.assistant = {
-      ...themeAssistant,
-      accent_color:
-        mode === 'dark'
-          ? theme.preview.dark.primary
-          : theme.preview.primary,
-    }
-  }
-
-  // تطبيق إعدادات شريط التنقل (navigation_settings) والشرائط العلوية والسفلية
-  const themeNavigation = record(themeConfig.navigation_settings)
-  if (Object.keys(themeNavigation).length) {
-    const currentNav = record(config.navigation_settings)
-    config.navigation_settings = {
-      ...currentNav,
-      ...themeNavigation,
-      bottom_bar: {
-        ...record(currentNav.bottom_bar),
-        ...record(themeNavigation.bottom_bar),
-      },
-      top_bar: {
-        ...record(currentNav.top_bar),
-        ...record(themeNavigation.top_bar),
-      },
-    }
-  }
-
-  // تطبيق أشكال الأزرار والكروت وأنماط العرض
-  const themeShapes = record(themeConfig.shapes)
-  if (Object.keys(themeShapes).length) {
-    config.shapes = {
-      ...record(config.shapes),
-      ...themeShapes,
-    }
-  }
-
-  // تطبيق الخطوط وأحجام النصوص
-  const themeTypography = record(themeConfig.typography)
-  if (Object.keys(themeTypography).length) {
-    config.typography = {
-      ...record(config.typography),
-      ...themeTypography,
-    }
-  }
-
-  // تطبيق إعدادات وتخطيط المنتجات
-  const themeProducts = record(themeConfig.products_settings)
-  if (Object.keys(themeProducts).length) {
-    const currentProd = record(config.products_settings)
-    config.products_settings = {
-      ...currentProd,
-      ...themeProducts,
-      portrait: {
-        ...record(currentProd.portrait),
-        ...record(themeProducts.portrait),
-      },
-      landscape: {
-        ...record(currentProd.landscape),
-        ...record(themeProducts.landscape),
-      },
-    }
-  }
-
-  const currentModes = record(config.modes)
-  const configuredLight = record(config.light_theme)
-  const configuredDark = record(config.dark_theme)
-  const configuredLightColors = record(configuredLight.colors)
-  const configuredDarkColors = record(configuredDark.colors)
-  config.modes = {
-    ...currentModes,
-    ...(Object.keys(configuredLightColors).length
-      ? { light: { colors: { ...configuredLightColors } } }
-      : {}),
-    ...(Object.keys(configuredDarkColors).length
-      ? { dark: { colors: { ...configuredDarkColors } } }
-      : {}),
-  }
-
-  const storeIdentity = record(config.store_identity)
-  config.store_identity = {
-    ...storeIdentity,
-    ...(identity.storeName ? { store_name: identity.storeName } : {}),
-    ...(identity.slogan ? { slogan: identity.slogan } : {}),
-  }
-  if (identity.phone) {
-    const marketing = record(config.marketing)
-    const floatingWhatsapp = record(marketing.whatsapp_floating)
-    config.marketing = {
-      ...marketing,
-      whatsapp_floating: {
-        ...floatingWhatsapp,
-        phone: identity.phone,
-        enabled: true,
-      },
-    }
-  }
-  return config
 }
 
 function ThemeCard({
@@ -265,7 +114,9 @@ function ThemeCard({
             : 'كروت بارزة'
 
   return (
-    <Card className={`overflow-hidden transition-all duration-200 ${isSelected ? 'ring-2 ring-primary shadow-md' : 'hover:border-primary/50'}`}>
+    <Card
+      className={`overflow-hidden transition-all duration-200 ${isSelected ? 'shadow-md ring-2 ring-primary' : 'hover:border-primary/50'}`}
+    >
       {/* معاينة الرأس بالألوان الأساسية للوضعين */}
       <div className='grid h-24 grid-cols-2'>
         {(['light', 'dark'] as const).map((mode) => {
@@ -288,7 +139,7 @@ function ThemeCard({
               aria-label={`اختيار قالب ${theme.name} للوضع ${isDark ? 'الداكن' : 'الفاتح'}`}
               aria-pressed={active}
               onClick={() => onSelect(theme, mode)}
-              className='relative grid place-items-center gap-2 border-e last:border-e-0 transition-opacity hover:opacity-90 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-ring cursor-pointer'
+              className='relative grid cursor-pointer place-items-center gap-2 border-e transition-opacity last:border-e-0 hover:opacity-90 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-ring'
               style={{ backgroundColor: background }}
             >
               <span
@@ -318,7 +169,9 @@ function ThemeCard({
       <CardHeader className='gap-2 px-4 pt-4 pb-2'>
         <div className='flex items-start justify-between gap-3'>
           <div className='min-w-0'>
-            <CardTitle className='truncate text-base font-bold'>{theme.name}</CardTitle>
+            <CardTitle className='truncate text-base font-bold'>
+              {theme.name}
+            </CardTitle>
             <CardDescription className='mt-1 line-clamp-2 min-h-9 text-xs'>
               {theme.description || theme.category || 'قالب لمتجرك'}
             </CardDescription>
@@ -342,7 +195,7 @@ function ThemeCard({
         </div>
       </CardHeader>
 
-      <CardContent className='flex flex-col gap-3 px-4 pb-4 pt-2'>
+      <CardContent className='flex flex-col gap-3 px-4 pt-2 pb-4'>
         {/* شريحة ألوان كل وضع على حدة */}
         <div className='flex flex-col gap-2 rounded-lg border bg-muted/30 p-2.5 text-xs'>
           <div className='flex items-center justify-between'>
@@ -364,21 +217,29 @@ function ThemeCard({
           <Button
             type='button'
             size='sm'
-            variant={isSelected && selectedMode === 'light' ? 'default' : 'outline'}
+            variant={
+              isSelected && selectedMode === 'light' ? 'default' : 'outline'
+            }
             onClick={() => onSelect(theme, 'light')}
             className='w-full text-xs'
           >
-            {isSelected && selectedMode === 'light' && <Check className='size-3.5 me-1' />}
+            {isSelected && selectedMode === 'light' && (
+              <Check className='me-1 size-3.5' />
+            )}
             اختيار فاتح ☀️
           </Button>
           <Button
             type='button'
             size='sm'
-            variant={isSelected && selectedMode === 'dark' ? 'default' : 'outline'}
+            variant={
+              isSelected && selectedMode === 'dark' ? 'default' : 'outline'
+            }
             onClick={() => onSelect(theme, 'dark')}
             className='w-full text-xs'
           >
-            {isSelected && selectedMode === 'dark' && <Check className='size-3.5 me-1' />}
+            {isSelected && selectedMode === 'dark' && (
+              <Check className='me-1 size-3.5' />
+            )}
             اختيار داكن 🌙
           </Button>
         </div>
@@ -398,11 +259,18 @@ export function Storefront() {
   const libraryQuery = useQuery({
     queryKey: storefrontLibraryQueryKey(merchantId),
     queryFn: fetchStorefrontLibrary,
-    staleTime: Number.POSITIVE_INFINITY,
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  const merchantSettingsQuery = useQuery({
+    queryKey: storefrontMerchantSettingsQueryKey(merchantId),
+    queryFn: fetchStorefrontMerchantSettings,
+    staleTime: 5 * 60_000,
     retry: false,
   })
 
   const library = libraryQuery.data
+  const merchantSettings = merchantSettingsQuery.data
   const categories = useMemo(
     () =>
       [
@@ -425,8 +293,9 @@ export function Storefront() {
       )
     })
   }, [category, library?.themes, search])
-  const activeThemeId = selectedThemeId || library?.selectedThemeId || ''
-  const activeMode = selectedMode || library?.selectedMode || ''
+  const activeThemeId =
+    selectedThemeId || merchantSettings?.selectedThemeId || ''
+  const activeMode = selectedMode || merchantSettings?.selectedMode || ''
   const selectedTheme =
     library?.themes.find((theme) => theme.id === activeThemeId) || null
 
@@ -435,9 +304,11 @@ export function Storefront() {
       if (!library || !selectedTheme || !activeMode) {
         throw new Error('اختر قالباً ووضعاً فاتحاً أو داكناً أولاً.')
       }
-      if (!library.username) throw new Error('تعذر تحديد اسم مستخدم المتجر.')
+      if (!merchantSettings?.username) {
+        throw new Error('تعذر تحديد اسم مستخدم المتجر.')
+      }
       const [baseConfig, themeConfig] = await Promise.all([
-        loadBaseStorefrontConfig(library.config),
+        loadBaseStorefrontConfig(merchantSettings.config),
         loadStorefrontThemeConfig(selectedTheme),
       ])
       const config = buildSelectedConfig(
@@ -445,15 +316,18 @@ export function Storefront() {
         themeConfig,
         selectedTheme,
         activeMode,
-        library
+        merchantSettings
       )
-      const message = await saveStorefrontConfig(library.username, config)
+      const message = await saveStorefrontConfig(
+        merchantSettings.username,
+        config
+      )
       return { config, message }
     },
     onSuccess: ({ config, message }) => {
       try {
         localStorage.setItem(
-          `nalsh_storefront_config_${library?.username.toLocaleLowerCase()}`,
+          `nalsh_storefront_config_${merchantSettings?.username.toLocaleLowerCase()}`,
           JSON.stringify(config)
         )
       } catch {
@@ -466,8 +340,8 @@ export function Storefront() {
         window.location.origin
       )
       toast.success(message || `تم نشر القالب "${selectedTheme?.name}" بنجاح.`)
-      queryClient.setQueryData<StorefrontLibrary>(
-        storefrontLibraryQueryKey(merchantId),
+      queryClient.setQueryData<StorefrontMerchantSettings>(
+        storefrontMerchantSettingsQueryKey(merchantId),
         (current) =>
           current
             ? {
@@ -488,14 +362,23 @@ export function Storefront() {
       toast.error('اختر قالباً ووضعاً لمعاينته.')
       return
     }
-    if (!library.username) {
+    if (!merchantSettings?.username) {
       toast.error('تعذر تحديد رابط متجرك للمعاينة.')
       return
     }
+
+    const previewWindow = window.open('about:blank', '_blank')
+    if (!previewWindow) {
+      toast.error('اسمح بفتح نافذة جديدة لمعاينة المتجر.')
+      return
+    }
+    previewWindow.document.title = 'جاري تجهيز معاينة المتجر'
+    previewWindow.document.body.textContent = 'جاري تجهيز معاينة المتجر…'
+
     setPreviewing(true)
     try {
       const [baseConfig, themeConfig] = await Promise.all([
-        loadBaseStorefrontConfig(library.config),
+        loadBaseStorefrontConfig(merchantSettings.config),
         loadStorefrontThemeConfig(selectedTheme),
       ])
       const config = buildSelectedConfig(
@@ -503,46 +386,41 @@ export function Storefront() {
         themeConfig,
         selectedTheme,
         activeMode,
-        library
+        merchantSettings
       )
 
-      const storeBaseUrl = 'https://appi.dpdns.org'
-      const storageKey = `nalsh_template_local_config_${library.username.trim().toLowerCase()}`
+      const storeBaseUrl = new URL(STOREFRONT_PUBLIC_BASE).origin
+      const storageKey = `nalsh_template_local_config_${merchantSettings.username.trim().toLowerCase()}`
       const configJson = JSON.stringify(config)
+      const previewUrl = new URL('/index.html', storeBaseUrl)
+      previewUrl.searchParams.set('store', merchantSettings.username)
+      previewUrl.searchParams.set('template_preview', '{}')
+      previewUrl.searchParams.set('local_preview', '1')
+      previewWindow.location.replace(previewUrl.toString())
 
-      // Build the preview URL
-      const url = `${storeBaseUrl}/index.html?store=${encodeURIComponent(library.username)}&template_preview=%7B%7D&local_preview=1`
-
-      // Open the store window directly to the preview URL (no about:blank detour).
-      // Do NOT null out opener – we need it to stay connected so postMessage works
-      // across origins after the page loads.
-      const previewWindow = window.open(url, '_blank')
-      if (!previewWindow) {
-        toast.error('اسمح بفتح نافذة جديدة لمعاينة المتجر.')
-        return
-      }
-
-      // Send the config to the store window via postMessage once it has loaded.
-      // The store page listens for NALSH_CONFIG_UPDATE and applies it immediately.
-      // We retry a few times to handle slow loading.
       let attempts = 0
-      const maxAttempts = 10
+      const maxAttempts = 15
       const interval = window.setInterval(() => {
         attempts++
         try {
           previewWindow.postMessage(
-            { type: 'NALSH_CONFIG_UPDATE', config, storageKey, configJson },
+            {
+              type: 'NALSH_CONFIG_UPDATE',
+              config,
+              configJson,
+              storageKey,
+            },
             storeBaseUrl
           )
         } catch {
-          // Window may not be ready yet – keep retrying
+          // The target may still be navigating to the storefront.
         }
         if (attempts >= maxAttempts || previewWindow.closed) {
           window.clearInterval(interval)
         }
-      }, 800)
-
+      }, 600)
     } catch (error) {
+      previewWindow.close()
       toast.error(
         error instanceof Error ? error.message : 'تعذر تجهيز المعاينة.'
       )
@@ -568,8 +446,30 @@ export function Storefront() {
             actions={
               <>
                 <Button
+                  type='button'
                   variant='outline'
-                  disabled={!selectedTheme || !activeMode || previewing}
+                  disabled={
+                    libraryQuery.isFetching || merchantSettingsQuery.isFetching
+                  }
+                  onClick={() => {
+                    clearAuthApiCache()
+                    void libraryQuery.refetch()
+                    void merchantSettingsQuery.refetch()
+                  }}
+                >
+                  <RefreshCw
+                    className={libraryQuery.isFetching ? 'animate-spin' : ''}
+                  />
+                  تحديث الثيمات
+                </Button>
+                <Button
+                  variant='outline'
+                  disabled={
+                    !selectedTheme ||
+                    !activeMode ||
+                    !merchantSettings?.username ||
+                    previewing
+                  }
                   onClick={() => void preview()}
                 >
                   {previewing ? (
@@ -584,7 +484,7 @@ export function Storefront() {
                     !selectedTheme ||
                     !activeMode ||
                     publishMutation.isPending ||
-                    !library?.username
+                    !merchantSettings?.username
                   }
                   onClick={() => publishMutation.mutate()}
                 >
@@ -633,6 +533,35 @@ export function Storefront() {
           </Card>
         ) : library ? (
           <div className='grid gap-5'>
+            {(merchantSettings?.merchantError ||
+              (merchantSettingsQuery.isError &&
+                (merchantSettingsQuery.error instanceof Error
+                  ? merchantSettingsQuery.error.message
+                  : 'تعذر تحميل بعض إعدادات المتجر.'))) && (
+              <Card role='alert' className='border-amber-500/40 bg-amber-500/5'>
+                <CardContent className='flex flex-wrap items-center justify-between gap-3 p-4'>
+                  <p className='text-sm text-amber-800 dark:text-amber-200'>
+                    تعذر تحميل بعض إعدادات المتجر، لكن يمكنك استعراض الثيمات.{' '}
+                    {merchantSettings?.merchantError ||
+                      (merchantSettingsQuery.error instanceof Error
+                        ? merchantSettingsQuery.error.message
+                        : 'تعذر تحميل بعض إعدادات المتجر.')}
+                  </p>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    onClick={() => {
+                      clearAuthApiCache()
+                      void merchantSettingsQuery.refetch()
+                    }}
+                  >
+                    <RefreshCw className='size-4' />
+                    إعادة المحاولة
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
             <Card className='gap-0 py-0'>
               <CardContent className='grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:p-5'>
                 <div className='grid gap-2'>
@@ -693,10 +622,11 @@ export function Storefront() {
                   اختيارك: {selectedTheme.name} — الوضع{' '}
                   {activeMode === 'dark' ? 'الداكن' : 'الفاتح'}
                 </p>
-              ) : library.selectedThemeId && library.selectedMode ? (
+              ) : merchantSettings?.selectedThemeId &&
+                merchantSettings.selectedMode ? (
                 <p className='rounded-full bg-muted px-3 py-1.5 text-sm text-muted-foreground'>
-                  القالب المنشور: {library.selectedThemeId} —{' '}
-                  {library.selectedMode === 'dark' ? 'داكن' : 'فاتح'}
+                  القالب المنشور: {merchantSettings.selectedThemeId} —{' '}
+                  {merchantSettings.selectedMode === 'dark' ? 'داكن' : 'فاتح'}
                 </p>
               ) : null}
             </div>
@@ -747,7 +677,7 @@ export function Storefront() {
                 </a>
               </CardContent>
             </Card>
-            {!library.username && (
+            {!merchantSettings?.username && (
               <p role='alert' className='text-sm text-destructive'>
                 لا يمكن النشر أو المعاينة لأن اسم مستخدم المتجر غير متوفر.
               </p>

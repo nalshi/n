@@ -34,6 +34,9 @@ export type StorefrontTheme = {
 
 export type StorefrontLibrary = {
   themes: StorefrontTheme[]
+}
+
+export type StorefrontMerchantSettings = {
   config: ApiRecord
   username: string
   storeName: string
@@ -41,6 +44,7 @@ export type StorefrontLibrary = {
   slogan: string
   selectedThemeId: string
   selectedMode: 'light' | 'dark' | ''
+  merchantError: string
 }
 
 const THEME_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,79}$/
@@ -49,6 +53,9 @@ const THEME_FILE_PATTERN =
 
 export const storefrontLibraryQueryKey = (merchantId: string) =>
   ['merchant-storefront-library', merchantId] as const
+
+export const storefrontMerchantSettingsQueryKey = (merchantId: string) =>
+  ['merchant-storefront-settings', merchantId] as const
 
 function asRecord(value: unknown): ApiRecord | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -83,7 +90,8 @@ function normalizeTheme(candidate: unknown): StorefrontTheme | null {
   const darkPreview = asRecord(preview.dark) || {}
   const config = asRecord(theme.config) || {}
   const configShapes = asRecord(config.shapes) || asRecord(theme.shapes)
-  const configTypography = asRecord(config.typography) || asRecord(theme.typography)
+  const configTypography =
+    asRecord(config.typography) || asRecord(theme.typography)
   const lightColors = asRecord(asRecord(config.light_theme)?.colors) || {}
   const darkColors = asRecord(asRecord(config.dark_theme)?.colors) || {}
 
@@ -96,14 +104,29 @@ function normalizeTheme(candidate: unknown): StorefrontTheme | null {
     preview: {
       primary: safeColor(preview.primary || lightColors.primary, '#4F46E5'),
       accent: safeColor(preview.accent || lightColors.accent, '#06B6D4'),
-      background: safeColor(preview.background || lightColors.bg_body, '#F8FAFC'),
-      card: safeColor(preview.card || lightColors.card_bg || lightColors.bg_card, '#FFFFFF'),
+      background: safeColor(
+        preview.background || lightColors.bg_body,
+        '#F8FAFC'
+      ),
+      card: safeColor(
+        preview.card || lightColors.card_bg || lightColors.bg_card,
+        '#FFFFFF'
+      ),
       text: safeColor(preview.text || lightColors.text_main, '#0F172A'),
       dark: {
-        primary: safeColor(darkPreview.primary || darkColors.primary, '#6D28D9'),
+        primary: safeColor(
+          darkPreview.primary || darkColors.primary,
+          '#6D28D9'
+        ),
         accent: safeColor(darkPreview.accent || darkColors.accent, '#0891B2'),
-        background: safeColor(darkPreview.background || darkColors.bg_body, '#111827'),
-        card: safeColor(darkPreview.card || darkColors.card_bg || darkColors.bg_card, '#151E2E'),
+        background: safeColor(
+          darkPreview.background || darkColors.bg_body,
+          '#111827'
+        ),
+        card: safeColor(
+          darkPreview.card || darkColors.card_bg || darkColors.bg_card,
+          '#151E2E'
+        ),
         text: safeColor(darkPreview.text || darkColors.text_main, '#F8FAFC'),
       },
     },
@@ -142,22 +165,20 @@ function readThemeRows(value: unknown): StorefrontTheme[] {
   return themes
 }
 
-const STOREFRONT_PUBLIC_BASE = 'https://appi.dpdns.org'
+export const STOREFRONT_PUBLIC_BASE = 'https://appi.dpdns.org'
 
 async function getJson(path: string): Promise<unknown> {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   // Try the storefront public base first (works cross-origin), then fall back
   // to a relative path (works when dashboard is served from the same origin).
-  const urls = [
-    `${STOREFRONT_PUBLIC_BASE}${normalizedPath}`,
-    normalizedPath,
-  ]
+  const urls = [`${STOREFRONT_PUBLIC_BASE}${normalizedPath}`, normalizedPath]
 
   let lastError: unknown = null
   for (const url of urls) {
     try {
       const response = await fetch(url, {
         headers: { Accept: 'application/json' },
+        cache: 'no-store',
       })
       if (response.ok) {
         return (await response.json()) as unknown
@@ -173,35 +194,50 @@ async function getJson(path: string): Promise<unknown> {
 }
 
 async function loadThemes(): Promise<StorefrontTheme[]> {
-  try {
-    const catalog = await getJson('/templates/themes.json')
-    // themes.json structure: { version, count, items: [...] }
-    // readThemeRows handles both array and object-with-items forms.
-    return readThemeRows(catalog)
-  } catch (error) {
-    throw new Error(
-      error instanceof Error ? error.message : 'تعذر تحميل مكتبة القوالب من ملف المتجر.'
-    )
-  }
+  const catalog = await getJson('/templates/themes.json')
+  // themes.json structure: { version, count, items: [...] }
+  // readThemeRows handles both array and object-with-items forms.
+  return readThemeRows(catalog)
 }
 
 export async function fetchStorefrontLibrary(): Promise<StorefrontLibrary> {
-  const [themes, configResult, settingsResult] = await Promise.all([
-    loadThemes(),
+  return { themes: await loadThemes() }
+}
+
+export async function fetchStorefrontMerchantSettings(): Promise<StorefrontMerchantSettings> {
+  const [configResult, settingsResult] = await Promise.allSettled([
     authApiRequest('get_storefront_config', {}),
     authApiRequest('get_merchant_settings', {}),
   ])
 
-  if (configResult.status !== 'success' && configResult.status !== 'ok') {
-    throw new Error(configResult.message || 'تعذر تحميل إعدادات المتجر.')
-  }
-  if (settingsResult.status !== 'success' && settingsResult.status !== 'ok') {
-    throw new Error(settingsResult.message || 'تعذر تحميل بيانات حساب المتجر.')
-  }
+  const configResponse =
+    configResult.status === 'fulfilled' ? configResult.value : null
+  const settingsResponse =
+    settingsResult.status === 'fulfilled' ? settingsResult.value : null
+  const configValid =
+    configResponse?.status === 'success' || configResponse?.status === 'ok'
+  const settingsValid =
+    settingsResponse?.status === 'success' || settingsResponse?.status === 'ok'
+  const merchantErrors = [
+    configResult.status === 'rejected'
+      ? configResult.reason instanceof Error
+        ? configResult.reason.message
+        : 'تعذر تحميل إعدادات المتجر.'
+      : !configValid
+        ? configResponse?.message || 'تعذر تحميل إعدادات المتجر.'
+        : '',
+    settingsResult.status === 'rejected'
+      ? settingsResult.reason instanceof Error
+        ? settingsResult.reason.message
+        : 'تعذر تحميل بيانات حساب المتجر.'
+      : !settingsValid
+        ? settingsResponse?.message || 'تعذر تحميل بيانات حساب المتجر.'
+        : '',
+  ].filter(Boolean)
 
-  const configData = asRecord(configResult.data)
+  const configData = asRecord(configResponse?.data)
   const config = asRecord(configData?.config) || {}
-  const settings = asRecord(settingsResult.data)
+  const settings = asRecord(settingsResponse?.data)
   const username = nonEmptyString(
     settings?.username || settings?.store_username
   ).replace(/^@/, '')
@@ -220,7 +256,6 @@ export async function fetchStorefrontLibrary(): Promise<StorefrontLibrary> {
     nonEmptyString(selection.theme)
 
   return {
-    themes,
     config,
     username,
     storeName: nonEmptyString(
@@ -236,6 +271,7 @@ export async function fetchStorefrontLibrary(): Promise<StorefrontLibrary> {
       ? selectedThemeId
       : '',
     selectedMode,
+    merchantError: merchantErrors.join(' '),
   }
 }
 
