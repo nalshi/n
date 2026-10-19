@@ -3,7 +3,6 @@ import {
   Moon,
   PackageCheck,
   Settings2,
-  Store,
   Sun,
 } from 'lucide-react'
 import { useTheme } from '@/context/theme-provider'
@@ -39,8 +38,19 @@ export function AuthLayout({ children }: AuthLayoutProps) {
       <div className='mx-auto grid w-full max-w-7xl gap-4 sm:gap-6 lg:min-h-[min(760px,calc(100svh-4rem))] lg:grid-cols-[minmax(0,0.76fr)_minmax(0,1.24fr)] lg:items-stretch lg:gap-8'>
         <aside className='relative flex min-h-28 items-center justify-between gap-3 overflow-hidden rounded-2xl bg-primary p-4 text-primary-foreground sm:min-h-40 sm:gap-8 sm:p-6 lg:sticky lg:top-8 lg:h-[min(760px,calc(100svh-4rem))] lg:min-h-[520px] lg:flex-col lg:items-start lg:rounded-3xl lg:p-8 xl:p-10'>
           <div className='flex shrink-0 items-center gap-3'>
-            <span className='flex size-11 items-center justify-center rounded-xl bg-primary-foreground/10 sm:size-12'>
-              <Store className='size-5' aria-hidden='true' />
+            <span className='flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl sm:size-12'>
+              <img
+                src='/images/favicon_light.svg'
+                alt=''
+                className='size-full dark:hidden'
+                aria-hidden='true'
+              />
+              <img
+                src='/images/favicon.svg'
+                alt=''
+                className='hidden size-full dark:block'
+                aria-hidden='true'
+              />
             </span>
             <div>
               <p className='text-2xl leading-none font-black'>نالش</p>
