@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react'
 import { Outlet } from '@tanstack/react-router'
 import { LoaderCircle, Wifi, WifiOff } from 'lucide-react'
 import { useRealtimeStore } from '@/stores/realtime-store'
@@ -11,6 +12,7 @@ import {
 } from '@/hooks/useMerchantRealtime'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
+import { DashboardIntro } from '@/components/layout/dashboard-intro'
 import { SkipToMain } from '@/components/skip-to-main'
 
 type AuthenticatedLayoutProps = {
@@ -18,6 +20,8 @@ type AuthenticatedLayoutProps = {
 }
 
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
+  const [introVisible, setIntroVisible] = useState(true)
+  const completeIntro = useCallback(() => setIntroVisible(false), [])
   const merchantId = useMerchantIdentity()
   const dashboardQuery = useMerchantData(merchantId)
   useRealtimeSync(merchantId, dashboardQuery.cacheReady)
@@ -34,9 +38,11 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
           defaultOpen={false}
           className='font-ibm-plex-sans-arabic'
         >
-          <SkipToMain />
-          <AppSidebar />
+          <SkipToMain inert={introVisible} />
+          <AppSidebar inert={introVisible} />
           <SidebarInset
+            inert={introVisible}
+            aria-hidden={introVisible}
             className={cn(
               // Set content container, so we can use container queries
               '@container/content',
@@ -82,6 +88,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
           <div
             role='status'
             aria-live='polite'
+            aria-hidden={introVisible}
             title={realtimeDetail || 'حالة اتصال لوحة التاجر'}
             className='fixed start-3 bottom-3 z-50 flex items-center gap-2 rounded-full border bg-background/95 px-3 py-2 text-xs shadow-md backdrop-blur'
           >
@@ -102,6 +109,12 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
                     : 'إعادة الاتصال'}
             </span>
           </div>
+          {introVisible && (
+            <DashboardIntro
+              isReady={dashboardInitialized || Boolean(initializationError)}
+              onComplete={completeIntro}
+            />
+          )}
         </SidebarProvider>
       </LayoutProvider>
     </SearchProvider>

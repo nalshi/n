@@ -12,10 +12,15 @@ import { NavGroup } from './nav-group'
 import { NavUser } from './nav-user'
 import { TeamSwitcher } from './team-switcher'
 
-export function AppSidebar() {
+export function AppSidebar({ inert = false }: { inert?: boolean }) {
   const { collapsible, variant } = useLayout()
   return (
-    <Sidebar collapsible={collapsible} variant={variant}>
+    <Sidebar
+      collapsible={collapsible}
+      variant={variant}
+      inert={inert}
+      aria-hidden={inert}
+    >
       <SidebarHeader className='border-b border-sidebar-border px-3 py-3 group-data-[collapsible=icon]:!px-1 sm:px-4'>
         <TeamSwitcher teams={sidebarData.teams} />
       </SidebarHeader>
