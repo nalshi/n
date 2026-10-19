@@ -86,14 +86,7 @@ export function DashboardIntro({ isReady, onComplete }: DashboardIntroProps) {
   }, [isReady, onComplete])
 
   return (
-    <div
-      ref={introRef}
-      className='merchant-intro'
-      role='status'
-      aria-live='polite'
-      aria-label='جارٍ تجهيز لوحة التاجر'
-      dir='rtl'
-    >
+    <div ref={introRef} className='merchant-intro' aria-hidden='true' dir='rtl'>
       <div className='merchant-intro-content'>
         <span ref={markRef} className='merchant-intro-mark'>
           <svg
@@ -108,9 +101,6 @@ export function DashboardIntro({ isReady, onComplete }: DashboardIntroProps) {
             <circle className='merchant-intro-mark-dot' cx='50' cy='16' r='7' />
           </svg>
         </span>
-        <span className='merchant-intro-name'>نالش</span>
-        <span className='merchant-intro-caption'>بوابة التاجر</span>
-        <span className='merchant-intro-status'>جارٍ تجهيز لوحة التاجر</span>
       </div>
     </div>
   )

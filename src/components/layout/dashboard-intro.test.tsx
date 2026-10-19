@@ -3,16 +3,13 @@ import { render } from 'vitest-browser-react'
 import { DashboardIntro } from './dashboard-intro'
 
 describe('DashboardIntro', () => {
-  it('shows the Nalsh mark and completes the intro', async () => {
+  it('shows only the animated mark and completes the intro', async () => {
     const onComplete = vi.fn()
-    const screen = await render(
-      <DashboardIntro isReady onComplete={onComplete} />
-    )
+    await render(<DashboardIntro isReady onComplete={onComplete} />)
 
-    await expect
-      .element(screen.getByRole('status', { name: 'جارٍ تجهيز لوحة التاجر' }))
-      .toBeInTheDocument()
-    await expect.element(screen.getByText('نالش')).toBeInTheDocument()
+    const intro = document.querySelector('.merchant-intro')
+    expect(intro?.textContent).toBe('')
+    expect(intro?.getAttribute('aria-hidden')).toBe('true')
 
     await vi.waitFor(() => expect(onComplete).toHaveBeenCalledOnce(), {
       timeout: 800,
@@ -21,13 +18,9 @@ describe('DashboardIntro', () => {
 
   it('keeps the intro open until the dashboard is ready', async () => {
     const onComplete = vi.fn()
-    const screen = await render(
-      <DashboardIntro isReady={false} onComplete={onComplete} />
-    )
+    await render(<DashboardIntro isReady={false} onComplete={onComplete} />)
 
-    await expect
-      .element(screen.getByRole('status', { name: 'جارٍ تجهيز لوحة التاجر' }))
-      .toBeInTheDocument()
+    expect(document.querySelector('.merchant-intro')).not.toBeNull()
     await new Promise((resolve) => window.setTimeout(resolve, 500))
 
     expect(onComplete).not.toHaveBeenCalled()

@@ -89,17 +89,8 @@
     gap: 0;
   }
 
-  .merchant-intro.is-arriving::before,
-  .merchant-intro.is-arriving
-    .merchant-intro-content
-    > :not(.merchant-intro-mark) {
+  .merchant-intro.is-arriving::before {
     opacity: 0;
-  }
-
-  .merchant-intro.is-arriving
-    .merchant-intro-content
-    > :not(.merchant-intro-mark) {
-    transition: opacity 180ms ease-out;
   }
 
   .merchant-intro-mark {
@@ -144,34 +135,6 @@
   .merchant-intro-mark-dot {
     fill: currentColor;
     stroke: none;
-  }
-
-  .merchant-intro-name {
-    margin-top: clamp(0.65rem, 3vh, 0.9rem);
-    font-size: clamp(1.125rem, 4vw, 1.4rem);
-    font-weight: 900;
-    line-height: 1.2;
-  }
-
-  .merchant-intro-caption {
-    margin-top: 0.125rem;
-    color: var(--muted-foreground);
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  .merchant-intro-status {
-    margin-top: clamp(0.75rem, 3vh, 1.125rem);
-    color: var(--muted-foreground);
-    font-size: 0.8125rem;
-  }
-
-  .merchant-intro-status::after {
-    display: inline-block;
-    width: 1.1em;
-    content: '…';
-    text-align: start;
-    direction: ltr;
   }
 
   .merchant-dashboard-enter {
@@ -260,17 +223,6 @@
     animation: merchant-intro-dot-cycle 780ms cubic-bezier(0.16, 1, 0.3, 1)
       infinite;
   }
-
-  .merchant-intro-name {
-    animation: merchant-intro-wordmark-arrive 220ms
-      cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
-  }
-
-  .merchant-intro-caption,
-  .merchant-intro-status {
-    animation: merchant-intro-copy-arrive 200ms cubic-bezier(0.16, 1, 0.3, 1)
-      180ms both;
-  }
 }
 
 @keyframes merchant-intro-mark-cycle {
@@ -315,26 +267,6 @@
   100% {
     opacity: 0;
     transform: translateY(-12px) scale(0.78);
-  }
-}
-
-@keyframes merchant-intro-wordmark-arrive {
-  from {
-    opacity: 0.5;
-    transform: translateY(7px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes merchant-intro-copy-arrive {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
   }
 }
 
@@ -426,14 +358,6 @@
     .merchant-intro-mark {
       width: clamp(2.5rem, 12vh, 3rem);
       height: clamp(2.5rem, 12vh, 3rem);
-    }
-
-    .merchant-intro-name {
-      margin-top: 0.4rem;
-    }
-
-    .merchant-intro-status {
-      margin-top: 0.5rem;
     }
   }
 
