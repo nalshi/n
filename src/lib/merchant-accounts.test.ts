@@ -88,6 +88,25 @@ describe('saved merchant accounts', () => {
     ).toBe('')
   })
 
+  it('prefers the merchant store logo over the account profile image', () => {
+    expect(
+      getMerchantAccountAvatarUrl(
+        makeToken(5, undefined, {
+          picture: 'https://images.example.com/profile.png',
+          store_logo: 'https://images.example.com/store.png',
+        })
+      )
+    ).toBe('https://images.example.com/store.png')
+    expect(
+      getMerchantAccountAvatarUrl(
+        makeToken(6, undefined, {
+          logo_url: 'https://images.example.com/store.png',
+          avatar_url: 'https://images.example.com/profile.png',
+        })
+      )
+    ).toBe('https://images.example.com/store.png')
+  })
+
   it('reads a merchant store name from account claims', () => {
     expect(
       getMerchantAccountName(

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useIsFetching, useIsMutating } from '@tanstack/react-query'
 import { DashboardIntro } from '@/components/layout/dashboard-intro'
 import { DashboardIntroContext } from '@/components/layout/dashboard-intro-context'
 import { MerchantOperationLoader } from '@/components/layout/merchant-operation-loader'
@@ -14,10 +13,7 @@ export function DashboardIntroProvider({
   const [isActive, setIsActive] = useState(true)
   const [isReady, setIsReady] = useState(false)
   const [localOperationCount, setLocalOperationCount] = useState(0)
-  const pendingMutations = useIsMutating()
-  const fetchingQueries = useIsFetching({ type: 'active' })
-  const isOperationPending =
-    pendingMutations > 0 || fetchingQueries > 0 || localOperationCount > 0
+  const isOperationPending = localOperationCount > 0
   const startupFallbackRef = useRef<number | undefined>(undefined)
   const hasRouteReadinessSignalRef = useRef(false)
 

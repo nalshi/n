@@ -166,7 +166,7 @@
   }
 
   .merchant-dashboard-enter {
-    animation: merchant-dashboard-arrive 440ms cubic-bezier(0.16, 1, 0.3, 1)
+    animation: merchant-dashboard-arrive 180ms cubic-bezier(0.16, 1, 0.3, 1)
       both;
     transform-origin: top center;
   }
@@ -193,34 +193,12 @@
     transform: scale(1.08) rotate(-5deg);
   }
 
-  .merchant-stat-icon {
-    animation: merchant-stat-icon-arrive 360ms cubic-bezier(0.16, 1, 0.3, 1)
-      both;
-  }
-
-  .merchant-stat-grid > :nth-child(1) .merchant-stat-icon {
-    animation-delay: 40ms;
-  }
-
-  .merchant-stat-grid > :nth-child(2) .merchant-stat-icon {
-    animation-delay: 85ms;
-  }
-
-  .merchant-stat-grid > :nth-child(3) .merchant-stat-icon {
-    animation-delay: 130ms;
-  }
-
-  .merchant-stat-grid > :nth-child(4) .merchant-stat-icon {
-    animation-delay: 175ms;
-  }
-
   .toaster [data-sonner-toast]:not([data-removed='true']) {
     border-color: var(--normal-border);
     background-color: var(--normal-bg);
     color: var(--normal-text);
     box-shadow: 0 12px 32px
       color-mix(in srgb, var(--foreground) 12%, transparent);
-    backdrop-filter: blur(12px) saturate(1.15);
     animation: merchant-toast-arrive 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
@@ -290,20 +268,20 @@
     stroke-dasharray: 180;
     stroke-dashoffset: 180;
     opacity: 0;
-    animation: merchant-intro-mark-cycle 640ms linear infinite;
+    animation: merchant-intro-mark-cycle 640ms ease-out 1 both;
   }
 
   .merchant-operation-loader-mark .merchant-intro-mark-dot {
     opacity: 0;
-    animation: merchant-intro-dot-cycle 640ms cubic-bezier(0.16, 1, 0.3, 1)
-      infinite;
+    animation: merchant-intro-dot-cycle 640ms cubic-bezier(0.16, 1, 0.3, 1) 1
+      both;
   }
 
   .merchant-intro-mark-path {
     stroke-dasharray: 180;
     stroke-dashoffset: 180;
     opacity: 0;
-    animation: merchant-intro-mark-cycle 780ms linear infinite;
+    animation: merchant-intro-mark-cycle 780ms ease-out 1 both;
   }
 
   @keyframes merchant-operation-loader-arrive {
@@ -317,8 +295,8 @@
 
   .merchant-intro-mark-dot {
     opacity: 0;
-    animation: merchant-intro-dot-cycle 780ms cubic-bezier(0.16, 1, 0.3, 1)
-      infinite;
+    animation: merchant-intro-dot-cycle 780ms cubic-bezier(0.16, 1, 0.3, 1) 1
+      both;
   }
 }
 
@@ -332,17 +310,11 @@
     opacity: 1;
   }
   56%,
-  72% {
+  72%,
+  88%,
+  100% {
     stroke-dashoffset: 0;
     opacity: 1;
-  }
-  88% {
-    stroke-dashoffset: 0;
-    opacity: 0;
-  }
-  100% {
-    stroke-dashoffset: 180;
-    opacity: 0;
   }
 }
 
@@ -353,52 +325,33 @@
     transform: translateY(-12px) scale(0.78);
   }
   48%,
-  72% {
+  72%,
+  88%,
+  100% {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-  88% {
-    opacity: 0;
-    transform: translateY(0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-12px) scale(0.78);
   }
 }
 
 @keyframes merchant-dashboard-arrive {
   from {
-    clip-path: inset(0 0 1.25rem 0 round 14px);
-    filter: blur(5px);
-    opacity: 0.72;
-  }
-  to {
-    clip-path: inset(0 round 14px);
-    filter: blur(0);
-    opacity: 1;
-  }
-}
-
-@keyframes merchant-stat-icon-arrive {
-  from {
-    opacity: 0.45;
-    transform: scale(0.76) rotate(-9deg);
+    opacity: 0.8;
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    transform: scale(1) rotate(0);
+    transform: translateY(0);
   }
 }
 
 @keyframes merchant-toast-arrive {
   from {
-    filter: blur(3px);
     opacity: 0;
+    transform: translateY(4px);
   }
   to {
-    filter: blur(0);
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -470,7 +423,6 @@
   }
 
   .merchant-dashboard-enter,
-  .merchant-stat-icon,
   .merchant-toast-icon-success,
   .merchant-toast-icon-error,
   .merchant-toast-icon-info {

@@ -112,12 +112,12 @@ export function getMerchantAccountAvatarUrl(
   const claims = decodeToken(token)
   const images = [
     cachedAvatar,
+    claims?.store_logo,
+    claims?.logo_url,
     claims?.picture,
     claims?.avatar_url,
     claims?.photo_url,
     claims?.profile_image,
-    claims?.store_logo,
-    claims?.logo_url,
   ].filter(
     (value): value is string => typeof value === 'string' && !!value.trim()
   )

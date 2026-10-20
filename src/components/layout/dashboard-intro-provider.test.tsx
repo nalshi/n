@@ -17,7 +17,7 @@ const pendingQuery: { resolve: (value: string) => void } = {
 }
 
 function ReadyRoute({ withMutation = false }: { withMutation?: boolean }) {
-  const { setIntroReady } = useDashboardIntro()
+  const { beginOperation, setIntroReady } = useDashboardIntro()
   const mutation = useMutation({
     mutationFn: () =>
       new Promise<void>((resolve) => {
@@ -33,7 +33,13 @@ function ReadyRoute({ withMutation = false }: { withMutation?: boolean }) {
     <>
       <p>محتوى الصفحة</p>
       {withMutation && (
-        <button type='button' onClick={() => mutation.mutate()}>
+        <button
+          type='button'
+          onClick={() => {
+            const finishOperation = beginOperation()
+            mutation.mutate(undefined, { onSettled: finishOperation })
+          }}
+        >
           حفظ التغييرات
         </button>
       )}
@@ -113,7 +119,7 @@ describe('DashboardIntroProvider', () => {
     expect(document.querySelector('[aria-busy="false"]')).not.toBeNull()
   })
 
-  it('shows the centered logo while a page query is fetching', async () => {
+  it('keeps the page interactive while a page query is fetching', async () => {
     pendingQuery.resolve = () => undefined
     const queryClient = new QueryClient()
     const screen = await render(
@@ -127,13 +133,12 @@ describe('DashboardIntroProvider', () => {
       () => expect(document.querySelector('.merchant-intro')).toBeNull(),
       { timeout: 1100 }
     )
-    await expect
-      .element(screen.getByRole('status', { name: 'جارٍ تنفيذ العملية' }))
-      .toBeInTheDocument()
+    expect(document.querySelector('.merchant-operation-loader')).toBeNull()
+    expect(document.querySelector('[aria-busy="false"]')).not.toBeNull()
 
     pendingQuery.resolve('loaded')
-    await vi.waitFor(() => {
-      expect(document.querySelector('.merchant-operation-loader')).toBeNull()
-    })
+    await vi.waitFor(() =>
+      expect(screen.getByText('جارٍ تحميل الصفحة')).toBeInTheDocument()
+    )
   })
 })
