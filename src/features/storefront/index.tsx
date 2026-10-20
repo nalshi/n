@@ -334,7 +334,7 @@ export function Storefront() {
     onSuccess: ({ config, message }) => {
       try {
         localStorage.setItem(
-          `nalsh_storefront_config_${merchantSettings?.username.toLocaleLowerCase()}`,
+          `nalsh_storefront_config_${merchantId}_${merchantSettings?.username.toLocaleLowerCase()}`,
           JSON.stringify(config)
         )
       } catch {

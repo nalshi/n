@@ -232,8 +232,9 @@ function syncEvent(
         duration: 8_000,
       })
       if (
-        localStorage.getItem('merchant_push_notifications_enabled') ===
-          'true' &&
+        localStorage.getItem(
+          `merchant_push_notifications_enabled:${merchantId}`
+        ) === 'true' &&
         'Notification' in window &&
         Notification.permission === 'granted'
       ) {

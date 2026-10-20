@@ -222,7 +222,7 @@ describe('merchant realtime synchronization', () => {
   })
 
   it('shows a browser notification for a new order when the merchant enabled it', async () => {
-    localStorage.setItem('merchant_push_notifications_enabled', 'true')
+    localStorage.setItem('merchant_push_notifications_enabled:42', 'true')
     cleanup = startMerchantRealtime(queryClient)
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
 

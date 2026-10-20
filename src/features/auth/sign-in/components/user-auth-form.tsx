@@ -154,7 +154,7 @@ export function UserAuthForm({
         throw new Error(response.message || 'تعذر تسجيل الدخول.')
       }
 
-      completeAuthSession(response.token, true, flow.identifier)
+      completeAuthSession(response.token, true, flow.identifier, displayName)
 
       await navigate({
         to: getSafeAuthRedirect(redirectTo),

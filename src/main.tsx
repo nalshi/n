@@ -4,6 +4,10 @@ import { useIsRestoring } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { useAuthStore } from '@/stores/auth-store'
+import {
+  getActiveMerchantToken,
+  removeSavedMerchantAccount,
+} from '@/lib/merchant-accounts'
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
 import { ThemeProvider } from './context/theme-provider'
@@ -15,6 +19,7 @@ import './styles/index.css'
 
 const queryClient = createQueryClient({
   onUnauthorized: () => {
+    removeSavedMerchantAccount(getActiveMerchantToken())
     useAuthStore.getState().auth.reset()
     const redirect = `${router.history.location.href}`
     void router.navigate({ to: '/sign-in', search: { redirect } })
@@ -76,7 +81,10 @@ if ('serviceWorker' in navigator && typeof window !== 'undefined') {
     navigator.serviceWorker
       .register('/sw.js')
       .then((reg) => {
-        console.log('✅ ساعي البريد الصامت في الخلفية جاهز (Service Worker Registered)', reg.scope)
+        console.log(
+          '✅ ساعي البريد الصامت في الخلفية جاهز (Service Worker Registered)',
+          reg.scope
+        )
       })
       .catch((err) => {
         console.warn('تعذر تسجيل Service Worker:', err)

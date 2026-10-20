@@ -18,6 +18,10 @@ import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { clearAuthApiCache } from '@/lib/auth-api'
 import {
+  getActiveMerchantToken,
+  removeSavedMerchantAccount,
+} from '@/lib/merchant-accounts'
+import {
   merchantBootstrapKey,
   merchantQueryKeys,
   useMerchantIdentity,
@@ -232,7 +236,7 @@ export function StoreSettings() {
     queryFn: async () => {
       const data = await fetchStoreSettings()
       localStorage.setItem(
-        'merchant_push_notifications_enabled',
+        `merchant_push_notifications_enabled:${merchantId}`,
         String(data.merchant.pushNotifications)
       )
       return data
@@ -287,7 +291,7 @@ export function StoreSettings() {
         ...current,
         storeName: draft.storeName,
       }))
-      localStorage.setItem('merchant_store_name', draft.storeName)
+      localStorage.setItem(`merchant_store_name:${merchantId}`, draft.storeName)
       toast.success(message || 'تم حفظ إعدادات المتجر.')
       setDialog(null)
     },
@@ -356,7 +360,7 @@ export function StoreSettings() {
     },
     onSuccess: (message, enabled) => {
       localStorage.setItem(
-        'merchant_push_notifications_enabled',
+        `merchant_push_notifications_enabled:${merchantId}`,
         String(enabled)
       )
       updateSettingsCache((current) => ({
@@ -375,7 +379,7 @@ export function StoreSettings() {
   const logoutMutation = useMutation({
     mutationFn: logoutMerchant,
     onSuccess: () => {
-      localStorage.removeItem('merchant_push_notifications_enabled')
+      removeSavedMerchantAccount(getActiveMerchantToken())
       clearDashboardInitializationCache()
       queryClient.clear()
       useAuthStore.getState().auth.reset()

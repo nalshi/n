@@ -62,8 +62,8 @@ export class MerchantLocalDB extends Dexie {
    */
   syncState!: EntityTable<LocalSyncState, 'key'>
 
-  constructor() {
-    super('MerchantWorkspaceDB_v1')
+  constructor(name: string) {
+    super(name)
 
     this.version(1).stores({
       // ++id = auto-increment PK | باقي الحقول = فهارس للاستعلام
@@ -75,8 +75,83 @@ export class MerchantLocalDB extends Dexie {
   }
 }
 
-/** النسخة الوحيدة من قاعدة البيانات (Singleton) */
-export const localDB = new MerchantLocalDB()
+const LEGACY_DATABASE_NAME = 'MerchantWorkspaceDB_v1'
+const merchantDatabases = new Map<string, MerchantLocalDB>()
+const merchantDatabaseOpenings = new Map<string, Promise<MerchantLocalDB>>()
+
+export function getMerchantLocalDB(merchantId: string): MerchantLocalDB {
+  const normalizedId = merchantId.trim()
+  if (!normalizedId) {
+    throw new Error('تعذر فتح ذاكرة التاجر دون معرّف حساب صالح.')
+  }
+
+  let database = merchantDatabases.get(normalizedId)
+  if (!database) {
+    database = new MerchantLocalDB(
+      `MerchantWorkspaceDB_v2_${encodeURIComponent(normalizedId)}`
+    )
+    merchantDatabases.set(normalizedId, database)
+  }
+  return database
+}
+
+export async function openMerchantLocalDB(
+  merchantId: string
+): Promise<MerchantLocalDB> {
+  const normalizedId = merchantId.trim()
+  const existingOpening = merchantDatabaseOpenings.get(normalizedId)
+  if (existingOpening) return existingOpening
+
+  const opening = (async () => {
+    const database = getMerchantLocalDB(normalizedId)
+    await database.open()
+
+    if (await database.syncState.get('cursor')) return database
+    if (!(await Dexie.exists(LEGACY_DATABASE_NAME))) return database
+
+    const legacyDatabase = new MerchantLocalDB(LEGACY_DATABASE_NAME)
+    try {
+      await legacyDatabase.open()
+      const legacyCursor = await legacyDatabase.syncState.get('cursor')
+      if (legacyCursor?.merchantId !== normalizedId) return database
+
+      const [orders, products, categories] = await Promise.all([
+        legacyDatabase.orders.toArray(),
+        legacyDatabase.products.toArray(),
+        legacyDatabase.categories.toArray(),
+      ])
+      await database.transaction(
+        'rw',
+        database.orders,
+        database.products,
+        database.categories,
+        database.syncState,
+        async () => {
+          await Promise.all([
+            orders.length ? database.orders.bulkPut(orders) : Promise.resolve(),
+            products.length
+              ? database.products.bulkPut(products)
+              : Promise.resolve(),
+            categories.length
+              ? database.categories.bulkPut(categories)
+              : Promise.resolve(),
+            database.syncState.put(legacyCursor),
+          ])
+        }
+      )
+      return database
+    } finally {
+      legacyDatabase.close()
+    }
+  })()
+
+  merchantDatabaseOpenings.set(normalizedId, opening)
+  try {
+    return await opening
+  } finally {
+    merchantDatabaseOpenings.delete(normalizedId)
+  }
+}
 
 // ─── دوال الكتابة الذرية ──────────────────────────────────────────────────
 
@@ -86,61 +161,85 @@ export const localDB = new MerchantLocalDB()
  *  - إذا كان الطلب موجوداً → يُحدَّث (لا يُكرَّر)
  *  - إذا كان جديداً       → يُضاف
  */
-export async function injectOrders(orders: DashboardOrder[]): Promise<void> {
+export async function injectOrders(
+  merchantId: string,
+  orders: DashboardOrder[]
+): Promise<void> {
   if (!orders.length) return
-  await localDB.transaction('rw', localDB.orders, async () => {
-    await localDB.orders.bulkPut(orders)
+  const database = await openMerchantLocalDB(merchantId)
+  await database.transaction('rw', database.orders, async () => {
+    await database.orders.bulkPut(orders)
   })
 }
 
 /**
  * يحقن أو يُحدّث طلباً واحداً داخل IndexedDB.
  */
-export async function injectOrder(order: DashboardOrder): Promise<void> {
-  await localDB.orders.put(order)
+export async function injectOrder(
+  merchantId: string,
+  order: DashboardOrder
+): Promise<void> {
+  const database = await openMerchantLocalDB(merchantId)
+  await database.orders.put(order)
 }
 
 /**
  * يحذف طلباً من IndexedDB بمعرّفه.
  */
-export async function removeOrder(orderId: string): Promise<void> {
-  await localDB.orders.delete(orderId)
+export async function removeOrder(
+  merchantId: string,
+  orderId: string
+): Promise<void> {
+  const database = await openMerchantLocalDB(merchantId)
+  await database.orders.delete(orderId)
 }
 
 /**
  * يحقن أو يُحدّث منتجاً واحداً داخل IndexedDB.
  */
-export async function injectProduct(product: DashboardProduct): Promise<void> {
-  await localDB.products.put(product)
+export async function injectProduct(
+  merchantId: string,
+  product: DashboardProduct
+): Promise<void> {
+  const database = await openMerchantLocalDB(merchantId)
+  await database.products.put(product)
 }
 
 /**
  * يحقن قائمة منتجات داخل IndexedDB بشكل ذري.
  */
 export async function injectProducts(
+  merchantId: string,
   products: DashboardProduct[]
 ): Promise<void> {
   if (!products.length) return
-  await localDB.transaction('rw', localDB.products, async () => {
-    await localDB.products.bulkPut(products)
+  const database = await openMerchantLocalDB(merchantId)
+  await database.transaction('rw', database.products, async () => {
+    await database.products.bulkPut(products)
   })
 }
 
 /**
  * يحذف منتجاً من IndexedDB بمعرّفه.
  */
-export async function removeProduct(productId: string): Promise<void> {
-  await localDB.products.delete(productId)
+export async function removeProduct(
+  merchantId: string,
+  productId: string
+): Promise<void> {
+  const database = await openMerchantLocalDB(merchantId)
+  await database.products.delete(productId)
 }
 
 /**
  * يحقن قائمة فئات داخل IndexedDB.
  */
 export async function injectCategories(
+  merchantId: string,
   categories: DashboardCategory[]
 ): Promise<void> {
   if (!categories.length) return
-  await localDB.categories.bulkPut(categories)
+  const database = await openMerchantLocalDB(merchantId)
+  await database.categories.bulkPut(categories)
 }
 
 // ─── دوال حالة المزامنة ───────────────────────────────────────────────────
@@ -151,11 +250,12 @@ const SYNC_CURSOR_KEY = 'cursor'
  * يقرأ آخر حالة مزامنة مُسجَّلة محلياً.
  * تُستخدم عند إعادة الاتصال لإرسال `since` و `lastEventId` للسيرفر.
  */
-export async function readSyncCursor(): Promise<{
+export async function readSyncCursor(merchantId: string): Promise<{
   lastEventId: number
   lastTimestamp: number
 }> {
-  const state = await localDB.syncState.get(SYNC_CURSOR_KEY)
+  const database = await openMerchantLocalDB(merchantId)
+  const state = await database.syncState.get(SYNC_CURSOR_KEY)
   return {
     lastEventId: state?.lastEventId ?? 0,
     lastTimestamp: state?.lastTimestamp ?? 0,
@@ -171,7 +271,8 @@ export async function writeSyncCursor(
   lastEventId: number,
   lastTimestamp: number
 ): Promise<void> {
-  await localDB.syncState.put({
+  const database = await openMerchantLocalDB(merchantId)
+  await database.syncState.put({
     key: SYNC_CURSOR_KEY,
     lastEventId,
     lastTimestamp,
@@ -180,21 +281,22 @@ export async function writeSyncCursor(
 }
 
 /**
- * يمسح كامل بيانات التاجر من IndexedDB (عند تسجيل الخروج أو تغيير الحساب).
+ * يمسح بيانات قاعدة التاجر المحددة فقط عند طلب حذفها صراحةً.
  */
-export async function clearMerchantLocalDB(): Promise<void> {
-  await localDB.transaction(
+export async function clearMerchantLocalDB(merchantId: string): Promise<void> {
+  const database = await openMerchantLocalDB(merchantId)
+  await database.transaction(
     'rw',
-    localDB.orders,
-    localDB.products,
-    localDB.categories,
-    localDB.syncState,
+    database.orders,
+    database.products,
+    database.categories,
+    database.syncState,
     async () => {
       await Promise.all([
-        localDB.orders.clear(),
-        localDB.products.clear(),
-        localDB.categories.clear(),
-        localDB.syncState.clear(),
+        database.orders.clear(),
+        database.products.clear(),
+        database.categories.clear(),
+        database.syncState.clear(),
       ])
     }
   )
@@ -220,29 +322,30 @@ export async function hydrateFromSnapshot(params: {
     lastEventId,
     lastTimestamp,
   } = params
-  await localDB.transaction(
+  const database = await openMerchantLocalDB(merchantId)
+  await database.transaction(
     'rw',
-    localDB.orders,
-    localDB.products,
-    localDB.categories,
-    localDB.syncState,
+    database.orders,
+    database.products,
+    database.categories,
+    database.syncState,
     async () => {
       // نمسح البيانات القديمة ثم نكتب الجديدة دفعة واحدة
       await Promise.all([
-        localDB.orders.clear(),
-        localDB.products.clear(),
-        localDB.categories.clear(),
+        database.orders.clear(),
+        database.products.clear(),
+        database.categories.clear(),
       ])
       await Promise.all([
-        orders.length ? localDB.orders.bulkPut(orders) : Promise.resolve(),
+        orders.length ? database.orders.bulkPut(orders) : Promise.resolve(),
         products.length
-          ? localDB.products.bulkPut(products)
+          ? database.products.bulkPut(products)
           : Promise.resolve(),
         categories.length
-          ? localDB.categories.bulkPut(categories)
+          ? database.categories.bulkPut(categories)
           : Promise.resolve(),
       ])
-      await localDB.syncState.put({
+      await database.syncState.put({
         key: SYNC_CURSOR_KEY,
         lastEventId,
         lastTimestamp,

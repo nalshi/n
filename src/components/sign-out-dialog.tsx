@@ -2,6 +2,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
+import {
+  getActiveMerchantToken,
+  removeSavedMerchantAccount,
+} from '@/lib/merchant-accounts'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { clearDashboardInitializationCache } from '@/features/dashboard/dashboard-data'
 import { logoutMerchant } from '@/features/store-settings/store-settings-data'
@@ -18,7 +22,7 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
   const logoutMutation = useMutation({
     mutationFn: logoutMerchant,
     onSuccess: () => {
-      localStorage.removeItem('merchant_push_notifications_enabled')
+      removeSavedMerchantAccount(getActiveMerchantToken())
       clearDashboardInitializationCache()
       queryClient.clear()
       auth.reset()

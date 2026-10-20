@@ -11,10 +11,13 @@
  *   const products = useLocalProducts()      // كل المنتجات
  *   const pendingCount = useLocalPendingOrderCount()
  */
-
 import { useLiveQuery } from 'dexie-react-hooks'
-import { localDB } from '@/lib/db'
-import type { DashboardOrder, DashboardProduct } from '@/features/dashboard/dashboard-data'
+import { getMerchantLocalDB } from '@/lib/db'
+import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
+import type {
+  DashboardOrder,
+  DashboardProduct,
+} from '@/features/dashboard/dashboard-data'
 
 // ─── حالات الطلبات المُعرَّفة ────────────────────────────────────────────
 const ACTIVE_STATUSES = [
@@ -33,9 +36,16 @@ const ARCHIVED_STATUSES = ['completed', 'cancelled'] as const
  * يتحدث الـ UI تلقائياً عند أي تغيير في IndexedDB.
  */
 export function useLocalOrders(): DashboardOrder[] {
+  const merchantId = useMerchantIdentity()
   return useLiveQuery(
-    () => localDB.orders.orderBy('createdAt').reverse().toArray(),
-    [],
+    () =>
+      merchantId
+        ? getMerchantLocalDB(merchantId)
+            .orders.orderBy('createdAt')
+            .reverse()
+            .toArray()
+        : Promise.resolve<DashboardOrder[]>([]),
+    [merchantId],
     []
   )
 }
@@ -44,19 +54,25 @@ export function useLocalOrders(): DashboardOrder[] {
  * قراءة الطلبات النشطة فقط (قيد المراجعة / التحضير / التوصيل).
  */
 export function useLocalActiveOrders(): DashboardOrder[] {
+  const merchantId = useMerchantIdentity()
+  const database = merchantId ? getMerchantLocalDB(merchantId) : null
   return useLiveQuery(
     () =>
-      localDB.orders
-        .filter((o: DashboardOrder) =>
-          ACTIVE_STATUSES.includes(o.status as (typeof ACTIVE_STATUSES)[number])
-        )
-        .toArray()
-        .then((arr: DashboardOrder[]) =>
-          arr.sort((a: DashboardOrder, b: DashboardOrder) =>
-            b.createdAt.localeCompare(a.createdAt)
-          )
-        ),
-    [],
+      database
+        ? database.orders
+            .filter((o: DashboardOrder) =>
+              ACTIVE_STATUSES.includes(
+                o.status as (typeof ACTIVE_STATUSES)[number]
+              )
+            )
+            .toArray()
+            .then((arr: DashboardOrder[]) =>
+              arr.sort((a: DashboardOrder, b: DashboardOrder) =>
+                b.createdAt.localeCompare(a.createdAt)
+              )
+            )
+        : Promise.resolve<DashboardOrder[]>([]),
+    [merchantId],
     []
   )
 }
@@ -65,19 +81,25 @@ export function useLocalActiveOrders(): DashboardOrder[] {
  * قراءة الطلبات المؤرشفة (مكتملة / ملغاة).
  */
 export function useLocalArchivedOrders(): DashboardOrder[] {
+  const merchantId = useMerchantIdentity()
+  const database = merchantId ? getMerchantLocalDB(merchantId) : null
   return useLiveQuery(
     () =>
-      localDB.orders
-        .filter((o: DashboardOrder) =>
-          ARCHIVED_STATUSES.includes(o.status as (typeof ARCHIVED_STATUSES)[number])
-        )
-        .toArray()
-        .then((arr: DashboardOrder[]) =>
-          arr.sort((a: DashboardOrder, b: DashboardOrder) =>
-            b.createdAt.localeCompare(a.createdAt)
-          )
-        ),
-    [],
+      database
+        ? database.orders
+            .filter((o: DashboardOrder) =>
+              ARCHIVED_STATUSES.includes(
+                o.status as (typeof ARCHIVED_STATUSES)[number]
+              )
+            )
+            .toArray()
+            .then((arr: DashboardOrder[]) =>
+              arr.sort((a: DashboardOrder, b: DashboardOrder) =>
+                b.createdAt.localeCompare(a.createdAt)
+              )
+            )
+        : Promise.resolve<DashboardOrder[]>([]),
+    [merchantId],
     []
   )
 }
@@ -87,13 +109,16 @@ export function useLocalArchivedOrders(): DashboardOrder[] {
  * مفيد لشارة العداد (Badge) في القائمة الجانبية.
  */
 export function useLocalPendingOrderCount(): number {
+  const merchantId = useMerchantIdentity()
   return useLiveQuery(
     () =>
-      localDB.orders
-        .where('status')
-        .equals('pending_merchant_approval')
-        .count(),
-    [],
+      merchantId
+        ? getMerchantLocalDB(merchantId)
+            .orders.where('status')
+            .equals('pending_merchant_approval')
+            .count()
+        : Promise.resolve(0),
+    [merchantId],
     0
   )
 }
@@ -102,9 +127,13 @@ export function useLocalPendingOrderCount(): number {
  * طلب واحد بمعرّفه.
  */
 export function useLocalOrder(orderId: string): DashboardOrder | undefined {
+  const merchantId = useMerchantIdentity()
   return useLiveQuery(
-    () => localDB.orders.get(orderId),
-    [orderId],
+    async () =>
+      merchantId
+        ? await getMerchantLocalDB(merchantId).orders.get(orderId)
+        : undefined,
+    [merchantId, orderId],
     undefined
   )
 }
@@ -115,9 +144,13 @@ export function useLocalOrder(orderId: string): DashboardOrder | undefined {
  * قراءة جميع المنتجات مرتبة حسب الاسم.
  */
 export function useLocalProducts(): DashboardProduct[] {
+  const merchantId = useMerchantIdentity()
   return useLiveQuery(
-    () => localDB.products.toArray(),
-    [],
+    () =>
+      merchantId
+        ? getMerchantLocalDB(merchantId).products.toArray()
+        : Promise.resolve<DashboardProduct[]>([]),
+    [merchantId],
     []
   )
 }
@@ -126,12 +159,15 @@ export function useLocalProducts(): DashboardProduct[] {
  * المنتجات المتاحة فقط (isAvailable = true).
  */
 export function useLocalAvailableProducts(): DashboardProduct[] {
+  const merchantId = useMerchantIdentity()
   return useLiveQuery(
     () =>
-      localDB.products
-        .filter((p: DashboardProduct) => p.isAvailable === true)
-        .toArray(),
-    [],
+      merchantId
+        ? getMerchantLocalDB(merchantId)
+            .products.filter((p: DashboardProduct) => p.isAvailable === true)
+            .toArray()
+        : Promise.resolve<DashboardProduct[]>([]),
+    [merchantId],
     []
   )
 }
@@ -139,10 +175,16 @@ export function useLocalAvailableProducts(): DashboardProduct[] {
 /**
  * منتج واحد بمعرّفه.
  */
-export function useLocalProduct(productId: string): DashboardProduct | undefined {
+export function useLocalProduct(
+  productId: string
+): DashboardProduct | undefined {
+  const merchantId = useMerchantIdentity()
   return useLiveQuery(
-    () => localDB.products.get(productId),
-    [productId],
+    async () =>
+      merchantId
+        ? await getMerchantLocalDB(merchantId).products.get(productId)
+        : undefined,
+    [merchantId, productId],
     undefined
   )
 }
@@ -154,11 +196,23 @@ export function useLocalProduct(productId: string): DashboardProduct | undefined
  * تتحدث تلقائياً مع كل طلب أو منتج جديد.
  */
 export function useLocalDashboardStats() {
+  const merchantId = useMerchantIdentity()
   return useLiveQuery(
     async () => {
+      if (!merchantId) {
+        return {
+          totalRevenue: 0,
+          totalOrders: 0,
+          pendingCount: 0,
+          activeCount: 0,
+          completedCount: 0,
+          productsCount: 0,
+        }
+      }
+      const database = getMerchantLocalDB(merchantId)
       const [allOrders, productsCount] = await Promise.all([
-        localDB.orders.toArray(),
-        localDB.products.count(),
+        database.orders.toArray(),
+        database.products.count(),
       ])
 
       const totalRevenue = allOrders.reduce(
@@ -184,7 +238,7 @@ export function useLocalDashboardStats() {
         productsCount,
       }
     },
-    [],
+    [merchantId],
     {
       totalRevenue: 0,
       totalOrders: 0,
@@ -194,4 +248,3 @@ export function useLocalDashboardStats() {
     }
   )
 }
-

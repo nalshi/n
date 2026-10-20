@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { LogOut, Settings } from 'lucide-react'
+import { LogOut, Repeat2, Settings } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import useDialogState from '@/hooks/use-dialog-state'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -49,6 +49,12 @@ export function ProfileDropdown() {
             <Link to='/store-settings'>
               <Settings aria-hidden='true' />
               إعدادات المتجر
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link to='/sign-in'>
+              <Repeat2 aria-hidden='true' />
+              تبديل الحساب
             </Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator />

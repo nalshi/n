@@ -7,7 +7,8 @@ import {
 import { toast } from 'sonner'
 import { useRealtimeStore } from '@/stores/realtime-store'
 import {
-  localDB,
+  getMerchantLocalDB,
+  openMerchantLocalDB,
   hydrateFromSnapshot,
   writeSyncCursor,
   readSyncCursor,
@@ -520,12 +521,13 @@ export function useMerchantData(merchantId: string) {
   const query = useQuery({
     queryKey: merchantBootstrapKey(merchantId),
     queryFn: async (): Promise<DashboardInitialization> => {
-      const localSnapshot = await localDB.syncState.get('cursor')
+      const database = await openMerchantLocalDB(merchantId)
+      const localSnapshot = await database.syncState.get('cursor')
       if (localSnapshot?.merchantId === merchantId) {
         const [products, orders, categories] = await Promise.all([
-          localDB.products.toArray(),
-          localDB.orders.toArray(),
-          localDB.categories.toArray(),
+          database.products.toArray(),
+          database.orders.toArray(),
+          database.categories.toArray(),
         ])
         const activeOrders = orders.filter(
           (o) => o.status !== 'completed' && o.status !== 'cancelled'
@@ -538,9 +540,12 @@ export function useMerchantData(merchantId: string) {
             products,
             activeOrders,
             archivedOrders,
-            storeName: localStorage.getItem('merchant_store_name') || 'متجري',
-            username: localStorage.getItem('merchant_username') || '',
-            phone: localStorage.getItem('merchant_phone') || '',
+            storeName:
+              localStorage.getItem(`merchant_store_name:${merchantId}`) ||
+              'متجري',
+            username:
+              localStorage.getItem(`merchant_username:${merchantId}`) || '',
+            phone: localStorage.getItem(`merchant_phone:${merchantId}`) || '',
           },
           categories,
           lastTimestamp: Date.now(),
@@ -598,7 +603,8 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
       }
 
       if (message.type === 'ORDER_MUTATED') {
-        void localDB.orders.toArray().then((orders) => {
+        const database = getMerchantLocalDB(merchantId)
+        void database.orders.toArray().then((orders) => {
           const activeOrders = orders.filter(
             (order) =>
               order.status !== 'completed' && order.status !== 'cancelled'
@@ -640,7 +646,8 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
       }
 
       if (message.type === 'PRODUCT_MUTATED') {
-        void localDB.products.toArray().then((products) => {
+        const database = getMerchantLocalDB(merchantId)
+        void database.products.toArray().then((products) => {
           queryClient.setQueryData(
             merchantQueryKeys.products(merchantId),
             products
@@ -686,7 +693,8 @@ export function useLegacyWorkerRealtimeSync(
       if (!msg || typeof msg !== 'object') return
       // التبويب الثانوي يُعيد بناء الـ cache من Dexie بشكل lazy
       if (msg.type === 'ORDER_MUTATED' && msg.merchantId === merchantId) {
-        void localDB.orders.toArray().then((orders: DashboardOrder[]) => {
+        const database = getMerchantLocalDB(merchantId)
+        void database.orders.toArray().then((orders: DashboardOrder[]) => {
           const active = orders.filter(
             (o: DashboardOrder) =>
               o.status !== 'completed' && o.status !== 'cancelled'
@@ -706,16 +714,19 @@ export function useLegacyWorkerRealtimeSync(
         })
       }
       if (msg.type === 'PRODUCT_MUTATED' && msg.merchantId === merchantId) {
-        void localDB.products.toArray().then((products: DashboardProduct[]) => {
-          queryClient.setQueryData(
-            merchantQueryKeys.products(merchantId),
-            products
-          )
-          queryClient.setQueryData(
-            merchantQueryKeys.dashboardProducts(merchantId),
-            products
-          )
-        })
+        const database = getMerchantLocalDB(merchantId)
+        void database.products
+          .toArray()
+          .then((products: DashboardProduct[]) => {
+            queryClient.setQueryData(
+              merchantQueryKeys.products(merchantId),
+              products
+            )
+            queryClient.setQueryData(
+              merchantQueryKeys.dashboardProducts(merchantId),
+              products
+            )
+          })
       }
     }
     _localBus?.addEventListener('message', handleBusMessage)
@@ -732,7 +743,7 @@ export function useLegacyWorkerRealtimeSync(
         }
       }
       // fallback: اقرأ من Dexie (ما بعد إعادة تحميل الصفحة)
-      const local = await readSyncCursor()
+      const local = await readSyncCursor(merchantId)
       return {
         timestamp: local.lastTimestamp,
         eventId: local.lastEventId,
@@ -897,8 +908,9 @@ export function useLegacyWorkerRealtimeSync(
             duration: 8_000,
           })
           if (
-            localStorage.getItem('merchant_push_notifications_enabled') ===
-              'true' &&
+            localStorage.getItem(
+              `merchant_push_notifications_enabled:${merchantId}`
+            ) === 'true' &&
             'Notification' in window &&
             Notification.permission === 'granted'
           ) {

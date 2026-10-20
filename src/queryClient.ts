@@ -4,16 +4,29 @@ import type { Persister } from '@tanstack/react-query-persist-client'
 import { del, get, set } from 'idb-keyval'
 import { toast } from 'sonner'
 import { handleServerError } from '@/lib/handle-server-error'
+import { getMerchantIdentityFromToken } from '@/lib/merchant-accounts'
 
 const PERSISTED_CLIENT_KEY = 'merchant-dashboard-query-cache-v1'
 
+function getPersistedClientKey() {
+  if (typeof window === 'undefined') return PERSISTED_CLIENT_KEY
+  const token =
+    localStorage.getItem('merchant_token') ||
+    sessionStorage.getItem('merchant_token') ||
+    ''
+  const accountId = getMerchantIdentityFromToken(token)
+  return accountId
+    ? `${PERSISTED_CLIENT_KEY}:${encodeURIComponent(accountId)}`
+    : `${PERSISTED_CLIENT_KEY}:anonymous`
+}
+
 export const queryPersister: Persister = {
   persistClient: async (client) => {
-    await set(PERSISTED_CLIENT_KEY, client)
+    await set(getPersistedClientKey(), client)
   },
-  restoreClient: async () => get(PERSISTED_CLIENT_KEY),
+  restoreClient: async () => get(getPersistedClientKey()),
   removeClient: async () => {
-    await del(PERSISTED_CLIENT_KEY)
+    await del(getPersistedClientKey())
   },
 }
 

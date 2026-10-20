@@ -1,5 +1,6 @@
 import { useAuthStore } from '@/stores/auth-store'
 import { clearAuthApiCache } from '@/lib/auth-api'
+import { saveMerchantAccount } from '@/lib/merchant-accounts'
 
 function decodeToken(token: string): Record<string, unknown> | null {
   try {
@@ -16,9 +17,13 @@ function decodeToken(token: string): Record<string, unknown> | null {
 export function completeAuthSession(
   token: string,
   remember: boolean,
-  fallbackIdentifier: string
+  fallbackIdentifier: string,
+  displayName = ''
 ) {
   clearAuthApiCache()
+  if (remember) {
+    saveMerchantAccount(token, fallbackIdentifier, displayName)
+  }
   if (remember) {
     localStorage.setItem('merchant_token', token)
     sessionStorage.removeItem('merchant_token')

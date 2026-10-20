@@ -39,6 +39,21 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   }, [startIntro])
 
   useEffect(() => {
+    const syncAccountAcrossTabs = (event: StorageEvent) => {
+      if (
+        event.storageArea === localStorage &&
+        event.key === 'merchant_token' &&
+        event.oldValue !== event.newValue
+      ) {
+        window.location.reload()
+      }
+    }
+
+    window.addEventListener('storage', syncAccountAcrossTabs)
+    return () => window.removeEventListener('storage', syncAccountAcrossTabs)
+  }, [])
+
+  useEffect(() => {
     setIntroReady(dashboardInitialized || Boolean(initializationError))
   }, [dashboardInitialized, initializationError, setIntroReady])
 
