@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -15,6 +15,10 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { authApiRequest } from '@/lib/auth-api'
+import {
+  getMerchantProfile,
+  saveMerchantProfile,
+} from '@/lib/merchant-profiles'
 import {
   merchantQueryKeys,
   updateMerchantOrderStatusCache,
@@ -154,6 +158,7 @@ export function Dashboard() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const merchantId = useMerchantIdentity()
+  const merchantProfile = getMerchantProfile(merchantId)
   const bootstrapQuery = useMerchantData(merchantId)
   const [selectedOrder, setSelectedOrder] = useState<DashboardOrder | null>(
     null
@@ -211,11 +216,36 @@ export function Dashboard() {
   )
   const { awaitingOrders, deliveryOrders, recentOrders } = orderSummary
   const storeBaseUrl = 'https://appi.dpdns.org'
-  const storeUrl = data?.username
-    ? `${storeBaseUrl}/${encodeURIComponent(data.username.replace(/^@/, ''))}`
+  const username = data?.username.trim().replace(/^@/, '') || ''
+  const fetchedStoreUrl = username
+    ? `${storeBaseUrl}/${encodeURIComponent(username)}`
     : ''
-  const callablePhone = data?.phone.replace(/[^\d+#*]/g, '') || ''
+  const storeUrl = fetchedStoreUrl || merchantProfile.storeUrl
+  const dataPhone = data?.phone.trim() || ''
+  const phone = dataPhone || merchantProfile.phone.trim()
+  const callablePhone = phone.replace(/[^\d+#*]/g, '')
   const phoneHref = callablePhone ? `tel:${callablePhone}` : ''
+  const storeName = data?.storeName || merchantProfile.storeName || 'متجرك'
+
+  useEffect(() => {
+    if (!merchantId || (!dataPhone && !fetchedStoreUrl)) return
+
+    const profileUpdates = {
+      ...(dataPhone ? { phone: dataPhone } : {}),
+      ...(fetchedStoreUrl ? { storeUrl: fetchedStoreUrl } : {}),
+    }
+    if (Object.keys(profileUpdates).length === 0) return
+
+    try {
+      saveMerchantProfile(merchantId, profileUpdates)
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'تعذر حفظ رقم ورابط المتجر على هذا الجهاز.'
+      )
+    }
+  }, [dataPhone, fetchedStoreUrl, merchantId])
 
   const openDeliveryDialog = () => {
     if (!deliveryOrders.length) {
@@ -247,6 +277,61 @@ export function Dashboard() {
             description='متابعة الطلبات والمنتجات وحالة متجرك من مكان واحد.'
           />
         </div>
+
+        {(data || phone || storeUrl) && (
+          <Card className='mb-6 overflow-hidden border-border/70'>
+            <CardContent className='grid gap-5 p-4 sm:p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:p-6'>
+              <div className='min-w-0'>
+                <p className='mb-1 text-sm font-medium text-muted-foreground'>
+                  متجرك على نالش
+                </p>
+                <h2 className='truncate text-xl font-bold sm:text-2xl'>
+                  {storeName}
+                </h2>
+                <p className='mt-2 text-sm text-muted-foreground'>
+                  بيانات المتجر وروابطه وأحدث نشاطاته في مكان واحد.
+                </p>
+              </div>
+              <div className='grid min-w-0 gap-2 sm:grid-cols-2 md:min-w-[24rem]'>
+                <a
+                  href={phoneHref || undefined}
+                  aria-disabled={!phoneHref}
+                  className='flex min-w-0 items-center gap-3 rounded-lg border bg-background p-3 transition-colors hover:bg-accent aria-disabled:pointer-events-none aria-disabled:opacity-60'
+                >
+                  <Phone className='size-4 shrink-0 text-muted-foreground' />
+                  <span className='grid min-w-0'>
+                    <span className='text-xs text-muted-foreground'>
+                      رقم المتجر
+                    </span>
+                    <span className='truncate text-sm font-medium' dir='ltr'>
+                      {phone || 'غير مضاف'}
+                    </span>
+                  </span>
+                </a>
+                <a
+                  href={storeUrl || undefined}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  aria-disabled={!storeUrl}
+                  className='flex min-w-0 items-center gap-3 rounded-lg border bg-background p-3 transition-colors hover:bg-accent aria-disabled:pointer-events-none aria-disabled:opacity-60'
+                >
+                  <Store className='size-4 shrink-0 text-muted-foreground' />
+                  <span className='grid min-w-0'>
+                    <span className='text-xs text-muted-foreground'>
+                      رابط المتجر
+                    </span>
+                    <span className='truncate text-sm font-medium' dir='ltr'>
+                      {storeUrl || 'غير متاح'}
+                    </span>
+                  </span>
+                  {storeUrl && (
+                    <ExternalLink className='size-3 shrink-0 text-muted-foreground' />
+                  )}
+                </a>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {dashboardQuery.isPending ? (
           <div
@@ -317,59 +402,6 @@ export function Dashboard() {
                 متابعة الطلبات <ArrowLeft aria-hidden='true' />
               </Button>
             </section>
-
-            <Card className='overflow-hidden border-border/70'>
-              <CardContent className='grid gap-5 p-4 sm:p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:p-6'>
-                <div className='min-w-0'>
-                  <p className='mb-1 text-sm font-medium text-muted-foreground'>
-                    متجرك على نالش
-                  </p>
-                  <h2 className='truncate text-xl font-bold sm:text-2xl'>
-                    {data.storeName}
-                  </h2>
-                  <p className='mt-2 text-sm text-muted-foreground'>
-                    بيانات المتجر وروابطه وأحدث نشاطاته في مكان واحد.
-                  </p>
-                </div>
-                <div className='grid min-w-0 gap-2 sm:grid-cols-2 md:min-w-[24rem]'>
-                  <a
-                    href={phoneHref || undefined}
-                    aria-disabled={!phoneHref}
-                    className='flex min-w-0 items-center gap-3 rounded-lg border bg-background p-3 transition-colors hover:bg-accent aria-disabled:pointer-events-none aria-disabled:opacity-60'
-                  >
-                    <Phone className='size-4 shrink-0 text-muted-foreground' />
-                    <span className='grid min-w-0'>
-                      <span className='text-xs text-muted-foreground'>
-                        رقم المتجر
-                      </span>
-                      <span className='truncate text-sm font-medium' dir='ltr'>
-                        {data.phone || 'غير مضاف'}
-                      </span>
-                    </span>
-                  </a>
-                  <a
-                    href={storeUrl || undefined}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    aria-disabled={!storeUrl}
-                    className='flex min-w-0 items-center gap-3 rounded-lg border bg-background p-3 transition-colors hover:bg-accent aria-disabled:pointer-events-none aria-disabled:opacity-60'
-                  >
-                    <Store className='size-4 shrink-0 text-muted-foreground' />
-                    <span className='grid min-w-0'>
-                      <span className='text-xs text-muted-foreground'>
-                        رابط المتجر
-                      </span>
-                      <span className='truncate text-sm font-medium' dir='ltr'>
-                        {storeUrl || 'غير متاح'}
-                      </span>
-                    </span>
-                    {storeUrl && (
-                      <ExternalLink className='size-3 shrink-0 text-muted-foreground' />
-                    )}
-                  </a>
-                </div>
-              </CardContent>
-            </Card>
 
             <section
               aria-labelledby='quick-actions-title'

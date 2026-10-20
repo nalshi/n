@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { MerchantLogoSymbol } from '@/components/layout/merchant-logo-symbol'
 
-const MIN_INTRO_DURATION_MS = 260
+const MIN_INTRO_DURATION_MS = 650
 
 type DashboardIntroProps = {
   isReady: boolean
@@ -63,7 +63,7 @@ export function DashboardIntro({ isReady, onComplete }: DashboardIntroProps) {
         targetRect.bottom > 0 &&
         targetRect.left < window.innerWidth &&
         targetRect.top < window.innerHeight
-      let duration = reducedMotion ? 80 : 150
+      let duration = reducedMotion ? 100 : 320
 
       if (targetRect && targetIsVisible && !reducedMotion) {
         const sourceRect = mark.getBoundingClientRect()
@@ -76,7 +76,7 @@ export function DashboardIntro({ isReady, onComplete }: DashboardIntroProps) {
           targetRect.height / 2 -
           (sourceRect.top + sourceRect.height / 2)
         const scale = targetRect.width / sourceRect.width
-        duration = 220
+        duration = 320
         animation = mark.animate(
           [
             { transform: 'translate3d(0, 0, 0) scale(1)' },

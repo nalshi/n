@@ -26,22 +26,26 @@ describe('merchant profiles', () => {
       storeName: 'متجر الأول',
       phone: '+967 700 000 001',
       location: 'صنعاء، شارع الزبيري',
+      storeUrl: '',
     })
     saveMerchantProfile('merchant-2', {
       storeName: 'متجر الثاني',
       phone: '+967 700 000 002',
       location: 'عدن، خور مكسر',
+      storeUrl: '',
     })
 
     expect(getMerchantProfile('merchant-1')).toEqual({
       storeName: 'متجر الأول',
       phone: '+967 700 000 001',
       location: 'صنعاء، شارع الزبيري',
+      storeUrl: '',
     })
     expect(getMerchantProfile('merchant-2')).toEqual({
       storeName: 'متجر الثاني',
       phone: '+967 700 000 002',
       location: 'عدن، خور مكسر',
+      storeUrl: '',
     })
   })
 
@@ -50,6 +54,7 @@ describe('merchant profiles', () => {
       storeName: 'متجر محفوظ',
       phone: '+967 700 000 001',
       location: 'صنعاء',
+      storeUrl: '',
     })
     saveMerchantAccount(makeToken(1), 'merchant-1', 'متجر محفوظ')
     removeSavedMerchantAccountById('1')
@@ -59,7 +64,30 @@ describe('merchant profiles', () => {
       storeName: 'متجر محفوظ',
       phone: '+967 700 000 001',
       location: 'تعز، شارع جمال',
+      storeUrl: '',
     })
+  })
+
+  it('stores a merchant storefront link and migrates older saved profiles', () => {
+    localStorage.setItem(
+      'nalsh_merchant_profiles_v1',
+      JSON.stringify({
+        'merchant:merchant-old': {
+          storeName: 'متجر قديم',
+          phone: '+967 700 000 003',
+          location: '',
+        },
+      })
+    )
+    expect(getMerchantProfile('merchant-old').storeUrl).toBe('')
+
+    saveMerchantProfile('merchant-old', {
+      storeUrl: 'https://appi.dpdns.org/merchant-old',
+    })
+
+    expect(getMerchantProfile('merchant-old').storeUrl).toBe(
+      'https://appi.dpdns.org/merchant-old'
+    )
   })
 
   it('rejects missing merchant IDs and oversized profile fields', () => {
@@ -67,5 +95,13 @@ describe('merchant profiles', () => {
     expect(() =>
       saveMerchantProfile('merchant-1', { location: 'م'.repeat(201) })
     ).toThrow('الحد المسموح به')
+    expect(() =>
+      saveMerchantProfile('merchant-1', { storeUrl: 'x'.repeat(513) })
+    ).toThrow('الحد المسموح به')
+    expect(() =>
+      saveMerchantProfile('merchant-1', {
+        storeUrl: 'javascript:alert(1)',
+      })
+    ).toThrow('رابط المتجر غير صالح')
   })
 })

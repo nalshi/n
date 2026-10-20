@@ -2,12 +2,29 @@ export type MerchantProfile = {
   storeName: string
   phone: string
   location: string
+  storeUrl: string
 }
 
 const PROFILES_STORAGE_KEY = 'nalsh_merchant_profiles_v1'
+const MERCHANT_STOREFRONT_ORIGIN = 'https://appi.dpdns.org'
 
 function profileKey(merchantId: string) {
   return `merchant:${merchantId}`
+}
+
+function isValidStoreUrl(storeUrl: string) {
+  if (!storeUrl) return true
+
+  try {
+    const url = new URL(storeUrl)
+    return (
+      url.protocol === 'https:' &&
+      url.origin === MERCHANT_STOREFRONT_ORIGIN &&
+      url.pathname !== '/'
+    )
+  } catch {
+    return false
+  }
 }
 
 function readStoredProfiles(): Record<string, MerchantProfile> {
@@ -37,7 +54,10 @@ function readStoredProfiles(): Record<string, MerchantProfile> {
     if (
       typeof profile.storeName !== 'string' ||
       typeof profile.phone !== 'string' ||
-      typeof profile.location !== 'string'
+      typeof profile.location !== 'string' ||
+      (profile.storeUrl !== undefined &&
+        (typeof profile.storeUrl !== 'string' ||
+          !isValidStoreUrl(profile.storeUrl)))
     ) {
       throw new Error('حقول أحد ملفات التجار المحفوظة غير صالحة.')
     }
@@ -48,6 +68,7 @@ function readStoredProfiles(): Record<string, MerchantProfile> {
       storeName: profile.storeName,
       phone: profile.phone,
       location: profile.location,
+      storeUrl: typeof profile.storeUrl === 'string' ? profile.storeUrl : '',
     }
   }
 
@@ -65,6 +86,7 @@ export function getMerchantProfile(merchantId: string): MerchantProfile {
       storeName: '',
       phone: '',
       location: '',
+      storeUrl: '',
     }
   )
 }
@@ -97,15 +119,20 @@ export function saveMerchantProfile(
     storeName: '',
     phone: '',
     location: '',
+    storeUrl: '',
   }
   const profile = { ...current, ...updates }
 
   if (
     profile.storeName.length > 120 ||
     profile.phone.length > 40 ||
-    profile.location.length > 200
+    profile.location.length > 200 ||
+    profile.storeUrl.length > 512
   ) {
     throw new Error('تجاوزت إحدى معلومات التاجر الحد المسموح به.')
+  }
+  if (!isValidStoreUrl(profile.storeUrl)) {
+    throw new Error('رابط المتجر غير صالح أو لا يتبع نطاق نالش.')
   }
 
   profiles[key] = profile
