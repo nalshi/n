@@ -1,15 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { z } from 'zod'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from '@tanstack/react-router'
-import { Loader2, LocateFixed, Map, Rocket } from 'lucide-react'
+import { Check, Loader2, LocateFixed, Map, Palette, Rocket } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   useAuthFlowStore,
   type MerchantRegistration,
 } from '@/stores/auth-flow-store'
 import { authApiRequest } from '@/lib/auth-api'
+import {
+  fetchStorefrontLibrary,
+  type StorefrontTheme,
+} from '@/features/storefront/storefront-data'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -61,6 +65,84 @@ type SignUpFormProps = React.HTMLAttributes<HTMLFormElement> & {
   initialPhone?: string
 }
 
+function ThemeOptionCard({
+  theme,
+  selected,
+  onSelect,
+}: {
+  theme: StorefrontTheme
+  selected: boolean
+  onSelect: () => void
+}) {
+  const palette = selected ? theme.preview.dark : theme.preview
+
+  return (
+    <button
+      type='button'
+      onClick={onSelect}
+      aria-label={`اختيار قالب ${theme.name}`}
+      aria-pressed={selected}
+      className={cn(
+        'group relative overflow-hidden rounded-2xl border text-start transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        selected
+          ? 'border-primary bg-primary/5 shadow-sm ring-2 ring-primary/30'
+          : 'border-border bg-card hover:border-primary/50 hover:bg-muted/20'
+      )}
+    >
+      <div className='grid h-24 grid-cols-2'>
+        {(['light', 'dark'] as const).map((mode) => {
+          const isDark = mode === 'dark'
+          const preview = isDark ? theme.preview.dark : theme.preview
+          return (
+            <div
+              key={mode}
+              className='flex items-center justify-center border-e border-white/10 last:border-e-0'
+              style={{ backgroundColor: preview.background }}
+            >
+              <span
+                className='grid size-10 place-items-center rounded-xl text-white shadow-sm'
+                style={{ backgroundColor: isDark ? preview.primary : preview.primary }}
+              >
+                <Palette className='size-4' />
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      <div className='flex items-start justify-between gap-3 p-3.5'>
+        <div className='min-w-0'>
+          <p className='truncate text-sm font-bold text-foreground'>
+            {theme.name}
+          </p>
+          <p className='mt-1 line-clamp-2 text-[11px] leading-5 text-muted-foreground'>
+            {theme.description || theme.category || 'قالب متجر'}
+          </p>
+        </div>
+        {selected && (
+          <span className='grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground'>
+            <Check className='size-4' />
+          </span>
+        )}
+      </div>
+      <div className='flex items-center gap-1.5 px-3.5 pb-3.5'>
+        {[
+          palette.primary,
+          palette.accent,
+          palette.background,
+          palette.card || '#ffffff',
+        ].map((color, index) => (
+          <span
+            key={`${theme.id}-${color}-${index}`}
+            className='size-4 rounded-md border border-black/5 shadow-xs'
+            style={{ backgroundColor: color }}
+            aria-hidden='true'
+          />
+        ))}
+      </div>
+    </button>
+  )
+}
+
 function RequiredFormLabel({ children }: { children: React.ReactNode }) {
   return (
     <FormLabel>
@@ -79,9 +161,26 @@ export function SignUpForm({
 }: SignUpFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [locating, setLocating] = useState(false)
+  const [themes, setThemes] = useState<StorefrontTheme[]>([])
+  const [selectedThemeId, setSelectedThemeId] = useState('')
   const navigate = useNavigate()
   const flow = useAuthFlowStore()
   const { startIntro, setIntroReady } = useDashboardIntro()
+
+  useEffect(() => {
+    let active = true
+    fetchStorefrontLibrary()
+      .then((library) => {
+        if (!active) return
+        setThemes(library.themes.slice(0, 8))
+      })
+      .catch(() => {
+        if (active) setThemes([])
+      })
+    return () => {
+      active = false
+    }
+  }, [])
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -153,6 +252,7 @@ export function SignUpForm({
       password: values.password,
       location: values.location.trim(),
       store_type: resolvedStoreType,
+      storefront_theme_id: selectedThemeId || undefined,
     }
     setIsLoading(true)
     startIntro()
@@ -166,6 +266,7 @@ export function SignUpForm({
         phone,
         stateToken: response.state_token || '',
         registration,
+        storefrontThemeId: selectedThemeId,
       })
       toast.success('أرسلنا رمز التحقق إلى رقم جوالك.')
       setIntroReady(true)
@@ -398,6 +499,30 @@ export function SignUpForm({
               </FormItem>
             )}
           />
+          {themes.length > 0 && (
+            <div className='sm:col-span-2 space-y-3'>
+              <div className='flex items-center justify-between gap-2'>
+                <p className='text-sm font-medium'>شكل المتجر (اختياري)</p>
+                <button
+                  type='button'
+                  onClick={() => setSelectedThemeId('')}
+                  className='text-xs font-medium text-muted-foreground underline-offset-4 hover:text-primary hover:underline'
+                >
+                  لا أختار الآن
+                </button>
+              </div>
+              <div className='grid gap-3 md:grid-cols-2'>
+                {themes.map((theme) => (
+                  <ThemeOptionCard
+                    key={theme.id}
+                    theme={theme}
+                    selected={selectedThemeId === theme.id}
+                    onSelect={() => setSelectedThemeId(theme.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           <FormField
             control={form.control}
             name='terms'

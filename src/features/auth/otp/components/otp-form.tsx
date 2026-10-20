@@ -9,6 +9,13 @@ import { useAuthFlowStore } from '@/stores/auth-flow-store'
 import { authApiRequest } from '@/lib/auth-api'
 import { getSafeAuthRedirect } from '@/lib/auth-redirect'
 import { completeAuthSession } from '@/lib/complete-auth-session'
+import { buildSelectedConfig } from '@/features/storefront/storefront-config'
+import {
+  fetchStorefrontLibrary,
+  loadBaseStorefrontConfig,
+  loadStorefrontThemeConfig,
+  saveStorefrontConfig,
+} from '@/features/storefront/storefront-data'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -71,7 +78,41 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
   const phone = flow.phone
   const timerLabel = `${String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:${String(remainingSeconds % 60).padStart(2, '0')}`
 
-  async function finishLogin(response: { token?: string; redirect?: string }) {
+  async function applySelectedStorefrontTheme() {
+    const themeId = flow.storefrontThemeId
+    const registration = flow.registration
+    if (!themeId || !registration?.username) return
+
+    try {
+      const library = await fetchStorefrontLibrary()
+      const theme = library.themes.find((candidate) => candidate.id === themeId)
+      if (!theme) return
+
+      const [baseConfig, themeConfig] = await Promise.all([
+        loadBaseStorefrontConfig({}),
+        loadStorefrontThemeConfig(theme),
+      ])
+      const selectedConfig = buildSelectedConfig(
+        baseConfig,
+        themeConfig,
+        theme,
+        'light',
+        {
+          storeName: registration.name,
+          phone: registration.phone,
+          slogan: '',
+        }
+      )
+      await saveStorefrontConfig(registration.username, selectedConfig)
+    } catch (error) {
+      console.warn('Selected storefront theme could not be applied.', error)
+    }
+  }
+
+  async function finishLogin(
+    response: { token?: string; redirect?: string },
+    afterAuth?: () => Promise<void> | void
+  ) {
     if (!response.token) {
       throw new Error('لم يُرجع الخادم رمز جلسة صالحًا.')
     }
@@ -81,6 +122,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
       phone,
       flow.storeName || flow.registration?.name || ''
     )
+    if (afterAuth) await afterAuth()
     const redirectTo = getSafeAuthRedirect(flow.redirectTo)
     flow.clearFlow()
     await navigate({ to: redirectTo, replace: true })
@@ -121,7 +163,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
       if (context === 'register') {
         flow.setIdentifier(phone)
         if (response.token) {
-          await finishLogin({ token: response.token })
+          await finishLogin({ token: response.token }, applySelectedStorefrontTheme)
           toast.success('تم تفعيل متجرك وتسجيل الدخول بنجاح.')
           return
         }
