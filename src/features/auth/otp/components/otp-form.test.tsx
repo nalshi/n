@@ -31,7 +31,10 @@ vi.mock('@/features/storefront/storefront-data', () => ({
   loadBaseStorefrontConfig: loadBaseConfigMock,
   loadStorefrontThemeConfig: loadThemeConfigMock,
   saveStorefrontConfig: saveStorefrontConfigMock,
-  mergeStorefrontConfig: (target: Record<string, unknown>, source: Record<string, unknown>) => ({
+  mergeStorefrontConfig: (
+    target: Record<string, unknown>,
+    source: Record<string, unknown>
+  ) => ({
     ...target,
     ...source,
   }),
@@ -85,6 +88,7 @@ describe('OtpForm', () => {
       redirectTo: '/',
       storeName: '',
       storefrontThemeId: '',
+      storefrontThemeMode: 'light',
       registration: null,
     })
     apiRequestMock.mockResolvedValue({ status: 'success' })
@@ -122,6 +126,7 @@ describe('OtpForm', () => {
       context: 'register',
       stateToken: 'register-state',
       storefrontThemeId: 'velvet_luxe',
+      storefrontThemeMode: 'dark',
       registration: {
         phone: '771234567',
         role: 'merchant',
@@ -146,7 +151,10 @@ describe('OtpForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'تأكيد الرمز' }))
 
     await vi.waitFor(() =>
-      expect(saveStorefrontConfigMock).toHaveBeenCalledWith('test_store', expect.any(Object))
+      expect(saveStorefrontConfigMock).toHaveBeenCalledWith(
+        'test_store',
+        expect.objectContaining({ default_theme_mode: 'dark' })
+      )
     )
     expect(saveStorefrontConfigMock).toHaveBeenCalledOnce()
   })

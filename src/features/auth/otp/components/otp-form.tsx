@@ -9,13 +9,6 @@ import { useAuthFlowStore } from '@/stores/auth-flow-store'
 import { authApiRequest } from '@/lib/auth-api'
 import { getSafeAuthRedirect } from '@/lib/auth-redirect'
 import { completeAuthSession } from '@/lib/complete-auth-session'
-import { buildSelectedConfig } from '@/features/storefront/storefront-config'
-import {
-  fetchStorefrontLibrary,
-  loadBaseStorefrontConfig,
-  loadStorefrontThemeConfig,
-  saveStorefrontConfig,
-} from '@/features/storefront/storefront-data'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,6 +22,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { useDashboardIntro } from '@/components/layout/dashboard-intro-context'
 import { PasswordInput } from '@/components/password-input'
+import { buildSelectedConfig } from '@/features/storefront/storefront-config'
+import {
+  fetchStorefrontLibrary,
+  loadBaseStorefrontConfig,
+  loadStorefrontThemeConfig,
+  saveStorefrontConfig,
+} from '@/features/storefront/storefront-data'
 
 const otpSchema = z.object({
   otp: z.string().regex(/^\d{6}$/, 'أدخل رمز التحقق المكوّن من 6 أرقام.'),
@@ -96,7 +96,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
         baseConfig,
         themeConfig,
         theme,
-        'light',
+        flow.storefrontThemeMode,
         {
           storeName: registration.name,
           phone: registration.phone,
@@ -105,7 +105,11 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
       )
       await saveStorefrontConfig(registration.username, selectedConfig)
     } catch (error) {
-      console.warn('Selected storefront theme could not be applied.', error)
+      toast.error(
+        error instanceof Error
+          ? `تم تفعيل الحساب لكن تعذر تطبيق القالب: ${error.message}`
+          : 'تم تفعيل الحساب لكن تعذر تطبيق القالب. يمكنك اختياره لاحقًا من إعدادات المتجر.'
+      )
     }
   }
 
@@ -163,7 +167,10 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
       if (context === 'register') {
         flow.setIdentifier(phone)
         if (response.token) {
-          await finishLogin({ token: response.token }, applySelectedStorefrontTheme)
+          await finishLogin(
+            { token: response.token },
+            applySelectedStorefrontTheme
+          )
           toast.success('تم تفعيل متجرك وتسجيل الدخول بنجاح.')
           return
         }

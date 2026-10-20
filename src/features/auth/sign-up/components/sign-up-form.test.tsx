@@ -59,6 +59,7 @@ describe('SignUpForm', () => {
       redirectTo: '/',
       storeName: '',
       storefrontThemeId: '',
+      storefrontThemeMode: 'light',
       registration: null,
     })
     apiRequestMock.mockResolvedValue({
@@ -82,16 +83,18 @@ describe('SignUpForm', () => {
       .toBeInTheDocument()
   })
 
-  it('previews both color modes without selecting the theme', async () => {
+  it('opens a theme preview and only applies the selected mode after confirmation', async () => {
     const screen = await render(<SignUpForm />)
     const selectThemeButton = screen.getByRole('button', {
-      name: 'اختيار قالب Velvet Luxe',
+      name: 'فتح معاينة قالب Velvet Luxe',
     })
 
     await expect
       .element(selectThemeButton)
       .toHaveAttribute('aria-pressed', 'false')
-    await userEvent.click(screen.getByRole('button', { name: 'معاينة داكنة' }))
+    await userEvent.click(selectThemeButton)
+    await expect.element(screen.getByRole('dialog')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'الوضع الداكن' }))
 
     await expect
       .element(
@@ -101,13 +104,12 @@ describe('SignUpForm', () => {
       )
       .toBeInTheDocument()
     await expect
-      .element(screen.getByRole('button', { name: 'معاينة داكنة' }))
+      .element(screen.getByRole('button', { name: 'الوضع الداكن' }))
       .toHaveAttribute('aria-pressed', 'true')
-    await expect
-      .element(selectThemeButton)
-      .toHaveAttribute('aria-pressed', 'false')
 
-    await userEvent.click(selectThemeButton)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'اعتماد القالب والوضع' })
+    )
     await expect
       .element(selectThemeButton)
       .toHaveAttribute('aria-pressed', 'true')
@@ -116,7 +118,11 @@ describe('SignUpForm', () => {
   it('allows choosing a storefront theme before registration', async () => {
     const screen = await render(<SignUpForm initialPhone='771234567' />)
     await userEvent.click(
-      screen.getByRole('button', { name: 'اختيار قالب Velvet Luxe' })
+      screen.getByRole('button', { name: 'فتح معاينة قالب Velvet Luxe' })
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'الوضع الداكن' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'اعتماد القالب والوضع' })
     )
 
     await userEvent.fill(
@@ -154,6 +160,7 @@ describe('SignUpForm', () => {
         storefront_theme_id: 'velvet_luxe',
       })
     )
+    expect(useAuthFlowStore.getState().storefrontThemeMode).toBe('dark')
   })
 
   it('starts verification with the complete store registration payload', async () => {
@@ -194,6 +201,7 @@ describe('SignUpForm', () => {
     )
     expect(useAuthFlowStore.getState().context).toBe('register')
     expect(useAuthFlowStore.getState().stateToken).toBe('register-state')
+    expect(useAuthFlowStore.getState().storefrontThemeMode).toBe('light')
     expect(startIntro).toHaveBeenCalledOnce()
     expect(setIntroReady).toHaveBeenCalledWith(true)
     expect(navigate).toHaveBeenCalledWith({ to: '/otp' })
