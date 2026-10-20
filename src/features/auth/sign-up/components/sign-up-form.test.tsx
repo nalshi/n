@@ -82,9 +82,42 @@ describe('SignUpForm', () => {
       .toBeInTheDocument()
   })
 
+  it('previews both color modes without selecting the theme', async () => {
+    const screen = await render(<SignUpForm />)
+    const selectThemeButton = screen.getByRole('button', {
+      name: 'اختيار قالب Velvet Luxe',
+    })
+
+    await expect
+      .element(selectThemeButton)
+      .toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(screen.getByRole('button', { name: 'معاينة داكنة' }))
+
+    await expect
+      .element(
+        screen.getByRole('img', {
+          name: 'معاينة قالب Velvet Luxe بالوضع الداكن',
+        })
+      )
+      .toBeInTheDocument()
+    await expect
+      .element(screen.getByRole('button', { name: 'معاينة داكنة' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    await expect
+      .element(selectThemeButton)
+      .toHaveAttribute('aria-pressed', 'false')
+
+    await userEvent.click(selectThemeButton)
+    await expect
+      .element(selectThemeButton)
+      .toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('allows choosing a storefront theme before registration', async () => {
     const screen = await render(<SignUpForm initialPhone='771234567' />)
-    await userEvent.click(screen.getByRole('button', { name: 'اختيار قالب Velvet Luxe' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'اختيار قالب Velvet Luxe' })
+    )
 
     await userEvent.fill(
       screen.getByRole('textbox', { name: 'اسم المتجر' }),

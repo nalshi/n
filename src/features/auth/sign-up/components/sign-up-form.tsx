@@ -10,10 +10,6 @@ import {
   type MerchantRegistration,
 } from '@/stores/auth-flow-store'
 import { authApiRequest } from '@/lib/auth-api'
-import {
-  fetchStorefrontLibrary,
-  type StorefrontTheme,
-} from '@/features/storefront/storefront-data'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -36,6 +32,10 @@ import {
 import { useDashboardIntro } from '@/components/layout/dashboard-intro-context'
 import { PasswordInput } from '@/components/password-input'
 import { TermsDialog } from '@/features/auth/terms-dialog'
+import {
+  fetchStorefrontLibrary,
+  type StorefrontTheme,
+} from '@/features/storefront/storefront-data'
 
 const mapUrlPattern =
   /^(https?:\/\/)?(www\.)?(google\.com\/maps|maps\.google\.com|goo\.gl\/maps|maps\.app\.goo\.gl)\/?.*$/i
@@ -75,27 +75,15 @@ function ThemeOptionCard({
   onSelect: () => void
 }) {
   const [previewMode, setPreviewMode] = useState<'light' | 'dark'>('light')
-  const preview =
-    previewMode === 'dark' ? theme.preview.dark : theme.preview
+  const preview = previewMode === 'dark' ? theme.preview.dark : theme.preview
 
   return (
-    <div
-      role='button'
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onSelect()
-        }
-      }}
-      aria-label={`اختيار قالب ${theme.name}`}
-      aria-pressed={selected}
+    <article
       className={cn(
-        'group relative cursor-pointer overflow-hidden rounded-[22px] border text-start transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'overflow-hidden rounded-[18px] border bg-card transition-all duration-200',
         selected
-          ? 'border-primary bg-primary/5 shadow-[0_12px_30px_rgba(99,102,241,0.16)] ring-2 ring-primary/25'
-          : 'border-border bg-card/80 hover:border-primary/50 hover:bg-muted/20'
+          ? 'border-primary shadow-[0_12px_30px_rgba(99,102,241,0.16)]'
+          : 'border-border hover:border-primary/50'
       )}
     >
       <div className='flex items-center justify-between gap-2 border-b border-border/70 bg-background/60 px-3 py-2.5'>
@@ -110,7 +98,11 @@ function ThemeOptionCard({
           </span>
         </div>
 
-        <div className='flex items-center gap-1 rounded-full border border-border bg-muted/60 p-1'>
+        <div
+          role='group'
+          aria-label={`وضع معاينة ${theme.name}`}
+          className='flex items-center gap-1 rounded-full border border-border bg-muted/60 p-1'
+        >
           {(['light', 'dark'] as const).map((mode) => (
             <button
               key={mode}
@@ -120,6 +112,7 @@ function ThemeOptionCard({
                 setPreviewMode(mode)
               }}
               aria-label={`معاينة ${mode === 'light' ? 'فاتحة' : 'داكنة'}`}
+              aria-pressed={previewMode === mode}
               className={cn(
                 'min-w-12 rounded-full px-2 py-1 text-[10px] font-medium transition-colors',
                 previewMode === mode
@@ -133,22 +126,18 @@ function ThemeOptionCard({
         </div>
       </div>
 
-      <div
-        className='p-3'
-        style={{
-          background: `linear-gradient(180deg, ${preview.background} 0%, ${
-            preview.background
-          } 100%)`,
-        }}
-      >
+      <div className='p-3' style={{ backgroundColor: preview.background }}>
         <div
-          className='overflow-hidden rounded-[18px] border border-black/5 p-2.5 shadow-inner'
+          className='overflow-hidden rounded-[14px] border border-black/5 p-2.5'
           style={{
             backgroundColor: preview.card || preview.background,
             color: preview.text || '#0f172a',
           }}
+          role='img'
+          aria-label={`معاينة قالب ${theme.name} بالوضع ${previewMode === 'dark' ? 'الداكن' : 'الفاتح'}`}
         >
-          <div className='mb-2 flex items-center justify-between gap-2 rounded-xl px-2 py-1.5'
+          <div
+            className='mb-2 flex items-center justify-between gap-2 rounded-xl px-2 py-1.5'
             style={{ backgroundColor: preview.background, opacity: 0.9 }}
           >
             <div className='flex items-center gap-1.5'>
@@ -170,8 +159,10 @@ function ThemeOptionCard({
           </div>
 
           <div
-            className='mb-2 flex items-center justify-between rounded-2xl p-2.5'
-            style={{ background: `linear-gradient(135deg, ${preview.primary}, ${preview.accent})` }}
+            className='mb-2 flex items-center justify-between rounded-xl p-2.5'
+            style={{
+              background: `linear-gradient(135deg, ${preview.primary}, ${preview.accent})`,
+            }}
           >
             <div>
               <p className='text-[9px] font-medium text-white/80'>
@@ -217,37 +208,48 @@ function ThemeOptionCard({
             ))}
           </div>
         </div>
-      </div>
 
-      <div className='flex items-center justify-between gap-3 border-t border-border/70 px-3 py-2.5'>
-        <div className='min-w-0'>
-          <p className='truncate text-xs font-semibold text-foreground'>
-            {theme.name}
-          </p>
-          <p className='mt-0.5 line-clamp-2 text-[10px] leading-4 text-muted-foreground'>
-            {theme.description || theme.category || 'قالب متجر'}
-          </p>
-        </div>
-
-        <div className='flex items-center gap-1.5'>
-          {[preview.primary, preview.accent, preview.background].map(
-            (color, index) => (
-              <span
-                key={`${theme.id}-${color}-${index}`}
-                className='size-3.5 rounded-full border border-black/5 shadow-xs'
-                style={{ backgroundColor: color }}
-                aria-hidden='true'
-              />
-            )
+        <button
+          type='button'
+          onClick={onSelect}
+          aria-label={`اختيار قالب ${theme.name}`}
+          aria-pressed={selected}
+          className={cn(
+            'mt-3 flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-start transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            selected
+              ? 'border-primary/40 bg-primary/10'
+              : 'border-transparent bg-card/80 hover:border-primary/30 hover:bg-card'
           )}
-          {selected && (
-            <span className='grid size-6 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground'>
-              <Check className='size-3.5' />
+        >
+          <span className='min-w-0'>
+            <span className='block truncate text-xs font-semibold text-foreground'>
+              {theme.name}
             </span>
-          )}
-        </div>
+            <span className='mt-0.5 line-clamp-2 block text-[10px] leading-4 text-muted-foreground'>
+              {theme.description || theme.category || 'قالب متجر'}
+            </span>
+          </span>
+
+          <span className='flex shrink-0 items-center gap-1.5'>
+            {[preview.primary, preview.accent, preview.background].map(
+              (color, index) => (
+                <span
+                  key={`${theme.id}-${color}-${index}`}
+                  className='size-3.5 rounded-full border border-black/5'
+                  style={{ backgroundColor: color }}
+                  aria-hidden='true'
+                />
+              )
+            )}
+            {selected && (
+              <span className='grid size-6 place-items-center rounded-full bg-primary text-primary-foreground'>
+                <Check className='size-3.5' />
+              </span>
+            )}
+          </span>
+        </button>
       </div>
-    </div>
+    </article>
   )
 }
 
@@ -608,7 +610,7 @@ export function SignUpForm({
             )}
           />
           {themes.length > 0 && (
-            <div className='sm:col-span-2 space-y-3'>
+            <div className='space-y-3 sm:col-span-2'>
               <div className='flex items-center justify-between gap-2'>
                 <p className='text-sm font-medium'>شكل المتجر (اختياري)</p>
                 <button
