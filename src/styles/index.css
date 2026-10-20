@@ -239,6 +239,49 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .merchant-notification-bell {
+    animation: merchant-notification-ring 2.8s ease-in-out infinite;
+    transform-origin: 50% 10%;
+  }
+
+  .merchant-notification-count {
+    animation: merchant-notification-count 2.8s ease-in-out infinite;
+  }
+
+  @keyframes merchant-notification-ring {
+    0%,
+    64%,
+    100% {
+      transform: rotate(0);
+    }
+    68% {
+      transform: rotate(-12deg);
+    }
+    72% {
+      transform: rotate(10deg);
+    }
+    76% {
+      transform: rotate(-8deg);
+    }
+    80% {
+      transform: rotate(5deg);
+    }
+    84% {
+      transform: rotate(0);
+    }
+  }
+
+  @keyframes merchant-notification-count {
+    0%,
+    64%,
+    100% {
+      transform: scale(1);
+    }
+    72% {
+      transform: scale(1.14);
+    }
+  }
+
   .merchant-operation-loader {
     animation: merchant-operation-loader-arrive 120ms ease-out 100ms both;
   }

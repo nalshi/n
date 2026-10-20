@@ -13,6 +13,7 @@ import {
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { useDashboardIntro } from '@/components/layout/dashboard-intro-context'
+import { MerchantOrderAnnouncement } from '@/components/layout/merchant-order-notifications'
 import { SkipToMain } from '@/components/skip-to-main'
 
 type AuthenticatedLayoutProps = {
@@ -66,6 +67,10 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
         >
           <SkipToMain inert={introVisible} />
           <AppSidebar inert={introVisible} />
+          <MerchantOrderAnnouncement
+            merchantId={merchantId}
+            hidden={introVisible}
+          />
           <SidebarInset
             inert={introVisible}
             aria-hidden={introVisible}

@@ -118,19 +118,11 @@ export function MerchantAccountSwitcher({
       sideOffset={6}
     >
       <DropdownMenuLabel className='font-normal'>
-        <div className='flex min-w-0 items-center gap-3 py-1'>
-          <MerchantAvatar
-            merchantId={accountId}
-            token={activeToken}
-            name={storeName}
-            className='size-10 rounded-lg'
-          />
-          <div className='grid min-w-0 gap-1'>
-            <span className='truncate text-sm font-semibold'>{storeName}</span>
-            <span className='truncate text-xs text-muted-foreground' dir='ltr'>
-              {activeAccount?.identifier || user?.email || ''}
-            </span>
-          </div>
+        <div className='grid min-w-0 gap-1 py-1'>
+          <span className='truncate text-sm font-semibold'>{storeName}</span>
+          <span className='truncate text-xs text-muted-foreground' dir='ltr'>
+            {activeAccount?.identifier || user?.email || ''}
+          </span>
         </div>
       </DropdownMenuLabel>
       <DropdownMenuSeparator />
@@ -149,7 +141,7 @@ export function MerchantAccountSwitcher({
               merchantId={account.id}
               token={account.token}
               name={name}
-              className='size-9 rounded-lg'
+              className='size-9 shrink-0 rounded-lg'
             />
             <span className='min-w-0 flex-1 truncate'>{name}</span>
             {isActive && (
@@ -201,12 +193,6 @@ export function MerchantAccountSwitcher({
                   tooltip={storeName}
                   aria-label={`الحساب الحالي: ${storeName}. تبديل الحساب`}
                 >
-                  <MerchantAvatar
-                    merchantId={accountId}
-                    token={activeToken}
-                    name={storeName}
-                    className={isCollapsed ? 'size-8' : 'size-10 rounded-lg'}
-                  />
                   {!isCollapsed && (
                     <>
                       <span className='grid min-w-0 flex-1 gap-1 text-start leading-tight'>
@@ -225,6 +211,12 @@ export function MerchantAccountSwitcher({
                       />
                     </>
                   )}
+                  {isCollapsed && (
+                    <ChevronsUpDown
+                      className='mx-auto size-4'
+                      aria-hidden='true'
+                    />
+                  )}
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               {menuContent}
@@ -239,12 +231,6 @@ export function MerchantAccountSwitcher({
               className='h-10 max-w-56 min-w-0 gap-2 rounded-lg px-2 sm:max-w-64'
               aria-label={`الحساب الحالي: ${storeName}. تبديل الحساب`}
             >
-              <MerchantAvatar
-                merchantId={accountId}
-                token={activeToken}
-                name={storeName}
-                className='size-8 shrink-0'
-              />
               <span className='max-w-20 min-w-0 truncate text-xs font-medium sm:max-w-32 sm:text-sm'>
                 {storeName}
               </span>

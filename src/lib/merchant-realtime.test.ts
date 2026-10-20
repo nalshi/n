@@ -1,5 +1,6 @@
 import { QueryClient } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useMerchantOrderNotificationStore } from '@/stores/merchant-order-notifications'
 import { useRealtimeStore } from '@/stores/realtime-store'
 import { clearDashboardInitializationCache } from '@/features/dashboard/dashboard-data'
 import { startMerchantRealtime } from './merchant-realtime'
@@ -134,6 +135,11 @@ describe('merchant realtime synchronization', () => {
     )
     localStorage.clear()
     sessionStorage.clear()
+    useMerchantOrderNotificationStore.setState({
+      notificationsByMerchant: {},
+      hydratedMerchantIds: [],
+      announcement: null,
+    })
     FakeNotification.instances = []
     infoToast.mockClear()
     vi.stubGlobal('Notification', FakeNotification)

@@ -1,11 +1,16 @@
 import { QueryClient } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearDashboardInitializationCache } from '@/features/dashboard/dashboard-data'
+import {
+  clearDashboardInitializationCache,
+  type DashboardData,
+  type DashboardOrder,
+} from '@/features/dashboard/dashboard-data'
 import {
   fetchMerchantOrderSignals,
   merchantBootstrapKey,
   merchantQueryKeys,
   refreshMerchantSnapshot,
+  updateMerchantOrderStatusCache,
 } from './useMerchantRealtime'
 
 describe('refreshMerchantSnapshot', () => {
@@ -71,6 +76,50 @@ describe('refreshMerchantSnapshot', () => {
     expect(queryClient.getQueryData(merchantBootstrapKey('42'))).toMatchObject({
       dashboard: { products: [{ id: '9', price: 99 }] },
     })
+  })
+
+  it('updates an order in cache without an extra network refresh', () => {
+    const order: DashboardOrder = {
+      id: '11',
+      customerName: 'عميل',
+      customerPhone: '',
+      deliveryAddress: '',
+      deliveryMapUrl: '',
+      total: 20,
+      deliveryFee: 0,
+      currency: 'YER',
+      status: 'out_for_delivery',
+      createdAt: '2026-10-20T12:00:00.000Z',
+      items: [],
+    }
+    const dashboard: DashboardData = {
+      storeName: 'متجر',
+      username: 'shop',
+      phone: '',
+      products: [],
+      activeOrders: [order],
+      archivedOrders: [],
+    }
+    queryClient.setQueryData(merchantQueryKeys.orders('42', 'active'), [order])
+    queryClient.setQueryData(merchantQueryKeys.orders('42', 'archived'), [])
+    queryClient.setQueryData(merchantQueryKeys.dashboard('42'), dashboard)
+    queryClient.setQueryData(merchantBootstrapKey('42'), {
+      dashboard,
+      categories: [],
+      lastTimestamp: 0,
+      lastEventId: 0,
+    })
+
+    expect(
+      updateMerchantOrderStatusCache(queryClient, '42', '11', 'completed')
+    ).toBe(true)
+    expect(
+      queryClient.getQueryData(merchantQueryKeys.orders('42', 'active'))
+    ).toEqual([])
+    expect(
+      queryClient.getQueryData(merchantQueryKeys.orders('42', 'archived'))
+    ).toMatchObject([{ id: '11', status: 'completed' }])
+    expect(fetch).not.toHaveBeenCalled()
   })
 })
 

@@ -14,23 +14,39 @@ export function AppTitle() {
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <SidebarMenuButton
-          size='lg'
-          className='gap-0 py-0 hover:bg-transparent active:bg-transparent'
-          asChild
-        >
-          <div>
+        <div className='flex min-w-0 items-center gap-1'>
+          <SidebarMenuButton
+            size='lg'
+            className='min-w-0 flex-1 gap-3 group-data-[collapsible=icon]:justify-center hover:bg-transparent active:bg-transparent'
+            asChild
+          >
             <Link
               to='/'
               onClick={() => setOpenMobile(false)}
-              className='grid flex-1 text-start text-sm leading-tight'
+              aria-label='نالش - بوابة التاجر'
             >
-              <span className='truncate font-bold'>نالش</span>
-              <span className='truncate text-xs'>بوابة التاجر</span>
+              <span className='flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg sm:size-10'>
+                <img
+                  src='/images/favicon_light.svg'
+                  alt=''
+                  className='size-full dark:hidden'
+                  aria-hidden='true'
+                />
+                <img
+                  src='/images/favicon.svg'
+                  alt=''
+                  className='hidden size-full dark:block'
+                  aria-hidden='true'
+                />
+              </span>
+              <span className='grid min-w-0 flex-1 text-start text-sm leading-tight group-data-[collapsible=icon]:hidden'>
+                <span className='truncate font-bold'>نالش</span>
+                <span className='truncate text-xs'>بوابة التاجر</span>
+              </span>
             </Link>
-            <ToggleSidebar />
-          </div>
-        </SidebarMenuButton>
+          </SidebarMenuButton>
+          <ToggleSidebar className='group-data-[collapsible=icon]:hidden' />
+        </div>
       </SidebarMenuItem>
     </SidebarMenu>
   )

@@ -5,6 +5,7 @@ import {
   type QueryClient,
 } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { addMerchantOrderNotification } from '@/stores/merchant-order-notifications'
 import { useRealtimeStore } from '@/stores/realtime-store'
 import {
   getMerchantLocalDB,
@@ -12,6 +13,7 @@ import {
   hydrateFromSnapshot,
   writeSyncCursor,
   readSyncCursor,
+  injectOrder,
 } from '@/lib/db'
 import {
   fetchDashboardInitialization,
@@ -178,6 +180,65 @@ export async function refreshMerchantSnapshot(
   return snapshot
 }
 
+export function updateMerchantOrderStatusCache(
+  queryClient: QueryClient,
+  merchantId: string,
+  orderId: string,
+  status: string
+) {
+  const activeKey = merchantQueryKeys.orders(merchantId, 'active')
+  const archivedKey = merchantQueryKeys.orders(merchantId, 'archived')
+  const active = queryClient.getQueryData<DashboardOrder[]>(activeKey) || []
+  const archived = queryClient.getQueryData<DashboardOrder[]>(archivedKey) || []
+  const order = [...active, ...archived].find((item) => item.id === orderId)
+  if (!order) return false
+
+  const updatedOrder = { ...order, status }
+  const isArchived = status === 'completed' || status === 'cancelled'
+  const nextActive = isArchived
+    ? active.filter((item) => item.id !== orderId)
+    : upsertOrder(active, updatedOrder)
+  const nextArchived = isArchived
+    ? upsertOrder(archived, updatedOrder)
+    : archived.filter((item) => item.id !== orderId)
+
+  queryClient.setQueryData(activeKey, nextActive)
+  queryClient.setQueryData(archivedKey, nextArchived)
+  queryClient.setQueryData<DashboardData>(
+    merchantQueryKeys.dashboard(merchantId),
+    (dashboard) =>
+      dashboard
+        ? {
+            ...dashboard,
+            activeOrders: nextActive,
+            archivedOrders: nextArchived,
+          }
+        : dashboard
+  )
+  queryClient.setQueryData<DashboardInitialization>(
+    merchantBootstrapKey(merchantId),
+    (snapshot) =>
+      snapshot
+        ? {
+            ...snapshot,
+            dashboard: {
+              ...snapshot.dashboard,
+              activeOrders: nextActive,
+              archivedOrders: nextArchived,
+            },
+          }
+        : snapshot
+  )
+  void injectOrder(merchantId, updatedOrder).catch((error: unknown) => {
+    toast.error('تم تحديث الطلب، لكن تعذر حفظ حالته على هذا الجهاز.', {
+      description:
+        error instanceof Error ? error.message : 'خطأ تخزين غير معروف.',
+    })
+  })
+  _localBus?.postMessage({ type: 'ORDER_MUTATED', orderId, merchantId })
+  return true
+}
+
 function upsertProduct(
   products: DashboardProduct[],
   product: DashboardProduct
@@ -326,9 +387,11 @@ async function refreshOrdersFromFirebaseSignal(
       !knownOrderIds.has(order.id) &&
       order.status === 'pending_merchant_approval'
     ) {
-      toast.info(`وصل طلب جديد من ${order.customerName}.`, {
-        duration: 8_000,
-      })
+      if (addMerchantOrderNotification(merchantId, order)) {
+        toast.info(`وصل طلب جديد من ${order.customerName}.`, {
+          duration: 8_000,
+        })
+      }
     }
   }
 }
@@ -904,9 +967,17 @@ export function useLegacyWorkerRealtimeSync(
         ) {
           const [order] = normalizeRealtimeOrders([committedEvent.data])
           if (!order) continue
-          toast.info(`وصل طلب جديد من ${order.customerName}.`, {
-            duration: 8_000,
-          })
+          if (
+            addMerchantOrderNotification(merchantId, {
+              id: order.id,
+              customerName: order.customerName,
+              createdAt: order.createdAt,
+            })
+          ) {
+            toast.info(`وصل طلب جديد من ${order.customerName}.`, {
+              duration: 8_000,
+            })
+          }
           if (
             localStorage.getItem(
               `merchant_push_notifications_enabled:${merchantId}`

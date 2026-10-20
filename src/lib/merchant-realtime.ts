@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { addMerchantOrderNotification } from '@/stores/merchant-order-notifications'
 import { useRealtimeStore, type RealtimeStatus } from '@/stores/realtime-store'
 import {
   fetchDashboardInitialization,
@@ -228,9 +229,17 @@ function syncEvent(
     ) {
       alertedOrderIds.add(normalized.id)
       persistAlertedOrderIds(merchantId, alertedOrderIds)
-      toast.info(`وصل طلب جديد من ${normalized.customerName}.`, {
-        duration: 8_000,
-      })
+      if (
+        addMerchantOrderNotification(merchantId, {
+          id: normalized.id,
+          customerName: normalized.customerName,
+          createdAt: normalized.createdAt,
+        })
+      ) {
+        toast.info(`وصل طلب جديد من ${normalized.customerName}.`, {
+          duration: 8_000,
+        })
+      }
       if (
         localStorage.getItem(
           `merchant_push_notifications_enabled:${merchantId}`

@@ -17,7 +17,7 @@ import { toast } from 'sonner'
 import { authApiRequest } from '@/lib/auth-api'
 import {
   merchantQueryKeys,
-  refreshMerchantSnapshot,
+  updateMerchantOrderStatusCache,
   useMerchantData,
   useMerchantIdentity,
 } from '@/hooks/useMerchantRealtime'
@@ -55,6 +55,32 @@ const statusLabels: Record<string, string> = {
   out_for_delivery: 'في الطريق',
   completed: 'مكتمل',
   cancelled: 'ملغي',
+}
+
+const statusClassNames: Record<string, string> = {
+  pending_merchant_approval:
+    'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  confirmed_by_store:
+    'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  out_for_delivery: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+  completed: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  cancelled: 'bg-destructive/10 text-destructive',
+}
+
+function OrderStatusBadge({
+  status,
+  className = '',
+}: {
+  status: string
+  className?: string
+}) {
+  return (
+    <span
+      className={`inline-flex min-w-0 items-center justify-center rounded-full px-2 py-1 text-center text-[11px] leading-tight font-medium break-words whitespace-normal ${statusClassNames[status] || 'bg-muted text-muted-foreground'} ${className}`}
+    >
+      {statusLabels[status] || 'قيد المتابعة'}
+    </span>
+  )
 }
 
 function formatAmount(amount: number, currency: string) {
@@ -156,17 +182,14 @@ export function Dashboard() {
       }
       return result
     },
-    onSuccess: async (result) => {
+    onSuccess: (result) => {
+      updateMerchantOrderStatusCache(
+        queryClient,
+        merchantId,
+        deliveryOrderId,
+        'completed'
+      )
       toast.success(result.message || 'تم تأكيد تسليم الطلب بنجاح.')
-      try {
-        await refreshMerchantSnapshot(queryClient, merchantId)
-      } catch (error) {
-        toast.error(
-          `تم تأكيد التسليم، لكن تعذر تحديث بيانات اللوحة: ${
-            error instanceof Error ? error.message : 'خطأ غير معروف.'
-          }`
-        )
-      }
       setDeliveryDialogOpen(false)
       setDeliveryCode('')
       setDeliveryOrderId('')
@@ -222,18 +245,6 @@ export function Dashboard() {
           <MerchantPageHeading
             title='الرئيسية'
             description='متابعة الطلبات والمنتجات وحالة متجرك من مكان واحد.'
-            actions={
-              <Button
-                onClick={() => {
-                  void bootstrapQuery.refetch()
-                }}
-                variant='outline'
-                disabled={bootstrapQuery.isFetching}
-              >
-                <Bell aria-hidden='true' />
-                تحديث البيانات
-              </Button>
-            }
           />
         </div>
 
@@ -536,9 +547,10 @@ export function Dashboard() {
                             {order.customerName}
                           </span>
                         </span>
-                        <span className='shrink-0 rounded-full bg-background px-2 py-1 text-[11px] text-muted-foreground'>
-                          {statusLabels[order.status] || 'قيد المتابعة'}
-                        </span>
+                        <OrderStatusBadge
+                          status={order.status}
+                          className='max-w-[38%] shrink sm:max-w-none sm:shrink-0 sm:whitespace-nowrap'
+                        />
                         <bdi className='shrink-0 text-xs font-semibold'>
                           {formatAmount(order.total, order.currency)}
                         </bdi>
@@ -570,20 +582,23 @@ export function Dashboard() {
             </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
-            <div className='flex items-center justify-between rounded-lg bg-muted/50 p-4 text-sm'>
-              <span className='text-muted-foreground'>
-                {statusLabels[selectedOrder.status] || 'قيد المتابعة'}
-              </span>
+            <div className='flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/50 p-4 text-sm'>
+              <OrderStatusBadge status={selectedOrder.status} />
               <bdi className='font-semibold'>
                 {formatAmount(selectedOrder.total, selectedOrder.currency)}
               </bdi>
             </div>
           )}
-          <DialogFooter>
-            <Button variant='outline' onClick={() => setSelectedOrder(null)}>
+          <DialogFooter className='w-full sm:w-auto'>
+            <Button
+              variant='outline'
+              className='w-full sm:w-auto'
+              onClick={() => setSelectedOrder(null)}
+            >
               إغلاق
             </Button>
             <Button
+              className='w-full sm:w-auto'
               onClick={() => {
                 if (!selectedOrder) return
                 const { id, status } = selectedOrder

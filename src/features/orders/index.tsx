@@ -10,7 +10,6 @@ import {
   MapPin,
   Package,
   Phone,
-  RefreshCw,
   Search,
   ShoppingBag,
   Truck,
@@ -21,7 +20,7 @@ import { toast } from 'sonner'
 import { clearAuthApiCache } from '@/lib/auth-api'
 import {
   merchantQueryKeys,
-  refreshMerchantSnapshot,
+  updateMerchantOrderStatusCache,
   useMerchantIdentity,
 } from '@/hooks/useMerchantRealtime'
 import { Button } from '@/components/ui/button'
@@ -133,7 +132,7 @@ function OrderStatus({ status }: { status: string }) {
   }
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${details.className}`}
+      className={`inline-flex max-w-full items-center justify-center rounded-full px-2.5 py-1 text-center text-xs leading-tight font-semibold break-words whitespace-normal sm:whitespace-nowrap ${details.className}`}
     >
       {details.label}
     </span>
@@ -156,28 +155,34 @@ function OrderCard({
       aria-label={`تفاصيل الطلب ${order.id} للعميل ${order.customerName}`}
     >
       <span className='flex min-w-0 items-start gap-3'>
-        <span className='grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary'>
+        <span className='grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary sm:size-10'>
           <ShoppingBag className='size-5' aria-hidden='true' />
         </span>
         <span className='grid min-w-0 gap-1.5'>
-          <span className='flex flex-wrap items-center gap-2'>
-            <bdi className='font-semibold' dir='ltr'>
+          <span className='flex min-w-0 flex-wrap items-center gap-2'>
+            <bdi className='max-w-full truncate font-semibold' dir='ltr'>
               #{order.id.slice(0, 8)}
             </bdi>
             <OrderStatus status={order.status} />
           </span>
-          <span className='flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground'>
-            <span className='inline-flex items-center gap-1'>
+          <span className='flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:text-sm'>
+            <span className='inline-flex min-w-0 items-center gap-1'>
               <UserRound className='size-3.5' aria-hidden='true' />
-              {order.customerName}
+              <span className='max-w-40 truncate sm:max-w-56'>
+                {order.customerName}
+              </span>
             </span>
-            <span>{itemCount.toLocaleString('ar-YE')} منتجات</span>
-            <span>{formatDate(order.createdAt, true)}</span>
+            <span className='whitespace-nowrap'>
+              {itemCount.toLocaleString('ar-YE')} منتجات
+            </span>
+            <span className='whitespace-nowrap'>
+              {formatDate(order.createdAt, true)}
+            </span>
           </span>
         </span>
       </span>
-      <span className='flex items-center justify-between gap-3 sm:justify-end'>
-        <bdi className='font-bold tabular-nums'>
+      <span className='flex min-w-0 items-center justify-between gap-3 sm:justify-end'>
+        <bdi className='truncate font-bold tabular-nums'>
           {formatAmount(order.total, order.currency)}
         </bdi>
         <span className='inline-flex items-center gap-1 text-xs text-primary'>
@@ -348,23 +353,29 @@ function OrderDetails({
           )}
         </section>
 
-        <DialogFooter className='flex-wrap'>
+        <DialogFooter className='w-full sm:w-auto'>
           {order.status === 'pending_merchant_approval' && (
             <>
               <Button
                 variant='destructive'
+                className='w-full sm:w-auto'
                 disabled={pending}
                 onClick={() => onConfirmAction('cancel', order)}
               >
                 <X /> إلغاء الطلب
               </Button>
-              <Button disabled={pending} onClick={() => onApprove(order)}>
+              <Button
+                className='w-full sm:w-auto'
+                disabled={pending}
+                onClick={() => onApprove(order)}
+              >
                 <Check /> موافقة وتجهيز
               </Button>
             </>
           )}
           {order.status === 'confirmed_by_store' && (
             <Button
+              className='w-full sm:w-auto'
               disabled={pending}
               onClick={() => onConfirmAction('out-for-delivery', order)}
             >
@@ -372,11 +383,19 @@ function OrderDetails({
             </Button>
           )}
           {order.status === 'out_for_delivery' && (
-            <Button disabled={pending} onClick={() => onDeliveryCode(order)}>
+            <Button
+              className='w-full sm:w-auto'
+              disabled={pending}
+              onClick={() => onDeliveryCode(order)}
+            >
               <Check /> تأكيد كود الاستلام
             </Button>
           )}
-          <Button variant='outline' onClick={onClose}>
+          <Button
+            variant='outline'
+            className='w-full sm:w-auto'
+            onClick={onClose}
+          >
             إغلاق
           </Button>
         </DialogFooter>
@@ -445,18 +464,6 @@ function OrdersPage({
     )
   }, [deferredSearch, orders])
 
-  const refreshMerchantData = async () => {
-    try {
-      await refreshMerchantSnapshot(queryClient, merchantId)
-    } catch (error) {
-      toast.error(
-        `تم حفظ التغيير، لكن تعذر تحديث بيانات اللوحة: ${
-          error instanceof Error ? error.message : 'خطأ غير معروف.'
-        }`
-      )
-    }
-  }
-
   const statusMutation = useMutation({
     mutationFn: ({
       order,
@@ -465,14 +472,19 @@ function OrdersPage({
       order: DashboardOrder
       status: 'confirmed_by_store' | 'out_for_delivery'
     }) => updateDashboardOrderStatus(order.id, status),
-    onSuccess: async (message, variables) => {
+    onSuccess: (message, variables) => {
+      updateMerchantOrderStatusCache(
+        queryClient,
+        merchantId,
+        variables.order.id,
+        variables.status
+      )
       toast.success(
         message ||
           (variables.status === 'confirmed_by_store'
             ? 'تمت الموافقة على الطلب وجارٍ التجهيز.'
             : 'تم تحديث حالة الطلب إلى في الطريق.')
       )
-      await refreshMerchantData()
       const nextOrderId =
         variables.status === 'confirmed_by_store'
           ? nextPendingOrderId(filteredOrders, variables.order.id)
@@ -491,9 +503,14 @@ function OrdersPage({
   })
   const cancelMutation = useMutation({
     mutationFn: (order: DashboardOrder) => cancelDashboardOrder(order.id),
-    onSuccess: async (message, order) => {
+    onSuccess: (message, order) => {
+      updateMerchantOrderStatusCache(
+        queryClient,
+        merchantId,
+        order.id,
+        'cancelled'
+      )
       toast.success(message || 'تم إلغاء الطلب بنجاح.')
-      await refreshMerchantData()
       const nextOrderId = nextPendingOrderId(filteredOrders, order.id)
       setSelectedOrderId(nextOrderId)
       void navigate({
@@ -513,9 +530,16 @@ function OrdersPage({
         deliveryCode.trim()
       )
     },
-    onSuccess: async (message) => {
+    onSuccess: (message) => {
+      if (deliveryOrder) {
+        updateMerchantOrderStatusCache(
+          queryClient,
+          merchantId,
+          deliveryOrder.id,
+          'completed'
+        )
+      }
       toast.success(message || 'تم تأكيد تسليم الطلب بنجاح.')
-      await refreshMerchantData()
       setDeliveryOrder(null)
       setDeliveryCode('')
       setSelectedOrderId(null)
@@ -571,21 +595,6 @@ function OrdersPage({
                 ? 'تابع الطلبات المعلقة وقيد التجهيز والتوصيل واتخذ الإجراء المناسب.'
                 : 'راجع الطلبات المكتملة والملغاة وارجع إلى تفاصيلها عند الحاجة.'
             }
-            actions={
-              <Button
-                variant='outline'
-                disabled={ordersQuery.isFetching}
-                onClick={() => {
-                  clearAuthApiCache()
-                  void ordersQuery.refetch()
-                }}
-              >
-                <RefreshCw
-                  className={ordersQuery.isFetching ? 'animate-spin' : ''}
-                />
-                تحديث الطلبات
-              </Button>
-            }
           />
         </div>
 
@@ -600,7 +609,10 @@ function OrdersPage({
                 لإدارته.
               </CardDescription>
             </div>
-            <div className='flex flex-wrap gap-2' aria-label='صفحات الطلبات'>
+            <div
+              className='grid grid-cols-2 gap-2 sm:flex'
+              aria-label='صفحات الطلبات'
+            >
               <Button
                 variant={filter === 'active' ? 'default' : 'outline'}
                 aria-current={filter === 'active' ? 'page' : undefined}
@@ -665,7 +677,7 @@ function OrdersPage({
               </div>
             ) : filteredOrders.length ? (
               <>
-                <div className='grid gap-3'>
+                <div className='grid gap-3 xl:grid-cols-2'>
                   {visibleOrders.map((order) => (
                     <OrderCard
                       key={order.id}
@@ -761,15 +773,17 @@ function OrdersPage({
                   : `هل تم تسليم الطلب #${confirmAction.order.id.slice(0, 8)} للمندوب وهو في طريقه للعميل؟`}
               </DialogDescription>
             </DialogHeader>
-            <DialogFooter>
+            <DialogFooter className='w-full sm:w-auto'>
               <Button
                 variant='outline'
+                className='w-full sm:w-auto'
                 disabled={isMutating}
                 onClick={() => setConfirmAction(null)}
               >
                 تراجع
               </Button>
               <Button
+                className='w-full sm:w-auto'
                 variant={
                   confirmAction.action === 'cancel' ? 'destructive' : 'default'
                 }
@@ -831,10 +845,11 @@ function OrdersPage({
                   className='text-center text-xl tracking-[0.5em]'
                 />
               </div>
-              <DialogFooter>
+              <DialogFooter className='w-full sm:w-auto'>
                 <Button
                   type='button'
                   variant='outline'
+                  className='w-full sm:w-auto'
                   disabled={deliveryMutation.isPending}
                   onClick={() => setDeliveryOrder(null)}
                 >
@@ -842,6 +857,7 @@ function OrdersPage({
                 </Button>
                 <Button
                   type='submit'
+                  className='w-full sm:w-auto'
                   disabled={
                     deliveryMutation.isPending || deliveryCode.length !== 4
                   }
