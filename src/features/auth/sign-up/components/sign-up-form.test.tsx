@@ -4,19 +4,16 @@ import { userEvent } from 'vitest/browser'
 import { useAuthFlowStore } from '@/stores/auth-flow-store'
 import { SignUpForm } from './sign-up-form'
 
-const { navigate, apiRequestMock, startIntro, setIntroReady, fetchThemesMock } =
-  vi.hoisted(() => ({
+const { navigate, apiRequestMock, startIntro, setIntroReady } = vi.hoisted(
+  () => ({
     navigate: vi.fn(),
     apiRequestMock: vi.fn(),
     startIntro: vi.fn(),
     setIntroReady: vi.fn(),
-    fetchThemesMock: vi.fn(),
-  }))
+  })
+)
 
 vi.mock('@/lib/auth-api', () => ({ authApiRequest: apiRequestMock }))
-vi.mock('@/features/storefront/storefront-data', () => ({
-  fetchStorefrontLibrary: fetchThemesMock,
-}))
 vi.mock('@/components/layout/dashboard-intro-context', () => ({
   useDashboardIntro: () => ({ startIntro, setIntroReady }),
 }))
@@ -29,27 +26,6 @@ describe('SignUpForm', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setIntroReady.mockClear()
-    fetchThemesMock.mockResolvedValue({
-      themes: [
-        {
-          id: 'velvet_luxe',
-          name: 'Velvet Luxe',
-          description: 'قالب فاخر',
-          category: 'أزياء',
-          sourceFile: '/templates/themes/velvet_luxe.json',
-          preview: {
-            primary: '#7C3AED',
-            accent: '#F59E0B',
-            background: '#F8FAFC',
-            dark: {
-              primary: '#8B5CF6',
-              accent: '#FBBF24',
-              background: '#0F172A',
-            },
-          },
-        },
-      ],
-    })
     useAuthFlowStore.setState({
       identifier: '',
       phone: '',
@@ -58,8 +34,6 @@ describe('SignUpForm', () => {
       remember: true,
       redirectTo: '/',
       storeName: '',
-      storefrontThemeId: '',
-      storefrontThemeMode: 'light',
       registration: null,
     })
     apiRequestMock.mockResolvedValue({
@@ -81,86 +55,7 @@ describe('SignUpForm', () => {
     await expect
       .element(screen.getByRole('button', { name: 'إنشاء المتجر' }))
       .toBeInTheDocument()
-  })
-
-  it('opens a theme preview and only applies the selected mode after confirmation', async () => {
-    const screen = await render(<SignUpForm />)
-    const selectThemeButton = screen.getByRole('button', {
-      name: 'فتح معاينة قالب Velvet Luxe',
-    })
-
-    await expect
-      .element(selectThemeButton)
-      .toHaveAttribute('aria-pressed', 'false')
-    await userEvent.click(selectThemeButton)
-    await expect.element(screen.getByRole('dialog')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'الوضع الداكن' }))
-
-    await expect
-      .element(
-        screen.getByRole('img', {
-          name: 'معاينة قالب Velvet Luxe بالوضع الداكن',
-        })
-      )
-      .toBeInTheDocument()
-    await expect
-      .element(screen.getByRole('button', { name: 'الوضع الداكن' }))
-      .toHaveAttribute('aria-pressed', 'true')
-
-    await userEvent.click(
-      screen.getByRole('button', { name: 'اعتماد القالب والوضع' })
-    )
-    await expect
-      .element(selectThemeButton)
-      .toHaveAttribute('aria-pressed', 'true')
-  })
-
-  it('allows choosing a storefront theme before registration', async () => {
-    const screen = await render(<SignUpForm initialPhone='771234567' />)
-    await userEvent.click(
-      screen.getByRole('button', { name: 'فتح معاينة قالب Velvet Luxe' })
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'الوضع الداكن' }))
-    await userEvent.click(
-      screen.getByRole('button', { name: 'اعتماد القالب والوضع' })
-    )
-
-    await userEvent.fill(
-      screen.getByRole('textbox', { name: 'اسم المتجر' }),
-      'متجر الاختبار'
-    )
-    await userEvent.fill(
-      screen.getByRole('textbox', { name: 'اسم المستخدم (رابط المتجر)' }),
-      'test_store'
-    )
-    await userEvent.click(screen.getByRole('combobox', { name: 'نوع النشاط' }))
-    await userEvent.click(
-      screen.getByRole('option', { name: 'مطاعم ومأكولات' })
-    )
-    await userEvent.fill(
-      screen.getByRole('textbox', { name: 'موقع المتجر (Google Maps)' }),
-      'https://maps.google.com/test'
-    )
-    await userEvent.fill(
-      screen.getByLabelText('كلمة المرور (8 أحرف على الأقل)'),
-      'secret123'
-    )
-    await userEvent.click(screen.getByRole('checkbox'))
-    await userEvent.click(screen.getByRole('button', { name: 'إنشاء المتجر' }))
-
-    await vi.waitFor(() =>
-      expect(apiRequestMock).toHaveBeenCalledWith('register_init', {
-        phone: '771234567',
-        role: 'merchant',
-        name: 'متجر الاختبار',
-        username: 'test_store',
-        password: 'secret123',
-        location: 'https://maps.google.com/test',
-        store_type: 'مطاعم ومأكولات',
-        storefront_theme_id: 'velvet_luxe',
-      })
-    )
-    expect(useAuthFlowStore.getState().storefrontThemeMode).toBe('dark')
+    expect(document.body).not.toHaveTextContent('شكل المتجر (اختياري)')
   })
 
   it('starts verification with the complete store registration payload', async () => {
@@ -199,9 +94,11 @@ describe('SignUpForm', () => {
         store_type: 'مطاعم ومأكولات',
       })
     )
+    expect(apiRequestMock.mock.calls[0]?.[1]).not.toHaveProperty(
+      'storefront_theme_id'
+    )
     expect(useAuthFlowStore.getState().context).toBe('register')
     expect(useAuthFlowStore.getState().stateToken).toBe('register-state')
-    expect(useAuthFlowStore.getState().storefrontThemeMode).toBe('light')
     expect(startIntro).toHaveBeenCalledOnce()
     expect(setIntroReady).toHaveBeenCalledWith(true)
     expect(navigate).toHaveBeenCalledWith({ to: '/otp' })

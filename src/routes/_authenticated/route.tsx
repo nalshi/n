@@ -6,6 +6,7 @@ import {
   removeSavedMerchantAccount,
 } from '@/lib/merchant-accounts'
 import { AuthenticatedLayout } from '@/components/layout/authenticated-layout'
+import { hasPendingStorefrontThemeSetupForToken } from '@/features/storefront/storefront-onboarding'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: ({ location }) => {
@@ -13,7 +14,15 @@ export const Route = createFileRoute('/_authenticated')({
     const sessionToken = sessionStorage.getItem('merchant_token')
     const token = localToken || sessionToken
 
-    if (token && restoreAuthSession(token, Boolean(localToken))) return
+    if (token && restoreAuthSession(token, Boolean(localToken))) {
+      if (
+        hasPendingStorefrontThemeSetupForToken(token) &&
+        location.pathname !== '/storefront-setup'
+      ) {
+        throw redirect({ to: '/storefront-setup', replace: true })
+      }
+      return
+    }
 
     if (token) removeSavedMerchantAccount(getActiveMerchantToken())
     useAuthStore.getState().auth.reset()

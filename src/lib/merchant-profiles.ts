@@ -12,6 +12,20 @@ function profileKey(merchantId: string) {
   return `merchant:${merchantId}`
 }
 
+function usableStoreName(value: string) {
+  const name = value.trim()
+  return [
+    'متجري',
+    'اسم المتجر',
+    'متجرنا',
+    'التاجر',
+    'my store',
+    'store name',
+  ].includes(name.toLocaleLowerCase())
+    ? ''
+    : name
+}
+
 function isValidStoreUrl(storeUrl: string) {
   if (!storeUrl) return true
 
@@ -95,13 +109,14 @@ export function getMerchantDisplayName(
   merchantId: string,
   fallback = ''
 ): string {
-  if (!merchantId.trim()) return fallback.trim()
+  if (!merchantId.trim()) return usableStoreName(fallback)
 
-  const profileName = getMerchantProfile(merchantId).storeName.trim()
-  const cachedName =
-    localStorage.getItem(`merchant_store_name:${merchantId}`)?.trim() || ''
+  const profileName = usableStoreName(getMerchantProfile(merchantId).storeName)
+  const cachedName = usableStoreName(
+    localStorage.getItem(`merchant_store_name:${merchantId}`) || ''
+  )
 
-  return profileName || cachedName || fallback.trim()
+  return profileName || cachedName || usableStoreName(fallback)
 }
 
 export function saveMerchantProfile(

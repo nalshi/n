@@ -35,7 +35,7 @@ export function SignUp() {
         </CardContent>
         <CardFooter className='border-t bg-muted/20 px-5 py-4 sm:px-7 sm:py-5'>
           <p className='w-full text-center text-xs leading-6 text-muted-foreground'>
-            لن يُنشأ المتجر حتى يتم تأكيد رقم الجوال برمز التحقق.
+            بعد تأكيد رقم الجوال ستختار قالب واجهة متجرك.
           </p>
         </CardFooter>
       </Card>

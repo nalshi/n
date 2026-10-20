@@ -55,12 +55,12 @@ export function MerchantAccountSwitcher({
     savedAccounts.find((account) => account.token === activeToken)
   const accountId = activeAccount?.id || activeMerchantId
   const fallbackName =
-    getMerchantAccountName(activeToken) ||
-    activeAccount?.label ||
+    getMerchantDisplayName('', activeAccount?.label || '') ||
+    getMerchantDisplayName('', getMerchantAccountName(activeToken)) ||
     user?.email ||
     'التاجر'
   const storeName = accountId
-    ? getMerchantDisplayName(accountId, fallbackName)
+    ? getMerchantDisplayName(accountId, fallbackName) || 'التاجر'
     : fallbackName
   const isCollapsed = sidebarState === 'collapsed' && !isMobile
 
@@ -72,7 +72,12 @@ export function MerchantAccountSwitcher({
         account.token,
         true,
         account.identifier,
-        getMerchantDisplayName(account.id, account.label)
+        getMerchantDisplayName(
+          account.id,
+          getMerchantDisplayName('', account.label) ||
+            getMerchantAccountName(account.token) ||
+            account.identifier
+        )
       )
     ) {
       toast.error('انتهت صلاحية هذا الحساب. سجّل الدخول إليه مجدداً.')
@@ -98,7 +103,9 @@ export function MerchantAccountSwitcher({
   const accountOptions = savedAccounts.map((account) => {
     const name = getMerchantDisplayName(
       account.id,
-      getMerchantAccountName(account.token) || account.label
+      getMerchantDisplayName('', account.label) ||
+        getMerchantAccountName(account.token) ||
+        account.identifier
     )
 
     return {

@@ -1,36 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { z } from 'zod'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from '@tanstack/react-router'
-import {
-  Check,
-  Loader2,
-  LocateFixed,
-  Map,
-  Moon,
-  Palette,
-  Rocket,
-  Sun,
-} from 'lucide-react'
+import { Loader2, LocateFixed, Map, Rocket } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   useAuthFlowStore,
   type MerchantRegistration,
-  type StorefrontThemeMode,
 } from '@/stores/auth-flow-store'
 import { authApiRequest } from '@/lib/auth-api'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import {
   Form,
   FormControl,
@@ -50,10 +32,6 @@ import {
 import { useDashboardIntro } from '@/components/layout/dashboard-intro-context'
 import { PasswordInput } from '@/components/password-input'
 import { TermsDialog } from '@/features/auth/terms-dialog'
-import {
-  fetchStorefrontLibrary,
-  type StorefrontTheme,
-} from '@/features/storefront/storefront-data'
 
 const mapUrlPattern =
   /^(https?:\/\/)?(www\.)?(google\.com\/maps|maps\.google\.com|goo\.gl\/maps|maps\.app\.goo\.gl)\/?.*$/i
@@ -83,194 +61,6 @@ type SignUpFormProps = React.HTMLAttributes<HTMLFormElement> & {
   initialPhone?: string
 }
 
-function ThemeOptionCard({
-  theme,
-  selected,
-  onPreview,
-}: {
-  theme: StorefrontTheme
-  selected: boolean
-  onPreview: () => void
-}) {
-  const [previewMode, setPreviewMode] = useState<'light' | 'dark'>('light')
-  const preview = previewMode === 'dark' ? theme.preview.dark : theme.preview
-
-  return (
-    <article
-      className={cn(
-        'overflow-hidden rounded-[18px] border bg-card transition-all duration-200',
-        selected
-          ? 'border-primary shadow-[0_12px_30px_rgba(99,102,241,0.16)]'
-          : 'border-border hover:border-primary/50'
-      )}
-    >
-      <div className='flex items-center justify-between gap-2 border-b border-border/70 bg-background/60 px-3 py-2.5'>
-        <div className='flex min-w-0 items-center gap-2'>
-          <span
-            className='size-2.5 shrink-0 rounded-full shadow-sm'
-            style={{ backgroundColor: preview.primary }}
-            aria-hidden='true'
-          />
-          <span className='truncate text-sm font-bold text-foreground'>
-            {theme.name}
-          </span>
-        </div>
-
-        <div
-          role='group'
-          aria-label={`وضع معاينة ${theme.name}`}
-          className='flex items-center gap-1 rounded-full border border-border bg-muted/60 p-1'
-        >
-          {(['light', 'dark'] as const).map((mode) => (
-            <button
-              key={mode}
-              type='button'
-              onClick={(event) => {
-                event.stopPropagation()
-                setPreviewMode(mode)
-              }}
-              aria-label={`معاينة ${mode === 'light' ? 'فاتحة' : 'داكنة'}`}
-              aria-pressed={previewMode === mode}
-              className={cn(
-                'min-w-12 rounded-full px-2 py-1 text-[10px] font-medium transition-colors',
-                previewMode === mode
-                  ? 'bg-foreground text-background shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {mode === 'light' ? 'فاتح' : 'داكن'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className='p-3' style={{ backgroundColor: preview.background }}>
-        <div
-          className='overflow-hidden rounded-[14px] border border-black/5 p-2.5'
-          style={{
-            backgroundColor: preview.card || preview.background,
-            color: preview.text || '#0f172a',
-          }}
-          role='img'
-          aria-label={`معاينة قالب ${theme.name} بالوضع ${previewMode === 'dark' ? 'الداكن' : 'الفاتح'}`}
-        >
-          <div
-            className='mb-2 flex items-center justify-between gap-2 rounded-xl px-2 py-1.5'
-            style={{ backgroundColor: preview.background, opacity: 0.9 }}
-          >
-            <div className='flex items-center gap-1.5'>
-              {[...Array(3)].map((_, index) => (
-                <span
-                  key={index}
-                  className='size-1.5 rounded-full'
-                  style={{ backgroundColor: preview.primary }}
-                  aria-hidden='true'
-                />
-              ))}
-            </div>
-            <div
-              className='rounded-full px-2 py-1 text-[9px] font-semibold text-white'
-              style={{ backgroundColor: preview.primary }}
-            >
-              متجر
-            </div>
-          </div>
-
-          <div
-            className='mb-2 flex items-center justify-between rounded-xl p-2.5'
-            style={{
-              background: `linear-gradient(135deg, ${preview.primary}, ${preview.accent})`,
-            }}
-          >
-            <div>
-              <p className='text-[9px] font-medium text-white/80'>
-                {theme.category || 'متجر'}
-              </p>
-              <p className='mt-0.5 text-[11px] font-bold text-white'>
-                {theme.name}
-              </p>
-            </div>
-            <span className='grid size-9 place-items-center rounded-xl bg-white/15 text-white backdrop-blur-sm'>
-              <Palette className='size-4' />
-            </span>
-          </div>
-
-          <div className='grid grid-cols-2 gap-2'>
-            {['', '', '', ''].map((_, index) => (
-              <div
-                key={index}
-                className='overflow-hidden rounded-xl border border-black/5'
-                style={{ backgroundColor: preview.background }}
-              >
-                <div
-                  className='h-10 rounded-b-xl'
-                  style={{
-                    background: `linear-gradient(135deg, ${preview.accent}, ${preview.primary})`,
-                  }}
-                />
-                <div className='space-y-1.5 p-2'>
-                  <div
-                    className='h-2 rounded-full'
-                    style={{ backgroundColor: preview.primary, opacity: 0.85 }}
-                  />
-                  <div
-                    className='h-2 w-3/4 rounded-full'
-                    style={{ backgroundColor: preview.accent, opacity: 0.8 }}
-                  />
-                  <div
-                    className='h-6 w-full rounded-xl'
-                    style={{ backgroundColor: preview.card || '#ffffff' }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <button
-          type='button'
-          onClick={onPreview}
-          aria-label={`فتح معاينة قالب ${theme.name}`}
-          aria-pressed={selected}
-          className={cn(
-            'mt-3 flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-start transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-            selected
-              ? 'border-primary/40 bg-primary/10'
-              : 'border-transparent bg-card/80 hover:border-primary/30 hover:bg-card'
-          )}
-        >
-          <span className='min-w-0'>
-            <span className='block truncate text-xs font-semibold text-foreground'>
-              {selected ? 'القالب المختار' : 'معاينة واختيار'}
-            </span>
-            <span className='mt-0.5 line-clamp-2 block text-[10px] leading-4 text-muted-foreground'>
-              {theme.description || theme.category || 'قالب متجر'}
-            </span>
-          </span>
-
-          <span className='flex shrink-0 items-center gap-1.5'>
-            {[preview.primary, preview.accent, preview.background].map(
-              (color, index) => (
-                <span
-                  key={`${theme.id}-${color}-${index}`}
-                  className='size-3.5 rounded-full border border-black/5'
-                  style={{ backgroundColor: color }}
-                  aria-hidden='true'
-                />
-              )
-            )}
-            {selected && (
-              <span className='grid size-6 place-items-center rounded-full bg-primary text-primary-foreground'>
-                <Check className='size-3.5' />
-              </span>
-            )}
-          </span>
-        </button>
-      </div>
-    </article>
-  )
-}
-
 function RequiredFormLabel({ children }: { children: React.ReactNode }) {
   return (
     <FormLabel>
@@ -289,30 +79,10 @@ export function SignUpForm({
 }: SignUpFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [locating, setLocating] = useState(false)
-  const [themes, setThemes] = useState<StorefrontTheme[]>([])
-  const [selectedThemeId, setSelectedThemeId] = useState('')
-  const [selectedThemeMode, setSelectedThemeMode] =
-    useState<StorefrontThemeMode>('light')
-  const [previewTheme, setPreviewTheme] = useState<StorefrontTheme | null>(null)
-  const [previewMode, setPreviewMode] = useState<StorefrontThemeMode>('light')
   const navigate = useNavigate()
   const flow = useAuthFlowStore()
   const { startIntro, setIntroReady } = useDashboardIntro()
 
-  useEffect(() => {
-    let active = true
-    fetchStorefrontLibrary()
-      .then((library) => {
-        if (!active) return
-        setThemes(library.themes.slice(0, 8))
-      })
-      .catch(() => {
-        if (active) setThemes([])
-      })
-    return () => {
-      active = false
-    }
-  }, [])
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -335,18 +105,6 @@ export function SignUpForm({
     control: form.control,
     name: 'username',
   })
-
-  function openThemePreview(theme: StorefrontTheme) {
-    setPreviewTheme(theme)
-    setPreviewMode(selectedThemeId === theme.id ? selectedThemeMode : 'light')
-  }
-
-  function confirmThemeSelection() {
-    if (!previewTheme) return
-    setSelectedThemeId(previewTheme.id)
-    setSelectedThemeMode(previewMode)
-    setPreviewTheme(null)
-  }
 
   async function locateStore() {
     if (!navigator.geolocation) {
@@ -396,7 +154,6 @@ export function SignUpForm({
       password: values.password,
       location: values.location.trim(),
       store_type: resolvedStoreType,
-      storefront_theme_id: selectedThemeId || undefined,
     }
     setIsLoading(true)
     startIntro()
@@ -410,8 +167,6 @@ export function SignUpForm({
         phone,
         stateToken: response.state_token || '',
         registration,
-        storefrontThemeId: selectedThemeId,
-        storefrontThemeMode: selectedThemeMode,
       })
       toast.success('أرسلنا رمز التحقق إلى رقم جوالك.')
       setIntroReady(true)
@@ -644,33 +399,6 @@ export function SignUpForm({
               </FormItem>
             )}
           />
-          {themes.length > 0 && (
-            <div className='space-y-3 sm:col-span-2'>
-              <div className='flex items-center justify-between gap-2'>
-                <p className='text-sm font-medium'>شكل المتجر (اختياري)</p>
-                <button
-                  type='button'
-                  onClick={() => {
-                    setSelectedThemeId('')
-                    setSelectedThemeMode('light')
-                  }}
-                  className='text-xs font-medium text-muted-foreground underline-offset-4 hover:text-primary hover:underline'
-                >
-                  لا أختار الآن
-                </button>
-              </div>
-              <div className='grid gap-3 md:grid-cols-2'>
-                {themes.map((theme) => (
-                  <ThemeOptionCard
-                    key={theme.id}
-                    theme={theme}
-                    selected={selectedThemeId === theme.id}
-                    onPreview={() => openThemePreview(theme)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
           <FormField
             control={form.control}
             name='terms'
@@ -704,160 +432,6 @@ export function SignUpForm({
           </Button>
         </form>
       </Form>
-      <Dialog
-        open={previewTheme !== null}
-        onOpenChange={(open) => {
-          if (!open) setPreviewTheme(null)
-        }}
-      >
-        {previewTheme && (
-          <DialogContent
-            dir='rtl'
-            className='max-h-[90dvh] max-w-4xl overflow-y-auto sm:max-w-4xl'
-          >
-            <DialogHeader>
-              <DialogTitle>معاينة {previewTheme.name}</DialogTitle>
-              <DialogDescription>
-                اختر الوضع المناسب للمتجر. لن يُعتمد القالب حتى تضغط على زر
-                التأكيد.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className='mx-auto flex w-full max-w-3xl flex-col gap-4'>
-              <div
-                role='group'
-                aria-label='وضع المتجر'
-                className='grid grid-cols-2 gap-2'
-              >
-                {(['light', 'dark'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type='button'
-                    onClick={() => setPreviewMode(mode)}
-                    aria-pressed={previewMode === mode}
-                    className={cn(
-                      'flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                      previewMode === mode
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border bg-background text-foreground hover:bg-muted'
-                    )}
-                  >
-                    {mode === 'light' ? (
-                      <Sun className='size-4' aria-hidden='true' />
-                    ) : (
-                      <Moon className='size-4' aria-hidden='true' />
-                    )}
-                    {mode === 'light' ? 'الوضع الفاتح' : 'الوضع الداكن'}
-                  </button>
-                ))}
-              </div>
-
-              {(() => {
-                const preview =
-                  previewMode === 'dark'
-                    ? previewTheme.preview.dark
-                    : previewTheme.preview
-                return (
-                  <div
-                    className='rounded-2xl border p-3 sm:p-5'
-                    style={{ backgroundColor: preview.background }}
-                  >
-                    <div
-                      className='mx-auto max-w-3xl overflow-hidden rounded-xl border border-black/5 p-3 sm:p-5'
-                      style={{
-                        backgroundColor: preview.card || preview.background,
-                        color: preview.text || '#0f172a',
-                      }}
-                      role='img'
-                      aria-label={`معاينة قالب ${previewTheme.name} بالوضع ${previewMode === 'dark' ? 'الداكن' : 'الفاتح'}`}
-                    >
-                      <div
-                        className='mb-3 flex items-center justify-between rounded-xl px-3 py-2'
-                        style={{ backgroundColor: preview.background }}
-                      >
-                        <span className='text-xs font-semibold'>
-                          {previewTheme.name}
-                        </span>
-                        <span
-                          className='rounded-full px-3 py-1 text-xs font-semibold text-white'
-                          style={{ backgroundColor: preview.primary }}
-                        >
-                          المتجر
-                        </span>
-                      </div>
-                      <div
-                        className='mb-3 flex items-center justify-between rounded-2xl p-4 sm:p-6'
-                        style={{
-                          background: `linear-gradient(135deg, ${preview.primary}, ${preview.accent})`,
-                        }}
-                      >
-                        <div className='text-white'>
-                          <p className='text-xs text-white/80'>
-                            {previewTheme.category || 'متجر'}
-                          </p>
-                          <p className='mt-1 text-lg font-bold sm:text-2xl'>
-                            {previewTheme.name}
-                          </p>
-                        </div>
-                        <Palette
-                          className='size-8 text-white'
-                          aria-hidden='true'
-                        />
-                      </div>
-                      <div className='grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3'>
-                        {[...Array(4)].map((_, index) => (
-                          <div
-                            key={index}
-                            className='overflow-hidden rounded-xl border border-black/5'
-                            style={{ backgroundColor: preview.background }}
-                          >
-                            <div
-                              className='h-16 sm:h-24'
-                              style={{
-                                background: `linear-gradient(135deg, ${preview.accent}, ${preview.primary})`,
-                              }}
-                            />
-                            <div className='space-y-2 p-2 sm:p-3'>
-                              <div
-                                className='h-2 rounded-full'
-                                style={{ backgroundColor: preview.primary }}
-                              />
-                              <div
-                                className='h-2 w-3/4 rounded-full'
-                                style={{ backgroundColor: preview.accent }}
-                              />
-                              <div
-                                className='h-7 rounded-lg'
-                                style={{
-                                  backgroundColor: preview.card || '#ffffff',
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })()}
-            </div>
-
-            <DialogFooter className='sm:justify-start'>
-              <Button type='button' onClick={confirmThemeSelection}>
-                <Check />
-                اعتماد القالب والوضع
-              </Button>
-              <Button
-                type='button'
-                variant='outline'
-                onClick={() => setPreviewTheme(null)}
-              >
-                رجوع دون اختيار
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
     </>
   )
 }

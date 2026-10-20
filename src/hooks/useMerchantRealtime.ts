@@ -15,6 +15,7 @@ import {
   readSyncCursor,
   injectOrder,
 } from '@/lib/db'
+import { getMerchantIdentityFromToken } from '@/lib/merchant-accounts'
 import {
   fetchDashboardInitialization,
   normalizeRealtimeOrders,
@@ -111,17 +112,7 @@ function getSessionIdentity(): string {
     localStorage.getItem('merchant_token') ||
     sessionStorage.getItem('merchant_token') ||
     ''
-  try {
-    const encoded = token.split('.')[1]
-    if (!encoded) return ''
-    const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/')
-    const claims = JSON.parse(
-      atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))
-    ) as Record<string, unknown>
-    return String(claims.user_id || claims.accountNo || '')
-  } catch {
-    return ''
-  }
+  return getMerchantIdentityFromToken(token)
 }
 
 function writeSnapshotQueries(

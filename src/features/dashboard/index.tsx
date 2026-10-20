@@ -16,6 +16,11 @@ import {
 import { toast } from 'sonner'
 import { authApiRequest } from '@/lib/auth-api'
 import {
+  getActiveMerchantToken,
+  getMerchantAccountName,
+} from '@/lib/merchant-accounts'
+import {
+  getMerchantDisplayName,
   getMerchantProfile,
   saveMerchantProfile,
 } from '@/lib/merchant-profiles'
@@ -225,12 +230,22 @@ export function Dashboard() {
   const phone = dataPhone || merchantProfile.phone.trim()
   const callablePhone = phone.replace(/[^\d+#*]/g, '')
   const phoneHref = callablePhone ? `tel:${callablePhone}` : ''
-  const storeName = data?.storeName || merchantProfile.storeName || 'اسم المتجر'
+  const dataStoreName = getMerchantDisplayName('', data?.storeName || '')
+  const tokenStoreName = getMerchantDisplayName(
+    '',
+    getMerchantAccountName(getActiveMerchantToken())
+  )
+  const storeName =
+    getMerchantDisplayName(merchantId, dataStoreName || tokenStoreName) ||
+    'اسم المتجر'
 
   useEffect(() => {
-    if (!merchantId || (!dataPhone && !fetchedStoreUrl)) return
+    if (!merchantId || (!dataStoreName && !dataPhone && !fetchedStoreUrl)) {
+      return
+    }
 
     const profileUpdates = {
+      ...(dataStoreName ? { storeName: dataStoreName } : {}),
       ...(dataPhone ? { phone: dataPhone } : {}),
       ...(fetchedStoreUrl ? { storeUrl: fetchedStoreUrl } : {}),
     }
@@ -242,10 +257,10 @@ export function Dashboard() {
       toast.error(
         error instanceof Error
           ? error.message
-          : 'تعذر حفظ رقم ورابط المتجر على هذا الجهاز.'
+          : 'تعذر حفظ معلومات المتجر على هذا الجهاز.'
       )
     }
-  }, [dataPhone, fetchedStoreUrl, merchantId])
+  }, [dataPhone, dataStoreName, fetchedStoreUrl, merchantId])
 
   const openDeliveryDialog = () => {
     if (!deliveryOrders.length) {

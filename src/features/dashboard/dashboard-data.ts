@@ -1,4 +1,5 @@
 import { authApiRequest } from '@/lib/auth-api'
+import { getMerchantIdentityFromToken } from '@/lib/merchant-accounts'
 import type { ApiResult } from '@/lib/merchant-api'
 
 type ApiRecord = Record<string, unknown>
@@ -222,17 +223,39 @@ function normalizeSettings(result: ApiResult) {
     }
   }
 
-  const username = readString(merchant.username, merchant.store_username).replace(
-    /^@/,
-    ''
+  const username = readString(
+    merchant.username,
+    merchant.store_username
+  ).replace(/^@/, '')
+  const configuredStoreName = readString(
+    merchant.store_name,
+    merchant.storeName,
+    settings?.store_name,
+    settings?.storeName,
+    merchant.merchant_name,
+    merchant.merchantName,
+    settings?.merchant_name,
+    settings?.merchantName,
+    merchant.name,
+    settings?.name
   )
-  const configuredStoreName = readString(merchant.store_name, merchant.name)
+  const actualStoreName = [configuredStoreName, merchant.name, settings?.name]
+    .map((value) => readString(value))
+    .find(
+      (name) =>
+        name &&
+        ![
+          'متجري',
+          'اسم المتجر',
+          'متجرنا',
+          'التاجر',
+          'my store',
+          'store name',
+        ].includes(name.toLocaleLowerCase())
+    )
 
   return {
-    storeName:
-      configuredStoreName && configuredStoreName !== 'متجري'
-        ? configuredStoreName
-        : readString(merchant.name, username) || 'اسم المتجر',
+    storeName: actualStoreName || 'اسم المتجر',
     username,
     phone: readString(
       merchant.phone,
@@ -482,17 +505,7 @@ function getMerchantToken() {
 }
 
 function getMerchantIdFromToken(token: string) {
-  try {
-    const encoded = token.split('.')[1]
-    if (!encoded) return ''
-    const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/')
-    const claims = asRecord(
-      JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')))
-    )
-    return readIdentifier(claims?.user_id, claims?.accountNo)
-  } catch {
-    return ''
-  }
+  return getMerchantIdentityFromToken(token)
 }
 
 export function fetchDashboardInitialization(

@@ -3,7 +3,11 @@ import {
   removeSavedMerchantAccountById,
   saveMerchantAccount,
 } from './merchant-accounts'
-import { getMerchantProfile, saveMerchantProfile } from './merchant-profiles'
+import {
+  getMerchantDisplayName,
+  getMerchantProfile,
+  saveMerchantProfile,
+} from './merchant-profiles'
 
 function makeToken(userId: number) {
   const payload = btoa(
@@ -47,6 +51,8 @@ describe('merchant profiles', () => {
       location: 'عدن، خور مكسر',
       storeUrl: '',
     })
+    expect(getMerchantDisplayName('merchant-1')).toBe('متجر الأول')
+    expect(getMerchantDisplayName('merchant-2')).toBe('متجر الثاني')
   })
 
   it('updates only provided fields and keeps data after saved-login removal', () => {
@@ -66,6 +72,23 @@ describe('merchant profiles', () => {
       location: 'تعز، شارع جمال',
       storeUrl: '',
     })
+  })
+
+  it('uses the real store name instead of generic placeholders', () => {
+    localStorage.setItem('merchant_store_name:merchant-1', 'متجري')
+    saveMerchantProfile('merchant-1', { storeName: 'متجري' })
+
+    expect(getMerchantDisplayName('merchant-1', 'متجر الأصيل')).toBe(
+      'متجر الأصيل'
+    )
+
+    saveMerchantProfile('merchant-1', { storeName: 'متجر الأصيل' })
+    expect(getMerchantDisplayName('merchant-1')).toBe('متجر الأصيل')
+  })
+
+  it('does not use a generic label as a store-name fallback', () => {
+    expect(getMerchantDisplayName('merchant-1', 'متجري')).toBe('')
+    expect(getMerchantDisplayName('', 'اسم المتجر')).toBe('')
   })
 
   it('stores a merchant storefront link and migrates older saved profiles', () => {

@@ -254,6 +254,35 @@ describe('fetchDashboardData', () => {
     })
   })
 
+  it('uses an actual name when the settings wrapper only has the default label', async () => {
+    mockDashboardResponse(
+      dashboardSnapshot({
+        settings: {
+          store_name: 'متجري',
+          name: 'متجر الأصيل',
+          username: 'merchant_shop',
+        },
+      })
+    )
+
+    await expect(fetchDashboardData()).resolves.toMatchObject({
+      storeName: 'متجر الأصيل',
+    })
+  })
+
+  it('does not substitute the account username for a missing store name', async () => {
+    mockDashboardResponse(
+      dashboardSnapshot({
+        settings: { store_name: 'متجري', username: '@merchant_shop' },
+      })
+    )
+
+    await expect(fetchDashboardData()).resolves.toMatchObject({
+      storeName: 'اسم المتجر',
+      username: 'merchant_shop',
+    })
+  })
+
   it('preserves the realtime cursor returned by the bootstrap endpoint', async () => {
     mockDashboardResponse(
       dashboardSnapshot({ lastTimestamp: 1_797_000_000_000, lastEventId: 42 })

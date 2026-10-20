@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 
 export type AuthFlowContext = 'register' | 'recover' | 'login_otp'
-export type StorefrontThemeMode = 'light' | 'dark'
 
 export type MerchantRegistration = {
   phone: string
@@ -11,7 +10,6 @@ export type MerchantRegistration = {
   password: string
   location: string
   store_type: string
-  storefront_theme_id?: string
 }
 
 interface AuthFlowState {
@@ -22,8 +20,6 @@ interface AuthFlowState {
   remember: boolean
   redirectTo: string
   storeName: string
-  storefrontThemeId: string
-  storefrontThemeMode: StorefrontThemeMode
   registration: MerchantRegistration | null
   setIdentifier: (identifier: string) => void
   beginFlow: (input: {
@@ -33,8 +29,6 @@ interface AuthFlowState {
     remember?: boolean
     redirectTo?: string
     storeName?: string
-    storefrontThemeId?: string
-    storefrontThemeMode?: StorefrontThemeMode
     registration?: MerchantRegistration
   }) => void
   setStateToken: (stateToken: string) => void
@@ -49,8 +43,6 @@ export const useAuthFlowStore = create<AuthFlowState>()((set) => ({
   remember: true,
   redirectTo: '/',
   storeName: '',
-  storefrontThemeId: '',
-  storefrontThemeMode: 'light',
   registration: null,
   setIdentifier: (identifier) => set({ identifier }),
   beginFlow: ({
@@ -60,8 +52,6 @@ export const useAuthFlowStore = create<AuthFlowState>()((set) => ({
     remember,
     redirectTo,
     storeName,
-    storefrontThemeId,
-    storefrontThemeMode,
     registration,
   }) =>
     set({
@@ -71,8 +61,6 @@ export const useAuthFlowStore = create<AuthFlowState>()((set) => ({
       remember: remember ?? true,
       redirectTo: redirectTo ?? '/',
       storeName: storeName ?? '',
-      storefrontThemeId: storefrontThemeId ?? '',
-      storefrontThemeMode: storefrontThemeMode ?? 'light',
       registration: registration ?? null,
     }),
   setStateToken: (stateToken) => set({ stateToken }),
@@ -84,8 +72,6 @@ export const useAuthFlowStore = create<AuthFlowState>()((set) => ({
       remember: true,
       redirectTo: '/',
       storeName: '',
-      storefrontThemeId: '',
-      storefrontThemeMode: 'light',
       registration: null,
     }),
 }))

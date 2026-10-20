@@ -122,16 +122,12 @@ export function SignIn() {
               </div>
               {savedAccounts.map((account) => {
                 const profile = getMerchantProfile(account.id)
-                const cachedStoreName =
-                  localStorage
-                    .getItem(`merchant_store_name:${account.id}`)
-                    ?.trim() || ''
-                const storeName =
-                  profile.storeName ||
-                  cachedStoreName ||
-                  getMerchantAccountName(account.token) ||
-                  account.label.trim() ||
-                  account.identifier
+                const storeName = getMerchantDisplayName(
+                  account.id,
+                  getMerchantDisplayName('', account.label) ||
+                    getMerchantAccountName(account.token) ||
+                    account.identifier
+                )
 
                 return (
                   <article
