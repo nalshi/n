@@ -61,8 +61,7 @@ self.addEventListener('push', (event) => {
         // 3. إظهار إشعار النظام للتاجر مع التنبيه
         return self.registration.showNotification('طلب جديد في متجرك! 🛍️', {
           body: `العميل: ${order.customerName || 'عميل جديد'} - المبلغ: ${order.total || 0} ريال`,
-          icon: '/favicon.ico',
-          badge: '/favicon.ico',
+          icon: '/images/app-icon-192.png',
           tag: `order_${order.id}`,
           renotify: true,
           data: { url: '/orders' },
