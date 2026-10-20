@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -7,6 +7,7 @@ import {
   Check,
   LoaderCircle,
   LogOut,
+  MapPin,
   MessageSquareText,
   MessagesSquare,
   Palette,
@@ -21,6 +22,10 @@ import {
   getActiveMerchantToken,
   removeSavedMerchantAccount,
 } from '@/lib/merchant-accounts'
+import {
+  getMerchantProfile,
+  saveMerchantProfile,
+} from '@/lib/merchant-profiles'
 import {
   merchantBootstrapKey,
   merchantQueryKeys,
@@ -93,6 +98,7 @@ import {
 type DialogName =
   | 'name'
   | 'type'
+  | 'location'
   | 'welcome'
   | 'shipping'
   | 'assistant'
@@ -218,6 +224,7 @@ export function StoreSettings() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const merchantId = useMerchantIdentity()
+  const merchantProfile = getMerchantProfile(merchantId)
   const [dialog, setDialog] = useState<DialogName>(null)
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [merchantDraft, setMerchantDraft] = useState<MerchantSettings | null>(
@@ -225,6 +232,7 @@ export function StoreSettings() {
   )
   const [storeTypeSelection, setStoreTypeSelection] = useState('')
   const [otherStoreType, setOtherStoreType] = useState('')
+  const [locationDraft, setLocationDraft] = useState('')
   const [assistantDraft, setAssistantDraft] =
     useState<AiAssistantSettings | null>(null)
   const [whatsappDraft, setWhatsappDraft] = useState<WhatsappSettings | null>(
@@ -245,6 +253,28 @@ export function StoreSettings() {
     staleTime: Number.POSITIVE_INFINITY,
   })
   const settings = settingsQuery.data
+
+  useEffect(() => {
+    if (!settings) return
+
+    const profileUpdates = {
+      ...(settings.merchant.storeName
+        ? { storeName: settings.merchant.storeName }
+        : {}),
+      ...(settings.merchant.phone ? { phone: settings.merchant.phone } : {}),
+    }
+    if (Object.keys(profileUpdates).length === 0) return
+
+    try {
+      saveMerchantProfile(merchantId, profileUpdates)
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'تعذر حفظ معلومات المتجر على هذا الجهاز.'
+      )
+    }
+  }, [merchantId, settings])
 
   const updateSettingsCache = (
     update: (current: StoreSettingsData) => StoreSettingsData
@@ -292,6 +322,10 @@ export function StoreSettings() {
         storeName: draft.storeName,
       }))
       localStorage.setItem(`merchant_store_name:${merchantId}`, draft.storeName)
+      saveMerchantProfile(merchantId, {
+        ...(draft.storeName ? { storeName: draft.storeName } : {}),
+        ...(draft.phone ? { phone: draft.phone } : {}),
+      })
       toast.success(message || 'تم حفظ إعدادات المتجر.')
       setDialog(null)
     },
@@ -393,6 +427,9 @@ export function StoreSettings() {
 
   const openSettingsDialog = (name: Exclude<DialogName, null>) => {
     if (!settings) return
+    if (name === 'location') {
+      setLocationDraft(getMerchantProfile(merchantId).location)
+    }
     setMerchantDraft({ ...settings.merchant })
     setAssistantDraft({
       ...settings.assistant,
@@ -407,6 +444,20 @@ export function StoreSettings() {
       setOtherStoreType(isStandardType ? '' : currentType)
     }
     setDialog(name)
+  }
+
+  const saveMerchantLocation = () => {
+    try {
+      saveMerchantProfile(merchantId, {
+        location: locationDraft.trim(),
+      })
+      toast.success('تم حفظ موقع المتجر على هذا الجهاز.')
+      setDialog(null)
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'تعذر حفظ موقع المتجر.'
+      )
+    }
   }
 
   const saveMerchantDraft = () => {
@@ -538,6 +589,12 @@ export function StoreSettings() {
                   ثابت
                 </span>
               </div>
+              <SettingRow
+                icon={MapPin}
+                title='موقع المتجر'
+                value={merchantProfile.location || 'أضف المدينة والعنوان'}
+                onClick={() => openSettingsDialog('location')}
+              />
             </SettingGroup>
 
             <SettingGroup
@@ -749,6 +806,35 @@ export function StoreSettings() {
             )}
             حفظ
           </Button>
+        </DialogFooter>
+      </DialogShell>
+
+      <DialogShell
+        open={dialog === 'location'}
+        onOpenChange={(open) => !open && setDialog(null)}
+        title='موقع المتجر'
+        description='أضف المدينة والعنوان ليسهل تمييز هذا المتجر عند التبديل بين حساباتك.'
+      >
+        <div className='grid gap-2'>
+          <Label htmlFor='settings-merchant-location'>المدينة والعنوان</Label>
+          <Textarea
+            id='settings-merchant-location'
+            rows={3}
+            maxLength={200}
+            value={locationDraft}
+            onChange={(event) => setLocationDraft(event.target.value)}
+            placeholder='مثال: صنعاء، شارع الزبيري'
+          />
+          <p className='text-xs text-muted-foreground'>
+            تُحفظ هذه المعلومة على هذا الجهاز لهذا الحساب فقط، ولا تُرسل إلى
+            الخادم.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant='outline' onClick={() => setDialog(null)}>
+            إلغاء
+          </Button>
+          <Button onClick={saveMerchantLocation}>حفظ الموقع</Button>
         </DialogFooter>
       </DialogShell>
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, Plus, Store, Trash2 } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Plus, Store, Trash2 } from 'lucide-react'
 import { getSafeAuthRedirect } from '@/lib/auth-redirect'
 import { restoreAuthSession } from '@/lib/complete-auth-session'
 import {
@@ -11,6 +11,7 @@ import {
   removeSavedMerchantAccountById,
   type SavedMerchantAccount,
 } from '@/lib/merchant-accounts'
+import { getMerchantProfile } from '@/lib/merchant-profiles'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -80,53 +81,80 @@ export function SignIn() {
                 الحسابات المحفوظة: {savedAccounts.length} من{' '}
                 {MAX_SAVED_MERCHANT_ACCOUNTS}
               </p>
-              {savedAccounts.map((account) => (
-                <div
-                  key={account.id}
-                  className='flex items-center gap-3 rounded-lg border bg-card p-3'
-                >
-                  <span className='flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary'>
-                    <Store className='size-5' aria-hidden='true' />
-                  </span>
-                  <div className='min-w-0 flex-1'>
-                    <p className='truncate text-sm font-semibold'>
-                      {account.label}
-                    </p>
-                    <p
-                      className='truncate text-xs text-muted-foreground'
-                      dir='ltr'
-                    >
-                      {account.identifier}
-                    </p>
-                    {account.token === activeToken && (
-                      <p className='mt-1 text-xs font-medium text-primary'>
-                        الجلسة النشطة
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    type='button'
-                    variant='outline'
-                    size='sm'
-                    onClick={() => resumeAccount(account)}
-                    aria-label={`الدخول إلى حساب ${account.label}`}
+              {savedAccounts.map((account) => {
+                const profile = getMerchantProfile(account.id)
+
+                return (
+                  <article
+                    key={account.id}
+                    className='grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-lg border bg-card p-3 sm:items-center'
                   >
-                    <ArrowLeft aria-hidden='true' />
-                    دخول
-                  </Button>
-                  {account.token !== activeToken && (
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='icon'
-                      onClick={() => removeAccount(account)}
-                      aria-label={`إزالة ${account.label} من هذا الجهاز`}
-                    >
-                      <Trash2 className='size-4' aria-hidden='true' />
-                    </Button>
-                  )}
-                </div>
-              ))}
+                    <span className='flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary'>
+                      <Store className='size-5' aria-hidden='true' />
+                    </span>
+                    <div className='grid min-w-0 gap-1'>
+                      <p className='truncate text-sm font-semibold'>
+                        {profile.storeName || account.label}
+                      </p>
+                      <p
+                        className='truncate text-xs text-muted-foreground'
+                        dir='ltr'
+                      >
+                        {account.identifier}
+                      </p>
+                      {profile.phone && (
+                        <p
+                          className='flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground'
+                          dir='ltr'
+                        >
+                          <Phone
+                            className='size-3.5 shrink-0'
+                            aria-hidden='true'
+                          />
+                          <span className='truncate'>{profile.phone}</span>
+                        </p>
+                      )}
+                      {profile.location && (
+                        <p className='flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground'>
+                          <MapPin
+                            className='size-3.5 shrink-0'
+                            aria-hidden='true'
+                          />
+                          <span className='truncate'>{profile.location}</span>
+                        </p>
+                      )}
+                      {account.token === activeToken && (
+                        <p className='mt-1 text-xs font-medium text-primary'>
+                          الجلسة النشطة
+                        </p>
+                      )}
+                    </div>
+                    <div className='col-span-2 flex justify-end gap-2 sm:col-span-1'>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        onClick={() => resumeAccount(account)}
+                        aria-label={`الدخول إلى حساب ${profile.storeName || account.label}`}
+                      >
+                        <ArrowLeft aria-hidden='true' />
+                        دخول
+                      </Button>
+                      {account.token !== activeToken && (
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          size='icon'
+                          onClick={() => removeAccount(account)}
+                          aria-label={`إزالة ${profile.storeName || account.label} من هذا الجهاز`}
+                        >
+                          <Trash2 className='size-4' aria-hidden='true' />
+                        </Button>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
               <Button
                 type='button'
                 variant='outline'
