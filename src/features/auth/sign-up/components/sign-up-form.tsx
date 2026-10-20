@@ -74,72 +74,180 @@ function ThemeOptionCard({
   selected: boolean
   onSelect: () => void
 }) {
-  const palette = selected ? theme.preview.dark : theme.preview
+  const [previewMode, setPreviewMode] = useState<'light' | 'dark'>('light')
+  const preview =
+    previewMode === 'dark' ? theme.preview.dark : theme.preview
 
   return (
-    <button
-      type='button'
+    <div
+      role='button'
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect()
+        }
+      }}
       aria-label={`اختيار قالب ${theme.name}`}
       aria-pressed={selected}
       className={cn(
-        'group relative overflow-hidden rounded-2xl border text-start transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'group relative cursor-pointer overflow-hidden rounded-[22px] border text-start transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         selected
-          ? 'border-primary bg-primary/5 shadow-sm ring-2 ring-primary/30'
-          : 'border-border bg-card hover:border-primary/50 hover:bg-muted/20'
+          ? 'border-primary bg-primary/5 shadow-[0_12px_30px_rgba(99,102,241,0.16)] ring-2 ring-primary/25'
+          : 'border-border bg-card/80 hover:border-primary/50 hover:bg-muted/20'
       )}
     >
-      <div className='grid h-24 grid-cols-2'>
-        {(['light', 'dark'] as const).map((mode) => {
-          const isDark = mode === 'dark'
-          const preview = isDark ? theme.preview.dark : theme.preview
-          return (
-            <div
+      <div className='flex items-center justify-between gap-2 border-b border-border/70 bg-background/60 px-3 py-2.5'>
+        <div className='flex min-w-0 items-center gap-2'>
+          <span
+            className='size-2.5 shrink-0 rounded-full shadow-sm'
+            style={{ backgroundColor: preview.primary }}
+            aria-hidden='true'
+          />
+          <span className='truncate text-sm font-bold text-foreground'>
+            {theme.name}
+          </span>
+        </div>
+
+        <div className='flex items-center gap-1 rounded-full border border-border bg-muted/60 p-1'>
+          {(['light', 'dark'] as const).map((mode) => (
+            <button
               key={mode}
-              className='flex items-center justify-center border-e border-white/10 last:border-e-0'
-              style={{ backgroundColor: preview.background }}
+              type='button'
+              onClick={(event) => {
+                event.stopPropagation()
+                setPreviewMode(mode)
+              }}
+              aria-label={`معاينة ${mode === 'light' ? 'فاتحة' : 'داكنة'}`}
+              className={cn(
+                'min-w-12 rounded-full px-2 py-1 text-[10px] font-medium transition-colors',
+                previewMode === mode
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
             >
-              <span
-                className='grid size-10 place-items-center rounded-xl text-white shadow-sm'
-                style={{ backgroundColor: isDark ? preview.primary : preview.primary }}
-              >
-                <Palette className='size-4' />
-              </span>
-            </div>
-          )
-        })}
+              {mode === 'light' ? 'فاتح' : 'داكن'}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className='flex items-start justify-between gap-3 p-3.5'>
+
+      <div
+        className='p-3'
+        style={{
+          background: `linear-gradient(180deg, ${preview.background} 0%, ${
+            preview.background
+          } 100%)`,
+        }}
+      >
+        <div
+          className='overflow-hidden rounded-[18px] border border-black/5 p-2.5 shadow-inner'
+          style={{
+            backgroundColor: preview.card || preview.background,
+            color: preview.text || '#0f172a',
+          }}
+        >
+          <div className='mb-2 flex items-center justify-between gap-2 rounded-xl px-2 py-1.5'
+            style={{ backgroundColor: preview.background, opacity: 0.9 }}
+          >
+            <div className='flex items-center gap-1.5'>
+              {[...Array(3)].map((_, index) => (
+                <span
+                  key={index}
+                  className='size-1.5 rounded-full'
+                  style={{ backgroundColor: preview.primary }}
+                  aria-hidden='true'
+                />
+              ))}
+            </div>
+            <div
+              className='rounded-full px-2 py-1 text-[9px] font-semibold text-white'
+              style={{ backgroundColor: preview.primary }}
+            >
+              متجر
+            </div>
+          </div>
+
+          <div
+            className='mb-2 flex items-center justify-between rounded-2xl p-2.5'
+            style={{ background: `linear-gradient(135deg, ${preview.primary}, ${preview.accent})` }}
+          >
+            <div>
+              <p className='text-[9px] font-medium text-white/80'>
+                {theme.category || 'متجر'}
+              </p>
+              <p className='mt-0.5 text-[11px] font-bold text-white'>
+                {theme.name}
+              </p>
+            </div>
+            <span className='grid size-9 place-items-center rounded-xl bg-white/15 text-white backdrop-blur-sm'>
+              <Palette className='size-4' />
+            </span>
+          </div>
+
+          <div className='grid grid-cols-2 gap-2'>
+            {['', '', '', ''].map((_, index) => (
+              <div
+                key={index}
+                className='overflow-hidden rounded-xl border border-black/5'
+                style={{ backgroundColor: preview.background }}
+              >
+                <div
+                  className='h-10 rounded-b-xl'
+                  style={{
+                    background: `linear-gradient(135deg, ${preview.accent}, ${preview.primary})`,
+                  }}
+                />
+                <div className='space-y-1.5 p-2'>
+                  <div
+                    className='h-2 rounded-full'
+                    style={{ backgroundColor: preview.primary, opacity: 0.85 }}
+                  />
+                  <div
+                    className='h-2 w-3/4 rounded-full'
+                    style={{ backgroundColor: preview.accent, opacity: 0.8 }}
+                  />
+                  <div
+                    className='h-6 w-full rounded-xl'
+                    style={{ backgroundColor: preview.card || '#ffffff' }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className='flex items-center justify-between gap-3 border-t border-border/70 px-3 py-2.5'>
         <div className='min-w-0'>
-          <p className='truncate text-sm font-bold text-foreground'>
+          <p className='truncate text-xs font-semibold text-foreground'>
             {theme.name}
           </p>
-          <p className='mt-1 line-clamp-2 text-[11px] leading-5 text-muted-foreground'>
+          <p className='mt-0.5 line-clamp-2 text-[10px] leading-4 text-muted-foreground'>
             {theme.description || theme.category || 'قالب متجر'}
           </p>
         </div>
-        {selected && (
-          <span className='grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground'>
-            <Check className='size-4' />
-          </span>
-        )}
+
+        <div className='flex items-center gap-1.5'>
+          {[preview.primary, preview.accent, preview.background].map(
+            (color, index) => (
+              <span
+                key={`${theme.id}-${color}-${index}`}
+                className='size-3.5 rounded-full border border-black/5 shadow-xs'
+                style={{ backgroundColor: color }}
+                aria-hidden='true'
+              />
+            )
+          )}
+          {selected && (
+            <span className='grid size-6 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground'>
+              <Check className='size-3.5' />
+            </span>
+          )}
+        </div>
       </div>
-      <div className='flex items-center gap-1.5 px-3.5 pb-3.5'>
-        {[
-          palette.primary,
-          palette.accent,
-          palette.background,
-          palette.card || '#ffffff',
-        ].map((color, index) => (
-          <span
-            key={`${theme.id}-${color}-${index}`}
-            className='size-4 rounded-md border border-black/5 shadow-xs'
-            style={{ backgroundColor: color }}
-            aria-hidden='true'
-          />
-        ))}
-      </div>
-    </button>
+    </div>
   )
 }
 
