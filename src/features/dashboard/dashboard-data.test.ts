@@ -237,6 +237,23 @@ describe('fetchDashboardData', () => {
     )
   })
 
+  it('uses the merchant name instead of the generic store-name placeholder', async () => {
+    mockDashboardResponse(
+      dashboardSnapshot({
+        settings: {
+          store_name: 'متجري',
+          name: 'متجر التاجر',
+          username: '@merchant_shop',
+        },
+      })
+    )
+
+    await expect(fetchDashboardData()).resolves.toMatchObject({
+      storeName: 'متجر التاجر',
+      username: 'merchant_shop',
+    })
+  })
+
   it('preserves the realtime cursor returned by the bootstrap endpoint', async () => {
     mockDashboardResponse(
       dashboardSnapshot({ lastTimestamp: 1_797_000_000_000, lastEventId: 42 })

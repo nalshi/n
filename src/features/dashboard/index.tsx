@@ -225,7 +225,7 @@ export function Dashboard() {
   const phone = dataPhone || merchantProfile.phone.trim()
   const callablePhone = phone.replace(/[^\d+#*]/g, '')
   const phoneHref = callablePhone ? `tel:${callablePhone}` : ''
-  const storeName = data?.storeName || merchantProfile.storeName || 'متجرك'
+  const storeName = data?.storeName || merchantProfile.storeName || 'اسم المتجر'
 
   useEffect(() => {
     if (!merchantId || (!dataPhone && !fetchedStoreUrl)) return

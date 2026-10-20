@@ -222,12 +222,18 @@ function normalizeSettings(result: ApiResult) {
     }
   }
 
+  const username = readString(merchant.username, merchant.store_username).replace(
+    /^@/,
+    ''
+  )
+  const configuredStoreName = readString(merchant.store_name, merchant.name)
+
   return {
-    storeName: readString(merchant.store_name, merchant.name) || 'متجري',
-    username: readString(merchant.username, merchant.store_username).replace(
-      /^@/,
-      ''
-    ),
+    storeName:
+      configuredStoreName && configuredStoreName !== 'متجري'
+        ? configuredStoreName
+        : readString(merchant.name, username) || 'اسم المتجر',
+    username,
     phone: readString(
       merchant.phone,
       settings?.phone,
