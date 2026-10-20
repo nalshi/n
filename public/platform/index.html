@@ -11,7 +11,18 @@
     />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://dash.appi.dpdns.org/platform/" />
-    <link rel="icon" href="/images/favicon_light.svg" type="image/svg+xml" />
+    <link
+      rel="icon"
+      href="/images/favicon_light.svg"
+      type="image/svg+xml"
+      media="(prefers-color-scheme: light)"
+    />
+    <link
+      rel="icon"
+      href="/images/favicon.svg"
+      type="image/svg+xml"
+      media="(prefers-color-scheme: dark)"
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -259,8 +270,21 @@
       }
 
       .brand img {
+        display: block;
         width: 38px;
         height: 38px;
+      }
+
+      .brand .brand-logo-dark {
+        display: none;
+      }
+
+      :root[data-color-mode="dark"] .brand .brand-logo-light {
+        display: none;
+      }
+
+      :root[data-color-mode="dark"] .brand .brand-logo-dark {
+        display: block;
       }
 
       .brand strong {
@@ -1080,11 +1104,28 @@
       }
 
       .intro-mark {
-        font-size: clamp(3.5rem, 12vw, 8rem);
-        font-weight: 900;
-        letter-spacing: -0.06em;
-        line-height: 1;
+        display: block;
+        width: clamp(5rem, 15vw, 8rem);
+        height: clamp(5rem, 15vw, 8rem);
         animation: intro-mark-enter 580ms cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+
+      .intro-mark img {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .intro-mark .brand-logo-dark {
+        display: none;
+      }
+
+      :root[data-color-mode="dark"] .intro-mark .brand-logo-light {
+        display: none;
+      }
+
+      :root[data-color-mode="dark"] .intro-mark .brand-logo-dark {
+        display: block;
       }
 
       .intro-caption {
@@ -1344,7 +1385,22 @@
   </head>
   <body>
     <div class="intro-overlay" aria-hidden="true" hidden>
-      <span class="intro-mark">نالش</span>
+      <span class="intro-mark">
+        <img
+          class="brand-logo-light"
+          src="/images/favicon_light.svg"
+          width="128"
+          height="128"
+          alt=""
+        />
+        <img
+          class="brand-logo-dark"
+          src="/images/favicon.svg"
+          width="128"
+          height="128"
+          alt=""
+        />
+      </span>
       <p class="intro-caption">مساحة واحدة لتجارتك</p>
     </div>
     <a class="skip-link" href="#main">انتقل إلى المحتوى</a>
@@ -1352,7 +1408,15 @@
       <nav class="topbar" aria-label="التنقل الرئيسي">
         <a class="brand" href="/platform/" aria-label="نالش - الصفحة الرئيسية">
           <img
+            class="brand-logo-light"
             src="/images/favicon_light.svg"
+            width="38"
+            height="38"
+            alt=""
+          />
+          <img
+            class="brand-logo-dark"
+            src="/images/favicon.svg"
             width="38"
             height="38"
             alt=""
