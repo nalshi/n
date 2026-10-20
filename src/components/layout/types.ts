@@ -3,13 +3,6 @@ import { type LinkProps } from '@tanstack/react-router'
 type User = {
   name: string
   email: string
-  avatar: string
-}
-
-type Team = {
-  name: string
-  logo: React.ElementType
-  plan: string
 }
 
 type BaseNavItem = {
@@ -37,7 +30,6 @@ type NavGroup = {
 
 type SidebarData = {
   user: User
-  teams: Team[]
   navGroups: NavGroup[]
 }
 

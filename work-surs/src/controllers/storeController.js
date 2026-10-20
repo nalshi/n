@@ -1,6 +1,7 @@
 import { HttpError } from '../security/rbac.js';
 import { syncMerchantSettingsToLegacyApi } from '../services/legacySync/tidbSyncService.js';
 import { syncStoreInfoToStorefront } from '../services/store/storeInfoSyncService.js';
+import { syncManifestOnlyToStorefront } from '../services/catalog/catalogSyncService.js';
 
 // ========================================================
 // ⚙️ تحكم إعدادات المتجر (اسم المتجر / السياسات)
@@ -94,6 +95,9 @@ export async function saveMerchantSettings({ env, ctx, user, body }) {
       settings: finalSettings,
     })
   );
+
+  // ⚡ تحديث manifest.json فقط عند تغيير الإعدادات (بدون إعادة نشر كامل الكتالوج)
+  ctx.waitUntil(syncManifestOnlyToStorefront(env, user.username, user.user_id));
 
   // ⭐ تحديث الـ Durable Object للإعدادات
   if (env.MERCHANT_SESSION) {

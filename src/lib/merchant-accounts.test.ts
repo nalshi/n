@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   getSavedMerchantAccounts,
+  getMerchantAccountName,
+  getMerchantAccountAvatarUrl,
   MAX_SAVED_MERCHANT_ACCOUNTS,
   removeSavedMerchantAccountById,
   saveMerchantAccount,
@@ -8,9 +10,12 @@ import {
 
 function makeToken(
   userId: number,
-  expiresAt = Math.floor(Date.now() / 1000) + 3600
+  expiresAt = Math.floor(Date.now() / 1000) + 3600,
+  extraClaims: Record<string, unknown> = {}
 ) {
-  const payload = btoa(JSON.stringify({ user_id: userId, exp: expiresAt }))
+  const payload = btoa(
+    JSON.stringify({ user_id: userId, exp: expiresAt, ...extraClaims })
+  )
   return `header.${payload}.signature`
 }
 
@@ -58,5 +63,36 @@ describe('saved merchant accounts', () => {
     expect(getSavedMerchantAccounts().map((account) => account.id)).toEqual([
       '2',
     ])
+  })
+
+  it('reads account photos from safe image claims', () => {
+    expect(
+      getMerchantAccountAvatarUrl(
+        makeToken(1, undefined, { picture: '/images/store-photo.png' })
+      )
+    ).toBe(`${window.location.origin}/images/store-photo.png`)
+    expect(
+      getMerchantAccountAvatarUrl(
+        makeToken(2, undefined, {
+          avatar_url: 'https://images.example.com/store-photo.png',
+        })
+      )
+    ).toBe('https://images.example.com/store-photo.png')
+    expect(
+      getMerchantAccountAvatarUrl(
+        makeToken(3, undefined, { picture: 'javascript:alert(1)' })
+      )
+    ).toBe('')
+    expect(
+      getMerchantAccountAvatarUrl(makeToken(4), 'javascript:alert(1)')
+    ).toBe('')
+  })
+
+  it('reads a merchant store name from account claims', () => {
+    expect(
+      getMerchantAccountName(
+        makeToken(5, undefined, { store_name: 'Merchant Store' })
+      )
+    ).toBe('Merchant Store')
   })
 })

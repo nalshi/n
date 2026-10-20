@@ -75,7 +75,12 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
     if (!response.token) {
       throw new Error('لم يُرجع الخادم رمز جلسة صالحًا.')
     }
-    completeAuthSession(response.token, flow.remember, phone)
+    completeAuthSession(
+      response.token,
+      flow.remember,
+      phone,
+      flow.storeName || flow.registration?.name || ''
+    )
     const redirectTo = getSafeAuthRedirect(flow.redirectTo)
     flow.clearFlow()
     await navigate({ to: redirectTo, replace: true })

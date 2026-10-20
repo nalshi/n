@@ -69,6 +69,19 @@ export function getMerchantProfile(merchantId: string): MerchantProfile {
   )
 }
 
+export function getMerchantDisplayName(
+  merchantId: string,
+  fallback = ''
+): string {
+  if (!merchantId.trim()) return fallback.trim()
+
+  const profileName = getMerchantProfile(merchantId).storeName.trim()
+  const cachedName =
+    localStorage.getItem(`merchant_store_name:${merchantId}`)?.trim() || ''
+
+  return profileName || cachedName || fallback.trim()
+}
+
 export function saveMerchantProfile(
   merchantId: string,
   updates: Partial<MerchantProfile>

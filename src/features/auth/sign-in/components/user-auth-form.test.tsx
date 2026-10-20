@@ -289,7 +289,7 @@ describe('UserAuthForm', () => {
   it('keeps the requested page while asking for new-device verification', async () => {
     apiRequestMock.mockImplementation(async (action: string) =>
       action === 'check_phone'
-        ? { status: 'user_found' }
+        ? { status: 'user_found', name: 'متجر الاختبار' }
         : {
             status: 'new_device_otp_required',
             state_token: 'device-state',
@@ -308,6 +308,7 @@ describe('UserAuthForm', () => {
       expect(navigate).toHaveBeenCalledWith({ to: '/otp' })
     )
     expect(useAuthFlowStore.getState().redirectTo).toBe('/orders')
+    expect(useAuthFlowStore.getState().storeName).toBe('متجر الاختبار')
     await expect
       .element(screen.getByRole('status', { name: 'جارٍ تجهيز لوحة التاجر' }))
       .not.toBeInTheDocument()

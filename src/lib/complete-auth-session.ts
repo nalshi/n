@@ -51,7 +51,8 @@ export function completeAuthSession(
 export function restoreAuthSession(
   token: string,
   remember: boolean,
-  fallbackIdentifier = ''
+  fallbackIdentifier = '',
+  displayName = ''
 ) {
   const claims = decodeToken(token)
   if (
@@ -61,6 +62,6 @@ export function restoreAuthSession(
   ) {
     return false
   }
-  completeAuthSession(token, remember, fallbackIdentifier)
+  completeAuthSession(token, remember, fallbackIdentifier, displayName)
   return true
 }

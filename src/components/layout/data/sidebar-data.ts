@@ -18,15 +18,7 @@ export const sidebarData: SidebarData = {
   user: {
     name: 'التاجر',
     email: 'مساحة التاجر',
-    avatar: '/avatars/shadcn.jpg',
   },
-  teams: [
-    {
-      name: 'نالش',
-      logo: Store,
-      plan: 'بوابة التاجر',
-    },
-  ],
   navGroups: [
     {
       title: 'إدارة المتجر',

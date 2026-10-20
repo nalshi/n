@@ -1,7 +1,8 @@
 import { ACTIVE_ORDER_STATUSES } from '../config/constants.js';
 import { HttpError } from '../security/rbac.js';
 import { resolveCategoryChain } from '../services/categories/categoryService.js';
-import { uploadProductImage } from '../services/images/imageService.js';
+import { prepareProductImage } from '../services/images/imageService.js';
+import { syncManifestOnlyToStorefront } from '../services/catalog/catalogSyncService.js';
 import { invalidatePublicProductsCache } from '../services/store/publicProductsCache.js';
 
 // ========================================================
@@ -15,6 +16,41 @@ import { invalidatePublicProductsCache } from '../services/store/publicProductsC
 // (اجتياز مسار). نقصر الشكل المقبول على نفس صيغة المعرّفات التي يولّدها
 // النظام نفسه (حروف/أرقام/شرطات فقط) لإغلاق هذا المسار نهائياً.
 const PRODUCT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+function scheduleProductFollowUp(
+  ctx,
+  env,
+  user,
+  { product, removedProductId, files = [], updateIndexes = true } = {}
+) {
+  const tasks = [
+    syncManifestOnlyToStorefront(env, user.username, user.user_id, files),
+  ];
+  if (env.MERCHANT_SESSION && (product || removedProductId)) {
+    const stub = env.MERCHANT_SESSION.get(env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`));
+    tasks.push(
+      stub.fetch(`http://internal/${removedProductId ? 'sync-product-removed' : 'sync-product'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(removedProductId ? { product_id: removedProductId } : { product }),
+      })
+    );
+  }
+
+  ctx.waitUntil(
+    Promise.allSettled(tasks).then((results) => {
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          if (result.reason instanceof Error) {
+            console.error(`Product follow-up failed: ${result.reason.message}`, result.reason.stack);
+          } else {
+            console.error('Product follow-up failed:', result.reason);
+          }
+        }
+      }
+    })
+  );
+}
 
 export async function saveProduct({ env, ctx, user, body, uploadedImageFile, uploadedOptionImageFiles = {} }) {
   let pid;
@@ -41,8 +77,11 @@ export async function saveProduct({ env, ctx, user, body, uploadedImageFile, upl
   }
 
   let imageUrl = body.existing_image || null;
+  const imageFiles = [];
   if (uploadedImageFile) {
-    imageUrl = await uploadProductImage(env, user.username, pid, uploadedImageFile, '', !body.id);
+    const image = await prepareProductImage(env, user.username, pid, uploadedImageFile);
+    imageUrl = image.url;
+    imageFiles.push(image);
   }
 
   let optionsJson = body.sizes || JSON.stringify(body.options || []);
@@ -65,7 +104,9 @@ export async function saveProduct({ env, ctx, user, body, uploadedImageFile, upl
       if (!imageFile) {
         throw new HttpError('تعذر استلام صورة أحد خيارات المنتج.', 400);
       }
-      option.image = await uploadProductImage(env, user.username, pid, imageFile, `option-${index}`, !body.id);
+      const image = await prepareProductImage(env, user.username, pid, imageFile, `option-${index}`);
+      option.image = image.url;
+      imageFiles.push(image);
       delete option.image_file_key;
       usedFileKeys.add(imageFileKey);
     }
@@ -132,30 +173,14 @@ export async function saveProduct({ env, ctx, user, body, uploadedImageFile, upl
 
   await invalidatePublicProductsCache(user.username);
 
-  // لا تُعاد بناء كتالوج GitHub هنا: المنتج يُكتب في D1 (المصدر الحقيقي) فقط،
-  // والنشر يحدث مرة واحدة عند تأكيد تسليم الطلب (راجع CHANGES.md).
-
-  // ⭐ تحديث الـ Durable Object (In-Memory Cache) وبث التحديث لحظياً للداشبورد
+  // Publish the catalog and uploaded images together as one GitHub commit.
   try {
     const savedProduct = await env.DB.prepare(`SELECT * FROM products WHERE id = ? AND merchant_id = ?`)
       .bind(pid, user.user_id)
       .first();
-
-    if (savedProduct && env.MERCHANT_SESSION) {
-      const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
-      const doStub = env.MERCHANT_SESSION.get(doId);
-
-      // لا نستخدم await لتجنب تأخير الرد على العميل
-      ctx.waitUntil(
-        doStub.fetch('http://internal/sync-product', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ product: savedProduct }),
-        })
-      );
-    }
+    scheduleProductFollowUp(ctx, env, user, { product: savedProduct, files: imageFiles });
   } catch (err) {
-    console.error('Failed to sync product to DO:', err);
+    console.error('Failed to schedule product publishing:', err);
   }
 
   return {
@@ -232,20 +257,7 @@ export async function deleteProduct({ env, ctx, user, body }) {
 
   await invalidatePublicProductsCache(user.username);
 
-  if (env.MERCHANT_SESSION) {
-    const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
-    const doStub = env.MERCHANT_SESSION.get(doId);
-    ctx.waitUntil(
-      doStub.fetch('http://internal/sync-product-removed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_id: pid }),
-      })
-    );
-  }
-
-  // ⭐ لا نعيد بناء الكتالوج على GitHub عند كل تعديل: البيانات الحية تُقرأ من D1،
-  // والنشر يتم مرة واحدة عند تأكيد التسليم فقط (راجع CHANGES.md).
+  scheduleProductFollowUp(ctx, env, user, { removedProductId: pid });
 
   return { message: 'تم حذف المنتج نهائياً بنجاح' };
 }
@@ -260,25 +272,10 @@ export async function toggleAvailability({ env, ctx, user, body }) {
 
   await invalidatePublicProductsCache(user.username);
 
-  // ⭐ لا نعيد بناء الكتالوج على GitHub عند كل تعديل: البيانات الحية تُقرأ من D1،
-  // والنشر يتم مرة واحدة عند تأكيد التسليم فقط (راجع CHANGES.md).
-
-  if (env.MERCHANT_SESSION) {
-    const updatedProduct = await env.DB.prepare(`SELECT * FROM products WHERE id = ? AND merchant_id = ?`)
-      .bind(pid, user.user_id)
-      .first();
-    if (updatedProduct) {
-      const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
-      const doStub = env.MERCHANT_SESSION.get(doId);
-      ctx.waitUntil(
-        doStub.fetch('http://internal/sync-product', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ product: updatedProduct }),
-        })
-      );
-    }
-  }
+  const updatedProduct = await env.DB.prepare(`SELECT * FROM products WHERE id = ? AND merchant_id = ?`)
+    .bind(pid, user.user_id)
+    .first();
+  scheduleProductFollowUp(ctx, env, user, { product: updatedProduct });
 
   return { message: 'تم تحديث حالة عرض المنتج (إخفاء/إظهار) بنجاح' };
 }
@@ -367,20 +364,7 @@ export async function updateProductStock({ env, ctx, user, body }) {
   const updatedProduct = await env.DB.prepare(`SELECT * FROM products WHERE id = ? AND merchant_id = ?`)
     .bind(productId, user.user_id)
     .first();
-  // ⭐ لا نعيد بناء الكتالوج على GitHub عند كل تعديل: البيانات الحية تُقرأ من D1،
-  // والنشر يتم مرة واحدة عند تأكيد التسليم فقط (راجع CHANGES.md).
-
-  if (updatedProduct && env.MERCHANT_SESSION) {
-    const doId = env.MERCHANT_SESSION.idFromName(`merchant_${user.user_id}`);
-    const doStub = env.MERCHANT_SESSION.get(doId);
-    ctx.waitUntil(
-      doStub.fetch('http://internal/sync-product', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product: updatedProduct }),
-      })
-    );
-  }
+  scheduleProductFollowUp(ctx, env, user, { product: updatedProduct, updateIndexes: false });
 
   return { message: 'تم تحديث مخزون المنتج بنجاح.', product_id: productId };
 }

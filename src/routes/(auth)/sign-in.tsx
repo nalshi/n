@@ -13,10 +13,13 @@ import { SignIn } from '@/features/auth/sign-in'
 
 const searchSchema = z.object({
   redirect: z.string().optional(),
+  addAccount: z.boolean().optional(),
 })
 
 export const Route = createFileRoute('/(auth)/sign-in')({
-  beforeLoad: () => {
+  beforeLoad: ({ search }) => {
+    if (search.addAccount) return
+
     const token = getActiveMerchantToken()
     if (!token) return
 

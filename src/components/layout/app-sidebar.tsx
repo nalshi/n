@@ -8,9 +8,9 @@ import {
 } from '@/components/ui/sidebar'
 // import { AppTitle } from './app-title'
 import { sidebarData } from './data/sidebar-data'
+import { MerchantAccountSwitcher } from './merchant-account-switcher'
 import { NavGroup } from './nav-group'
 import { NavUser } from './nav-user'
-import { TeamSwitcher } from './team-switcher'
 
 export function AppSidebar({ inert = false }: { inert?: boolean }) {
   const { collapsible, variant } = useLayout()
@@ -22,7 +22,7 @@ export function AppSidebar({ inert = false }: { inert?: boolean }) {
       aria-hidden={inert}
     >
       <SidebarHeader className='border-b border-sidebar-border px-3 py-3 group-data-[collapsible=icon]:!px-1 sm:px-4'>
-        <TeamSwitcher teams={sidebarData.teams} />
+        <MerchantAccountSwitcher placement='sidebar' />
       </SidebarHeader>
       <SidebarContent className='px-2 py-3'>
         {sidebarData.navGroups.map((props) => (

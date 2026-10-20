@@ -206,8 +206,26 @@ test('save_product accepts option image files in the same multipart request', as
             return { meta: { changes: 1 } };
           },
           async first() {
+            if (query.includes('COUNT(*)')) return { total: 0 };
             assert.match(query, /SELECT \* FROM products WHERE id/);
-            return { id: bindings[0], options: savedOptions };
+            return {
+              id: bindings[0],
+              name: bindings[2],
+              description: bindings[3],
+              price: bindings[4],
+              discount: bindings[6],
+              image: bindings[7],
+              quantity: bindings[8],
+              quantity_type: bindings[9],
+              currency: bindings[10],
+              category_id: bindings[11],
+              options: savedOptions,
+              is_available: bindings[13],
+              features: '[]',
+            };
+          },
+          async all() {
+            return { results: [] };
           },
         };
       },
@@ -215,30 +233,67 @@ test('save_product accepts option image files in the same multipart request', as
   };
 
   const originalFetch = globalThis.fetch;
+  const background = [];
+  let githubRequestCount = 0;
+  const catalogFiles = {
+    'stores/merchant/manifest.json': {
+      version: 1,
+      total_products: 0,
+      total_pages: 1,
+      files: { search: 1, categories: 1, info: 1, pages: { page_1: 1 } },
+    },
+    'stores/merchant/search_index.json': { _version: 1, data: [] },
+    'stores/merchant/categories.json': { _version: 1, data: [] },
+    'stores/merchant/products_page_1.json': { _version: 1, page: 1, total_pages: 1, data: {} },
+  };
   globalThis.fetch = async (url, init = {}) => {
     const requestUrl = String(url);
-    if (requestUrl.includes('/contents/') && (init.method || 'GET') === 'GET') {
-      return new Response(JSON.stringify({ message: 'Not Found' }), {
-        status: 404,
+    if (requestUrl === 'https://api.github.com/graphql' && init.method === 'POST') {
+      const parsedBody = JSON.parse(init.body || '{}');
+      if (parsedBody.query?.includes('GetBranchHead')) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              repository: {
+                ref: { name: 'main', target: { oid: 'head-sha' } },
+                defaultBranchRef: { name: 'main', target: { oid: 'head-sha' } },
+              },
+            },
+          }),
+          { status: 200 }
+        );
+      }
+      githubRequestCount++;
+      return new Response(JSON.stringify({ data: { createCommitOnBranch: { commit: { oid: 'commit-sha' } } } }), {
+        status: 200,
       });
     }
-    if (requestUrl.includes('/contents/') && init.method === 'PUT') {
-      return new Response(JSON.stringify({ content: { path: requestUrl } }), {
-        status: 201,
-      });
+    if (init.method !== 'POST' && requestUrl.includes('/contents/')) {
+      const path = decodeURIComponent(new URL(requestUrl).pathname.split('/contents/')[1]);
+      const content = catalogFiles[path];
+      if (!content) return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 });
+      return new Response(
+        JSON.stringify({
+          encoding: 'base64',
+          content: Buffer.from(JSON.stringify(content), 'utf8').toString('base64'),
+        }),
+        { status: 200 }
+      );
     }
     throw new Error(`Unexpected network request: ${init.method || 'GET'} ${requestUrl}`);
   };
 
   try {
-    const response = await worker.fetch(request, env, {});
+    const response = await worker.fetch(request, env, { waitUntil: (promise) => background.push(promise) });
     const result = await response.json();
     const [savedOption] = JSON.parse(savedOptions);
+    await Promise.all(background);
 
     assert.equal(response.status, 200);
     assert.equal(result.status, 'success');
     assert.match(savedOption.image, /-option-0\.webp$/);
     assert.equal('image_file_key' in savedOption, false);
+    assert.equal(githubRequestCount, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

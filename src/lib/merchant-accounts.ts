@@ -89,6 +89,53 @@ export function getMerchantIdentityFromToken(token: string): string {
   return typeof id === 'string' || typeof id === 'number' ? String(id) : ''
 }
 
+export function getMerchantAccountName(token: string): string {
+  const claims = decodeToken(token)
+  const name = [
+    claims?.store_name,
+    claims?.storeName,
+    claims?.merchant_name,
+    claims?.merchantName,
+    claims?.display_name,
+    claims?.name,
+  ].find(
+    (value): value is string => typeof value === 'string' && !!value.trim()
+  )
+
+  return name?.trim() || ''
+}
+
+export function getMerchantAccountAvatarUrl(
+  token: string,
+  cachedAvatar = ''
+): string {
+  const claims = decodeToken(token)
+  const images = [
+    cachedAvatar,
+    claims?.picture,
+    claims?.avatar_url,
+    claims?.photo_url,
+    claims?.profile_image,
+    claims?.store_logo,
+    claims?.logo_url,
+  ].filter(
+    (value): value is string => typeof value === 'string' && !!value.trim()
+  )
+
+  for (const image of images) {
+    try {
+      const url = new URL(image.trim(), window.location.origin)
+      if (url.protocol === 'https:' || url.origin === window.location.origin) {
+        return url.href
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return ''
+}
+
 export function getSavedMerchantAccounts(): SavedMerchantAccount[] {
   const now = Date.now()
   const accounts = readStoredAccounts()

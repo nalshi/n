@@ -146,6 +146,7 @@ export function UserAuthForm({
           stateToken: response.state_token || '',
           remember: true,
           redirectTo: getSafeAuthRedirect(redirectTo),
+          storeName: displayName,
         })
         await navigate({ to: '/otp' })
         return

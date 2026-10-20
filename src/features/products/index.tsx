@@ -598,7 +598,9 @@ function ProductsWorkspace({
     onSuccess: async () => {
       setUploadProgress(null)
       toast.success(
-        editingProduct ? 'تم تحديث المنتج بنجاح.' : 'تم حفظ المنتج ونشره بنجاح.'
+        editingProduct
+          ? 'تم تحديث المنتج، وجارٍ تحديث ملفات المتجر.'
+          : 'تم حفظ المنتج، وجارٍ تحديث ملفات المتجر.'
       )
       await refreshMerchantData()
       setEditorOpen(false)
