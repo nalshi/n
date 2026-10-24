@@ -1,20 +1,41 @@
 import { describe, expect, it, vi } from 'vitest'
-import { normalizeDashboardImage, type HeicConverter } from './image-processing'
+import {
+  normalizeDashboardImage,
+  type HeicConverter,
+  type NativeImageDecoder,
+} from './image-processing'
 
 describe('normalizeDashboardImage', () => {
   it('converts HEIC photos to JPEG before browser image processing', async () => {
     const source = new File(['heic'], 'photo.HEIC', { type: 'image/heic' })
     const converted = new Blob(['jpeg'], { type: 'image/jpeg' })
     const convertHeicMock = vi.fn<HeicConverter>().mockResolvedValue(converted)
+    const nativeImageDecoderMock = vi
+      .fn<NativeImageDecoder>()
+      .mockResolvedValue(false)
 
     await expect(
-      normalizeDashboardImage(source, convertHeicMock)
+      normalizeDashboardImage(source, convertHeicMock, nativeImageDecoderMock)
     ).resolves.toBe(converted)
+    expect(nativeImageDecoderMock).toHaveBeenCalledWith(source)
     expect(convertHeicMock).toHaveBeenCalledWith({
       blob: source,
       toType: 'image/jpeg',
       quality: 0.9,
     })
+  })
+
+  it('uses the native image decoder when the browser supports HEIC', async () => {
+    const source = new File(['heic'], 'photo.HEIC', { type: 'image/heic' })
+    const convertHeicMock = vi.fn<HeicConverter>()
+    const nativeImageDecoderMock = vi
+      .fn<NativeImageDecoder>()
+      .mockResolvedValue(true)
+
+    await expect(
+      normalizeDashboardImage(source, convertHeicMock, nativeImageDecoderMock)
+    ).resolves.toBe(source)
+    expect(convertHeicMock).not.toHaveBeenCalled()
   })
 
   it('detects HEIF files from their container brand when MIME is missing', async () => {

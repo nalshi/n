@@ -18,9 +18,26 @@ export type HeicConverter = (options: {
   quality: number
 }) => Promise<Blob | Blob[]>
 
+export type NativeImageDecoder = (blob: Blob) => Promise<boolean>
+
+async function canDecodeNatively(blob: Blob): Promise<boolean> {
+  const objectUrl = URL.createObjectURL(blob)
+  try {
+    const image = new Image()
+    image.src = objectUrl
+    await image.decode()
+    return image.naturalWidth > 0 && image.naturalHeight > 0
+  } catch {
+    return false
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 export async function normalizeDashboardImage(
   file: File,
-  heicConverter?: HeicConverter
+  heicConverter?: HeicConverter,
+  nativeImageDecoder: NativeImageDecoder = canDecodeNatively
 ): Promise<Blob> {
   const header = new Uint8Array(await file.slice(0, 64).arrayBuffer())
   const ascii = String.fromCharCode(...header)
@@ -41,6 +58,8 @@ export async function normalizeDashboardImage(
         /\.(?:heic|heif)$/i.test(file.name)))
 
   if (isHeic) {
+    if (await nativeImageDecoder(file)) return file
+
     const convert = heicConverter || (await import('heic2any')).default
     const converted = await convert({
       blob: file,
