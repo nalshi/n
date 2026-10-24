@@ -1,4 +1,16 @@
-const HEIC_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1'])
+const HEIF_BRANDS = new Set([
+  'heic',
+  'heix',
+  'hevc',
+  'hevx',
+  'heif',
+  'heis',
+  'heim',
+  'hevm',
+  'hevs',
+  'mif1',
+  'msf1',
+])
 
 export type HeicConverter = (options: {
   blob: Blob
@@ -10,15 +22,23 @@ export async function normalizeDashboardImage(
   file: File,
   heicConverter?: HeicConverter
 ): Promise<Blob> {
-  const header = new Uint8Array(await file.slice(0, 12).arrayBuffer())
+  const header = new Uint8Array(await file.slice(0, 64).arrayBuffer())
   const ascii = String.fromCharCode(...header)
-  const brand = ascii.slice(8, 12).toLowerCase()
+  const isHeifContainer = ascii.slice(4, 8).toLowerCase() === 'ftyp'
+  const brands = isHeifContainer
+    ? [
+        ascii.slice(8, 12),
+        ...Array.from(
+          { length: Math.max(0, Math.floor((header.length - 16) / 4)) },
+          (_, index) => ascii.slice(16 + index * 4, 20 + index * 4)
+        ),
+      ]
+    : []
   const isHeic =
-    file.type === 'image/heic' ||
-    file.type === 'image/heif' ||
-    file.type === 'image/heic-sequence' ||
-    file.type === 'image/heif-sequence' ||
-    (ascii.slice(4, 8).toLowerCase() === 'ftyp' && HEIC_BRANDS.has(brand))
+    /^image\/hei[cf](?:$|[-+])/i.test(file.type) ||
+    (isHeifContainer &&
+      (brands.some((brand) => HEIF_BRANDS.has(brand.toLowerCase())) ||
+        /\.(?:heic|heif)$/i.test(file.name)))
 
   if (isHeic) {
     const convert = heicConverter || (await import('heic2any')).default

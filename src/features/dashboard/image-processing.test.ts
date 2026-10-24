@@ -27,6 +27,33 @@ describe('normalizeDashboardImage', () => {
     await expect(
       normalizeDashboardImage(source, convertHeicMock)
     ).resolves.toBe(converted)
+    expect(convertHeicMock).toHaveBeenCalledOnce()
+  })
+
+  it('detects compatible HEIF brands when the primary brand is generic', async () => {
+    const header = new Uint8Array(20)
+    header.set(new TextEncoder().encode('....ftypmif1....heif'))
+    const source = new File([header], 'photo', { type: '' })
+    const converted = new Blob(['jpeg'], { type: 'image/jpeg' })
+    const convertHeicMock = vi.fn<HeicConverter>().mockResolvedValue(converted)
+
+    await expect(
+      normalizeDashboardImage(source, convertHeicMock)
+    ).resolves.toBe(converted)
+    expect(convertHeicMock).toHaveBeenCalledOnce()
+  })
+
+  it('detects HEIF files with a HEIC extension and an unknown primary brand', async () => {
+    const header = new Uint8Array(20)
+    header.set(new TextEncoder().encode('....ftypheif....mif1'))
+    const source = new File([header], 'photo.HEIC', { type: '' })
+    const converted = new Blob(['jpeg'], { type: 'image/jpeg' })
+    const convertHeicMock = vi.fn<HeicConverter>().mockResolvedValue(converted)
+
+    await expect(
+      normalizeDashboardImage(source, convertHeicMock)
+    ).resolves.toBe(converted)
+    expect(convertHeicMock).toHaveBeenCalledOnce()
   })
 
   it('keeps supported browser image formats unchanged', async () => {
