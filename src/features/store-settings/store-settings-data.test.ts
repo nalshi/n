@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { authApiRequest } from '@/lib/auth-api'
+import { compressDashboardImage } from '@/features/dashboard/dashboard-data'
 import {
   fetchStoreLogoSettings,
   fetchStoreSettings,
@@ -9,17 +10,24 @@ import {
   saveMerchantSettings,
   saveWhatsappSettings,
   updateStoreLogoConfig,
+  uploadStoreLogo,
 } from './store-settings-data'
+
+vi.mock('@/features/dashboard/dashboard-data', () => ({
+  compressDashboardImage: vi.fn(),
+}))
 
 vi.mock('@/lib/auth-api', () => ({
   authApiRequest: vi.fn(),
 }))
 
 const mockedAuthApiRequest = vi.mocked(authApiRequest)
+const mockedCompressDashboardImage = vi.mocked(compressDashboardImage)
 
 describe('store settings data', () => {
   beforeEach(() => {
     mockedAuthApiRequest.mockReset()
+    mockedCompressDashboardImage.mockReset()
   })
 
   it('loads merchant, assistant, and WhatsApp settings', async () => {
@@ -156,13 +164,93 @@ describe('store settings data', () => {
         logo: 'https://cdn.jsdelivr.net/gh/owner/repo/logo.webp',
       },
       navigation_settings: {
-        top_bar: { logo_icon: 'fa-gem', show_search_btn: false },
+        top_bar: {
+          logo_icon: 'fa-gem',
+          show_search_btn: false,
+          show_logo_icon: true,
+        },
       },
       theme_name: 'nalsh_indigo',
     })
     expect(() =>
       updateStoreLogoConfig(config, '', 'fa-store" onerror="bad')
     ).toThrow('أيقونة الشعار المحددة غير صالحة.')
+  })
+
+  it('keeps the uploaded GitHub image when the fallback icon changes', () => {
+    const logoUrl =
+      'https://cdn.jsdelivr.net/gh/owner/repo@main/images/nalsh/store-logo.webp'
+    const config = {
+      store_identity: { store_name: 'متجري', logo_url: logoUrl, logo: logoUrl },
+      navigation_settings: {
+        top_bar: { logo_icon: 'fa-store', show_logo_icon: true },
+      },
+    }
+
+    expect(updateStoreLogoConfig(config, logoUrl, 'fa-gem')).toEqual({
+      store_identity: {
+        store_name: 'متجري',
+        logo_url: logoUrl,
+        logo: logoUrl,
+      },
+      navigation_settings: {
+        top_bar: { logo_icon: 'fa-gem', show_logo_icon: true },
+      },
+    })
+  })
+
+  it('turns the logo back on when an icon is selected after image removal', () => {
+    const config = {
+      store_identity: { store_name: 'متجري', logo_url: '', logo: '' },
+      navigation_settings: {
+        top_bar: { logo_icon: 'fa-store', show_logo_icon: false },
+      },
+    }
+
+    expect(updateStoreLogoConfig(config, '', 'fa-gem')).toMatchObject({
+      store_identity: { logo_url: '', logo: '' },
+      navigation_settings: {
+        top_bar: { logo_icon: 'fa-gem', show_logo_icon: true },
+      },
+    })
+  })
+
+  it('uploads the compressed image to GitHub and accepts only its public CDN URL', async () => {
+    const sourceImage = new File(
+      [
+        Uint8Array.from([
+          0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00,
+          0x00,
+        ]),
+      ],
+      'logo.png',
+      { type: 'image/png' }
+    )
+    const compressedImage = new File(['webp image'], 'logo.webp', {
+      type: 'image/webp',
+    })
+    const cdnUrl =
+      'https://cdn.jsdelivr.net/gh/owner/repo@main/images/nalsh/store-logo.webp'
+    const onUploadProgress = vi.fn()
+    mockedCompressDashboardImage.mockResolvedValueOnce(compressedImage)
+    mockedAuthApiRequest.mockResolvedValueOnce({
+      status: 'success',
+      url: cdnUrl,
+    })
+
+    await expect(uploadStoreLogo(sourceImage, onUploadProgress)).resolves.toBe(
+      cdnUrl
+    )
+    expect(mockedCompressDashboardImage).toHaveBeenCalledWith(
+      sourceImage,
+      0.8,
+      1024
+    )
+    expect(mockedAuthApiRequest).toHaveBeenCalledWith(
+      'upload_store_logo',
+      expect.any(FormData),
+      onUploadProgress
+    )
   })
 
   it('publishes logo settings through the authenticated storefront action', async () => {

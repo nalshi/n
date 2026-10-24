@@ -279,7 +279,9 @@ function StoreLogoSettings({
       const logoUrl =
         action.type === 'upload'
           ? await uploadStoreLogo(action.file, setUploadProgress)
-          : ''
+          : action.type === 'remove'
+            ? ''
+            : current.logoUrl
       const icon = action.type === 'icon' ? action.icon : current.icon
       const config = updateStoreLogoConfig(current.config, logoUrl, icon)
       const message = await saveStoreLogoConfig(current.username, config)
@@ -316,22 +318,36 @@ function StoreLogoSettings({
 
   if (logoQuery.isPending) {
     return (
-      <div className='flex items-center gap-2 border-t px-3 pt-4 text-xs text-muted-foreground'>
-        <LoaderCircle className='size-4 animate-spin' aria-hidden='true' />
-        جارٍ تحميل إعدادات الشعار…
+      <div className='grid gap-4 border-t pt-5 sm:grid-cols-2' role='status'>
+        <div className='flex items-center gap-3'>
+          <div className='size-20 animate-pulse rounded-2xl bg-muted' />
+          <div className='grid flex-1 gap-2'>
+            <div className='h-4 w-28 animate-pulse rounded bg-muted' />
+            <div className='h-3 w-full max-w-64 animate-pulse rounded bg-muted' />
+          </div>
+        </div>
+        <div className='h-24 animate-pulse rounded-xl bg-muted' />
+        <span className='sr-only'>جارٍ تحميل إعدادات الشعار…</span>
       </div>
     )
   }
 
   if (logoQuery.isError || !logoQuery.data) {
     return (
-      <div className='grid gap-2 border-t px-3 pt-4'>
-        <p className='text-sm font-semibold'>شعار المتجر</p>
-        <p className='text-xs text-destructive'>
-          {logoQuery.error instanceof Error
-            ? logoQuery.error.message
-            : 'تعذر تحميل إعدادات الشعار.'}
-        </p>
+      <div className='grid gap-3 border-t pt-5'>
+        <div className='flex items-start gap-3'>
+          <span className='grid size-11 shrink-0 place-items-center rounded-xl bg-destructive/10 text-destructive'>
+            <ImagePlus className='size-5' aria-hidden='true' />
+          </span>
+          <div className='grid gap-1'>
+            <p className='text-sm font-semibold'>تعذر تحميل هوية المتجر</p>
+            <p className='text-xs text-destructive'>
+              {logoQuery.error instanceof Error
+                ? logoQuery.error.message
+                : 'تعذر تحميل إعدادات الشعار.'}
+            </p>
+          </div>
+        </div>
         <Button
           type='button'
           variant='outline'
@@ -350,106 +366,116 @@ function StoreLogoSettings({
   const PreviewIcon = storeLogoIconComponents[logoQuery.data.icon] || Store
 
   return (
-    <div className='grid gap-3 border-t px-3 pt-4'>
-      <div className='flex items-center gap-3'>
-        <div className='grid size-16 shrink-0 place-items-center overflow-hidden rounded-xl border bg-muted text-primary'>
-          {showImage ? (
-            <img
-              src={logoUrl}
-              alt={`شعار ${storeName || 'المتجر'}`}
-              className='size-full object-contain p-1'
-              onError={() => setBrokenLogoUrl(logoUrl)}
-            />
-          ) : (
-            <PreviewIcon className='size-8' aria-hidden='true' />
-          )}
+    <div className='grid gap-5 border-t pt-5 sm:grid-cols-2 sm:items-start'>
+      <div className='grid gap-4'>
+        <div className='flex items-center gap-4'>
+          <div className='grid size-20 shrink-0 place-items-center overflow-hidden rounded-2xl border bg-muted/60 text-primary'>
+            {showImage ? (
+              <img
+                src={logoUrl}
+                alt={`شعار ${storeName || 'المتجر'}`}
+                className='size-full object-contain p-1'
+                onError={() => setBrokenLogoUrl(logoUrl)}
+              />
+            ) : (
+              <PreviewIcon className='size-9' aria-hidden='true' />
+            )}
+          </div>
+          <div className='min-w-0 flex-1'>
+            <p className='text-sm font-semibold'>معاينة الشعار</p>
+            <p className='mt-1 text-xs leading-relaxed text-muted-foreground'>
+              {showImage
+                ? `يظهر شعار ${storeName || 'متجرك'} في واجهة المتجر.`
+                : 'ستظهر الأيقونة المختارة حتى ترفع صورة.'}
+            </p>
+            <p className='mt-2 text-[11px] text-muted-foreground'>
+              PNG أو JPG أو WebP · حتى 1 ميغابايت بعد الضغط
+            </p>
+          </div>
         </div>
-        <div className='min-w-0 flex-1'>
-          <p className='text-sm font-semibold'>شعار المتجر</p>
-          <p className='mt-1 text-xs leading-relaxed text-muted-foreground'>
-            يظهر بجانب اسم متجرك. PNG أو JPG أو WebP، حتى 1 ميغابايت بعد الضغط.
-          </p>
-        </div>
-      </div>
 
-      <input
-        ref={fileInputRef}
-        type='file'
-        accept='image/png,image/jpeg,image/webp'
-        className='sr-only'
-        aria-label='اختيار صورة شعار المتجر'
-        disabled={logoMutation.isPending}
-        onChange={(event) => {
-          handleFileSelection(event.currentTarget.files?.[0])
-          event.currentTarget.value = ''
-        }}
-      />
-      <div className='flex flex-wrap gap-2'>
-        <Button
-          type='button'
-          size='sm'
+        <input
+          ref={fileInputRef}
+          type='file'
+          accept='image/png,image/jpeg,image/webp'
+          className='sr-only'
+          aria-label='اختيار صورة شعار المتجر'
           disabled={logoMutation.isPending}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {logoMutation.isPending && uploadProgress !== null ? (
-            <LoaderCircle className='animate-spin' aria-hidden='true' />
-          ) : (
-            <ImagePlus aria-hidden='true' />
-          )}
-          {logoUrl ? 'استبدال الشعار' : 'رفع شعار'}
-        </Button>
-        {logoUrl && (
+          onChange={(event) => {
+            handleFileSelection(event.currentTarget.files?.[0])
+            event.currentTarget.value = ''
+          }}
+        />
+        <div className='flex flex-wrap items-center gap-2'>
           <Button
             type='button'
             size='sm'
-            variant='outline'
             disabled={logoMutation.isPending}
-            onClick={() => logoMutation.mutate({ type: 'remove' })}
+            onClick={() => fileInputRef.current?.click()}
           >
-            <Trash2 aria-hidden='true' />
-            إزالة الصورة
+            {logoMutation.isPending && uploadProgress !== null ? (
+              <LoaderCircle className='animate-spin' aria-hidden='true' />
+            ) : (
+              <ImagePlus aria-hidden='true' />
+            )}
+            {logoUrl ? 'استبدال الصورة' : 'رفع صورة الشعار'}
           </Button>
+          {logoUrl && (
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              disabled={logoMutation.isPending}
+              onClick={() => logoMutation.mutate({ type: 'remove' })}
+            >
+              <Trash2 aria-hidden='true' />
+              إزالة الصورة
+            </Button>
+          )}
+        </div>
+
+        {logoMutation.isPending && uploadProgress !== null && (
+          <div className='grid gap-1' aria-live='polite'>
+            <div className='flex items-center justify-between text-xs text-muted-foreground'>
+              <span>
+                {uploadProgress > 0
+                  ? 'جارٍ رفع الصورة إلى GitHub…'
+                  : 'جارٍ تجهيز الصورة…'}
+              </span>
+              {uploadProgress > 0 && <span>{uploadProgress}%</span>}
+            </div>
+            <div
+              role='progressbar'
+              aria-label='تقدم رفع الشعار'
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={uploadProgress}
+              className='h-1.5 overflow-hidden rounded-full bg-muted'
+            >
+              <div
+                className='h-full rounded-full bg-primary transition-[width]'
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
         )}
       </div>
 
-      {logoMutation.isPending && uploadProgress !== null && (
-        <div className='grid gap-1' aria-live='polite'>
-          <div className='flex items-center justify-between text-xs text-muted-foreground'>
-            <span>
-              {uploadProgress > 0
-                ? 'جارٍ رفع الشعار…'
-                : 'جارٍ تجهيز الصورة…'}
-            </span>
-            {uploadProgress > 0 && <span>{uploadProgress}%</span>}
-          </div>
-          <div
-            role='progressbar'
-            aria-label='تقدم رفع الشعار'
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={uploadProgress}
-            className='h-1.5 overflow-hidden rounded-full bg-muted'
-          >
-            <div
-              className='h-full rounded-full bg-primary transition-[width]'
-              style={{ width: `${uploadProgress}%` }}
-            />
-          </div>
+      <div className='grid content-start gap-3 rounded-xl bg-muted/40 p-3'>
+        <div>
+          <p className='text-sm font-semibold'>الأيقونة البديلة</p>
+          <p className='mt-1 text-xs leading-relaxed text-muted-foreground'>
+            تبقى محفوظة وتظهر تلقائياً إذا أزلت الصورة أو تعذر تحميلها.
+          </p>
         </div>
-      )}
-
-      <div className='grid gap-2'>
-        <p className='text-xs font-semibold text-muted-foreground'>
-          أو اختر أيقونة المتجر
-        </p>
         <div
           role='group'
           aria-label='اختيار أيقونة بديلة لشعار المتجر'
-          className='flex flex-wrap gap-2'
+          className='grid grid-cols-4 gap-2'
         >
           {STORE_LOGO_ICONS.map(({ value, label }) => {
             const Icon = storeLogoIconComponents[value] || Store
-            const active = !logoUrl && value === logoQuery.data.icon
+            const active = value === logoQuery.data.icon
             return (
               <button
                 key={value}
@@ -457,10 +483,12 @@ function StoreLogoSettings({
                 aria-label={`استخدام أيقونة ${label}`}
                 aria-pressed={active}
                 disabled={logoMutation.isPending}
-                onClick={() => logoMutation.mutate({ type: 'icon', icon: value })}
-                className={`grid size-10 place-items-center rounded-lg border transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 ${
+                onClick={() =>
+                  logoMutation.mutate({ type: 'icon', icon: value })
+                }
+                className={`grid size-11 place-items-center rounded-lg border bg-background transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 ${
                   active
-                    ? 'border-primary bg-primary/10 text-primary'
+                    ? 'border-primary text-primary ring-2 ring-primary/20'
                     : 'border-border text-muted-foreground'
                 }`}
                 title={label}
@@ -821,10 +849,6 @@ export function StoreSettings() {
                 value={settings.merchant.storeName || 'غير محدد'}
                 onClick={() => openSettingsDialog('name')}
               />
-              <StoreLogoSettings
-                merchantId={merchantId}
-                storeName={settings.merchant.storeName}
-              />
               <SettingRow
                 icon={Store}
                 title='نوع النشاط'
@@ -860,6 +884,10 @@ export function StoreSettings() {
               title='واجهة المتجر'
               description='اجعل تجربة التسوق أقرب إلى علامتك'
             >
+              <StoreLogoSettings
+                merchantId={merchantId}
+                storeName={settings.merchant.storeName}
+              />
               <button
                 type='button'
                 onClick={() => void navigate({ to: '/storefront' })}

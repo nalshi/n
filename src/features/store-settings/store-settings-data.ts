@@ -332,6 +332,7 @@ export function updateStoreLogoConfig(
       top_bar: {
         ...topBar,
         logo_icon: icon,
+        show_logo_icon: true,
       },
     },
   }
