@@ -223,40 +223,10 @@ export async function fetchStoreLogoSettings(): Promise<StoreLogoSettings> {
   }
 }
 
-async function getSupportedLogoSourceType(file: File): Promise<string> {
+function validateStoreLogoSourceSize(file: File): void {
   if (!file.size || file.size > MAX_STORE_LOGO_SOURCE_BYTES) {
     throw new Error('يجب ألا يتجاوز حجم الصورة الأصلية 10 ميغابايت.')
   }
-
-  const buffer = await file.slice(0, 12).arrayBuffer()
-  const bytes = new Uint8Array(buffer)
-  let mimeType = ''
-  if (
-    bytes.length >= 8 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47
-  ) {
-    mimeType = 'image/png'
-  } else if (
-    bytes.length >= 3 &&
-    bytes[0] === 0xff &&
-    bytes[1] === 0xd8 &&
-    bytes[2] === 0xff
-  ) {
-    mimeType = 'image/jpeg'
-  } else if (
-    bytes.length >= 12 &&
-    String.fromCharCode(...bytes.subarray(0, 4)) === 'RIFF' &&
-    String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP'
-  ) {
-    mimeType = 'image/webp'
-  }
-  if (!mimeType || (file.type && file.type !== mimeType)) {
-    throw new Error('صيغة الشعار غير مدعومة. استخدم PNG أو JPG أو WebP.')
-  }
-  return mimeType
 }
 
 function isSafeStoreLogoUrl(value: string): boolean {
@@ -278,7 +248,7 @@ export async function uploadStoreLogo(
   file: File,
   onUploadProgress?: (progress: number) => void
 ): Promise<string> {
-  await getSupportedLogoSourceType(file)
+  validateStoreLogoSourceSize(file)
   const compressedImage = await compressDashboardImage(file, 0.8, 1024)
   if (
     compressedImage.type !== 'image/webp' ||

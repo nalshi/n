@@ -1,6 +1,7 @@
 import { authApiRequest } from '@/lib/auth-api'
 import { getMerchantIdentityFromToken } from '@/lib/merchant-accounts'
 import type { ApiResult } from '@/lib/merchant-api'
+import { normalizeDashboardImage } from './image-processing'
 
 type ApiRecord = Record<string, unknown>
 
@@ -760,22 +761,10 @@ export async function compressDashboardImage(
   quality = 0.8,
   maxDimension = 1200
 ): Promise<Blob> {
-  const signature = await file.slice(0, 12).arrayBuffer()
-  const header = Array.from(new Uint8Array(signature))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-    .toUpperCase()
-  const supported =
-    header.startsWith('FFD8FF') ||
-    header.startsWith('89504E47') ||
-    (header.startsWith('52494646') && header.slice(16, 24) === '57454250') ||
-    header.startsWith('47494638')
-  if (!supported) {
-    throw new Error('صيغة الصورة غير مدعومة. استخدم JPG أو PNG أو WebP أو GIF.')
-  }
+  const source = await normalizeDashboardImage(file)
 
   const image = new Image()
-  const objectUrl = URL.createObjectURL(file)
+  const objectUrl = URL.createObjectURL(source)
   try {
     image.src = objectUrl
     await image.decode()

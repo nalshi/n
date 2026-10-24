@@ -1509,13 +1509,14 @@ function ProductEditor({
                 <div className='grid gap-2'>
                   <Input
                     type='file'
-                    accept='image/jpeg,image/png,image/webp,image/gif'
+                    accept='image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/heic-sequence,image/heif-sequence,.heic,.heif'
                     required={!draft.image}
                     onChange={handleImage}
                     className='max-w-sm file:me-3'
                   />
                   <p className='text-xs text-muted-foreground'>
-                    تُحوّل الصور إلى WebP وتُضغط قبل رفعها (بحد أقصى 1200px).
+                    تُقبل صور الآيفون HEIC وتُحوّل تلقائياً إلى WebP قبل الرفع
+                    (بحد أقصى 1200px).
                   </p>
                   {imageProcessing && (
                     <div className='grid gap-1' role='status'>
@@ -1966,7 +1967,7 @@ function VariantEditor({
             <Field label='صورة الخيار'>
               <Input
                 type='file'
-                accept='image/jpeg,image/png,image/webp,image/gif'
+                accept='image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/heic-sequence,image/heif-sequence,.heic,.heif'
                 onChange={handleFile}
               />
             </Field>

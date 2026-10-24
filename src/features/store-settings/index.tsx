@@ -370,7 +370,7 @@ function StoreLogoSettings({
                   : 'ارفع صورة ليظهر شعار متجرك في واجهة العملاء.'}
             </p>
             <p className='mt-2 text-[11px] text-muted-foreground'>
-              PNG أو JPG أو WebP · حتى 1 ميغابايت بعد الضغط
+              PNG أو JPG أو WebP أو HEIC · حتى 1 ميغابايت بعد الضغط
             </p>
           </div>
         </div>
@@ -378,7 +378,7 @@ function StoreLogoSettings({
         <input
           ref={fileInputRef}
           type='file'
-          accept='image/png,image/jpeg,image/webp'
+          accept='image/png,image/jpeg,image/webp,image/heic,image/heif,image/heic-sequence,image/heif-sequence,.heic,.heif'
           className='sr-only'
           aria-label='اختيار صورة شعار المتجر'
           disabled={logoMutation.isPending}
