@@ -5,9 +5,6 @@ import {
   Bell,
   Bot,
   Check,
-  Crown,
-  Flame,
-  Gem,
   ImagePlus,
   LoaderCircle,
   LogOut,
@@ -16,14 +13,9 @@ import {
   MessagesSquare,
   Palette,
   Phone,
-  ShoppingBag,
-  Star,
   Store,
-  Tag,
   Trash2,
   Truck,
-  Zap,
-  type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
@@ -102,7 +94,6 @@ import {
   saveStoreLogoConfig,
   saveMerchantSettings,
   saveWhatsappSettings,
-  STORE_LOGO_ICONS,
   updateStoreLogoConfig,
   uploadStoreLogo,
   type AiAssistantSettings,
@@ -237,21 +228,7 @@ function shippingDescription(merchant: MerchantSettings) {
   return `${operator} ${merchant.freeShippingThreshold.toLocaleString('ar-YE')} ${unit}`
 }
 
-const storeLogoIconComponents: Record<string, LucideIcon> = {
-  'fa-store': Store,
-  'fa-shopping-bag': ShoppingBag,
-  'fa-tag': Tag,
-  'fa-star': Star,
-  'fa-gem': Gem,
-  'fa-fire': Flame,
-  'fa-bolt': Zap,
-  'fa-crown': Crown,
-}
-
-type StoreLogoAction =
-  | { type: 'upload'; file: File }
-  | { type: 'icon'; icon: string }
-  | { type: 'remove' }
+type StoreLogoAction = { type: 'upload'; file: File } | { type: 'remove' }
 
 function StoreLogoSettings({
   merchantId,
@@ -279,14 +256,15 @@ function StoreLogoSettings({
       const logoUrl =
         action.type === 'upload'
           ? await uploadStoreLogo(action.file, setUploadProgress)
-          : action.type === 'remove'
-            ? ''
-            : current.logoUrl
-      const icon = action.type === 'icon' ? action.icon : current.icon
-      const config = updateStoreLogoConfig(current.config, logoUrl, icon)
+          : ''
+      const config = updateStoreLogoConfig(
+        current.config,
+        logoUrl,
+        current.icon
+      )
       const message = await saveStoreLogoConfig(current.username, config)
       return {
-        settings: { ...current, config, logoUrl, icon },
+        settings: { ...current, config, logoUrl },
         message,
       }
     },
@@ -363,13 +341,12 @@ function StoreLogoSettings({
 
   const logoUrl = logoQuery.data.logoUrl
   const showImage = Boolean(logoUrl) && brokenLogoUrl !== logoUrl
-  const PreviewIcon = storeLogoIconComponents[logoQuery.data.icon] || Store
 
   return (
-    <div className='grid gap-5 border-t pt-5 lg:grid-cols-2 lg:items-start'>
+    <div className='grid gap-5 border-t pt-5'>
       <div className='grid gap-4'>
         <div className='flex items-center gap-4'>
-          <div className='grid size-20 shrink-0 place-items-center overflow-hidden rounded-2xl border bg-muted/60 text-primary'>
+          <div className='grid size-20 shrink-0 place-items-center overflow-hidden rounded-2xl border bg-muted/60'>
             {showImage ? (
               <img
                 src={logoUrl}
@@ -378,7 +355,9 @@ function StoreLogoSettings({
                 onError={() => setBrokenLogoUrl(logoUrl)}
               />
             ) : (
-              <PreviewIcon className='size-9' aria-hidden='true' />
+              <span className='px-2 text-center text-[11px] text-muted-foreground'>
+                {logoUrl ? 'تعذر تحميل الصورة' : 'لا توجد صورة'}
+              </span>
             )}
           </div>
           <div className='min-w-0 flex-1'>
@@ -386,7 +365,9 @@ function StoreLogoSettings({
             <p className='mt-1 text-xs leading-relaxed text-muted-foreground'>
               {showImage
                 ? `يظهر شعار ${storeName || 'متجرك'} في واجهة المتجر.`
-                : 'ستظهر الأيقونة المختارة حتى ترفع صورة.'}
+                : logoUrl
+                  ? 'تعذر تحميل الصورة. أعد رفعها لتظهر في واجهة المتجر.'
+                  : 'ارفع صورة ليظهر شعار متجرك في واجهة العملاء.'}
             </p>
             <p className='mt-2 text-[11px] text-muted-foreground'>
               PNG أو JPG أو WebP · حتى 1 ميغابايت بعد الضغط
@@ -433,7 +414,6 @@ function StoreLogoSettings({
             </Button>
           )}
         </div>
-
         {logoMutation.isPending && uploadProgress !== null && (
           <div className='grid gap-1' aria-live='polite'>
             <div className='flex items-center justify-between text-xs text-muted-foreground'>
@@ -459,45 +439,6 @@ function StoreLogoSettings({
             </div>
           </div>
         )}
-      </div>
-
-      <div className='grid content-start gap-3 rounded-xl bg-muted/40 p-3'>
-        <div>
-          <p className='text-sm font-semibold'>الأيقونة البديلة</p>
-          <p className='mt-1 text-xs leading-relaxed text-muted-foreground'>
-            تبقى محفوظة وتظهر تلقائياً إذا أزلت الصورة أو تعذر تحميلها.
-          </p>
-        </div>
-        <div
-          role='group'
-          aria-label='اختيار أيقونة بديلة لشعار المتجر'
-          className='grid grid-cols-4 gap-2'
-        >
-          {STORE_LOGO_ICONS.map(({ value, label }) => {
-            const Icon = storeLogoIconComponents[value] || Store
-            const active = value === logoQuery.data.icon
-            return (
-              <button
-                key={value}
-                type='button'
-                aria-label={`استخدام أيقونة ${label}`}
-                aria-pressed={active}
-                disabled={logoMutation.isPending}
-                onClick={() =>
-                  logoMutation.mutate({ type: 'icon', icon: value })
-                }
-                className={`grid size-11 place-items-center rounded-lg border bg-background transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 ${
-                  active
-                    ? 'border-primary text-primary ring-2 ring-primary/20'
-                    : 'border-border text-muted-foreground'
-                }`}
-                title={label}
-              >
-                <Icon className='size-5' aria-hidden='true' />
-              </button>
-            )
-          })}
-        </div>
       </div>
     </div>
   )
@@ -841,7 +782,7 @@ export function StoreSettings() {
           <>
             <SettingGroup
               title='شعار المتجر'
-              description='ارفع صورة أو اختر الأيقونة التي تمثل متجرك في واجهة العملاء.'
+              description='ارفع صورة الشعار التي تمثل متجرك في واجهة العملاء.'
             >
               <StoreLogoSettings
                 merchantId={merchantId}
