@@ -259,6 +259,11 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
                     autoComplete='new-password'
                     placeholder='8 أحرف على الأقل'
                     {...field}
+                    onChange={(event) => {
+                      passwordForm.setValue('password', event.target.value, {
+                        shouldDirty: true,
+                      })
+                    }}
                   />
                 </FormControl>
                 <FormMessage />

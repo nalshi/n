@@ -138,6 +138,36 @@ describe('OtpForm', () => {
     expect(useAuthFlowStore.getState().context).toBe('recover')
   })
 
+  it('accepts and submits both passwords after recovery verification', async () => {
+    useAuthFlowStore.setState({
+      context: 'recover',
+      stateToken: 'recover-state',
+    })
+    const screen = await render(<OtpForm />)
+    await userEvent.fill(
+      screen.getByRole('textbox', { name: 'رمز التحقق' }),
+      '123456'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'تأكيد الرمز' }))
+
+    const password = screen.getByLabelText('كلمة المرور الجديدة')
+    const confirmation = screen.getByLabelText('تأكيد كلمة المرور')
+    await userEvent.fill(password, 'newpassword123')
+    await expect.element(password).toHaveValue('newpassword123')
+    await userEvent.fill(confirmation, 'newpassword123')
+    await expect.element(confirmation).toHaveValue('newpassword123')
+    await userEvent.click(
+      screen.getByRole('button', { name: 'حفظ كلمة المرور' })
+    )
+
+    await vi.waitFor(() =>
+      expect(apiRequestMock).toHaveBeenCalledWith('recover_set_password', {
+        password: 'newpassword123',
+        state_token: 'recover-state',
+      })
+    )
+  })
+
   it('routes the new merchant to required theme setup when registration returns a token', async () => {
     apiRequestMock.mockResolvedValue({
       status: 'success',
