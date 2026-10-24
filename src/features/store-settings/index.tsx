@@ -318,7 +318,7 @@ function StoreLogoSettings({
 
   if (logoQuery.isPending) {
     return (
-      <div className='grid gap-4 border-t pt-5 sm:grid-cols-2' role='status'>
+      <div className='grid gap-4 border-t pt-5 lg:grid-cols-2' role='status'>
         <div className='flex items-center gap-3'>
           <div className='size-20 animate-pulse rounded-2xl bg-muted' />
           <div className='grid flex-1 gap-2'>
@@ -366,7 +366,7 @@ function StoreLogoSettings({
   const PreviewIcon = storeLogoIconComponents[logoQuery.data.icon] || Store
 
   return (
-    <div className='grid gap-5 border-t pt-5 sm:grid-cols-2 sm:items-start'>
+    <div className='grid gap-5 border-t pt-5 lg:grid-cols-2 lg:items-start'>
       <div className='grid gap-4'>
         <div className='flex items-center gap-4'>
           <div className='grid size-20 shrink-0 place-items-center overflow-hidden rounded-2xl border bg-muted/60 text-primary'>
@@ -838,161 +838,168 @@ export function StoreSettings() {
             </CardContent>
           </Card>
         ) : settings ? (
-          <div className='grid gap-4 xl:grid-cols-2'>
+          <>
             <SettingGroup
-              title='هوية المتجر'
-              description='المعلومات التي تظهر لعملائك'
-            >
-              <SettingRow
-                icon={Store}
-                title='اسم المتجر'
-                value={settings.merchant.storeName || 'غير محدد'}
-                onClick={() => openSettingsDialog('name')}
-              />
-              <SettingRow
-                icon={Store}
-                title='نوع النشاط'
-                value={settings.merchant.storeType || 'غير محدد'}
-                onClick={() => openSettingsDialog('type')}
-              />
-              <div className='flex min-w-0 items-center gap-3 rounded-lg p-3'>
-                <span className='grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary'>
-                  <Phone className='size-5' aria-hidden='true' />
-                </span>
-                <span className='grid min-w-0 flex-1 gap-1'>
-                  <span className='text-sm font-semibold'>رقم الجوال</span>
-                  <span
-                    className='truncate text-xs text-muted-foreground'
-                    dir='ltr'
-                  >
-                    {settings.merchant.phone || 'غير محدد'}
-                  </span>
-                </span>
-                <span className='shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground'>
-                  ثابت
-                </span>
-              </div>
-              <SettingRow
-                icon={MapPin}
-                title='موقع المتجر'
-                value={merchantProfile.location || 'أضف المدينة والعنوان'}
-                onClick={() => openSettingsDialog('location')}
-              />
-            </SettingGroup>
-
-            <SettingGroup
-              title='واجهة المتجر'
-              description='اجعل تجربة التسوق أقرب إلى علامتك'
+              title='شعار المتجر'
+              description='ارفع صورة أو اختر الأيقونة التي تمثل متجرك في واجهة العملاء.'
             >
               <StoreLogoSettings
                 merchantId={merchantId}
                 storeName={settings.merchant.storeName}
               />
-              <button
-                type='button'
-                onClick={() => void navigate({ to: '/storefront' })}
-                className='flex items-center gap-3 rounded-lg p-3 text-start transition-colors hover:bg-muted/60'
+            </SettingGroup>
+            <div className='mt-4 grid gap-4 xl:grid-cols-2'>
+              <SettingGroup
+                title='هوية المتجر'
+                description='المعلومات التي تظهر لعملائك'
               >
-                <span className='grid size-10 place-items-center rounded-lg bg-primary/10 text-primary'>
-                  <Palette className='size-5' />
-                </span>
-                <span className='grid flex-1 gap-1'>
-                  <span className='text-sm font-semibold'>قوالب المتجر</span>
-                  <span className='text-xs text-muted-foreground'>
-                    اختيار ومعاينة المظهر
-                  </span>
-                </span>
-                <span className='rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary'>
-                  جديد
-                </span>
-                <span className='text-muted-foreground' aria-hidden='true'>
-                  ←
-                </span>
-              </button>
-              <SettingRow
-                icon={MessageSquareText}
-                title='رسالة الترحيب'
-                value={settings.merchant.welcomeMessage || 'غير محددة'}
-                onClick={() => openSettingsDialog('welcome')}
-              />
-              <SettingRow
-                icon={Truck}
-                title='التوصيل المجاني'
-                value={shippingDescription(settings.merchant)}
-                onClick={() => openSettingsDialog('shipping')}
-              />
-            </SettingGroup>
-
-            <SettingGroup
-              title='المساعد والتواصل'
-              description='أدوات تساعدك على خدمة عملائك'
-            >
-              <SettingRow
-                icon={Bot}
-                title='المساعد الذكي'
-                value={
-                  settings.assistant.enabled
-                    ? `مفعّل — ${settings.assistant.botName}`
-                    : 'غير مفعّل'
-                }
-                onClick={() => openSettingsDialog('assistant')}
-              />
-              <SettingRow
-                icon={MessagesSquare}
-                title='ربط المساعد بواتساب'
-                value={whatsappStatus}
-                onClick={() => openSettingsDialog('whatsapp')}
-              />
-            </SettingGroup>
-
-            <SettingGroup
-              title='التنبيهات والحساب'
-              description='إدارة الإشعارات والجلسة الحالية'
-            >
-              <div className='flex items-center gap-3 rounded-lg p-3'>
-                <span className='grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary'>
-                  <Bell className='size-5' />
-                </span>
-                <span className='grid flex-1 gap-1'>
-                  <span className='text-sm font-semibold'>
-                    تنبيهات الطلبات الجديدة
-                  </span>
-                  <span className='text-xs text-muted-foreground'>
-                    إشعار عند وصول طلب جديد أثناء اتصال لوحة التاجر؛ يتطلب
-                    السماح بالتنبيهات في المتصفح.
-                  </span>
-                </span>
-                <Switch
-                  checked={
-                    settings.merchant.pushNotifications &&
-                    'Notification' in window &&
-                    Notification.permission === 'granted'
-                  }
-                  disabled={notificationMutation.isPending}
-                  aria-label='تنبيهات الطلبات الجديدة'
-                  onCheckedChange={(checked) =>
-                    notificationMutation.mutate(checked)
-                  }
+                <SettingRow
+                  icon={Store}
+                  title='اسم المتجر'
+                  value={settings.merchant.storeName || 'غير محدد'}
+                  onClick={() => openSettingsDialog('name')}
                 />
-              </div>
-              <button
-                type='button'
-                onClick={() => setLogoutOpen(true)}
-                className='flex items-center gap-3 rounded-lg p-3 text-start text-destructive transition-colors hover:bg-destructive/5'
-              >
-                <span className='grid size-10 place-items-center rounded-lg bg-destructive/10'>
-                  <LogOut className='size-5' />
-                </span>
-                <span className='grid flex-1 gap-1'>
-                  <span className='text-sm font-semibold'>تسجيل الخروج</span>
-                  <span className='text-xs text-muted-foreground'>
-                    إنهاء الجلسة على هذا الجهاز
+                <SettingRow
+                  icon={Store}
+                  title='نوع النشاط'
+                  value={settings.merchant.storeType || 'غير محدد'}
+                  onClick={() => openSettingsDialog('type')}
+                />
+                <div className='flex min-w-0 items-center gap-3 rounded-lg p-3'>
+                  <span className='grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary'>
+                    <Phone className='size-5' aria-hidden='true' />
                   </span>
-                </span>
-                <span aria-hidden='true'>←</span>
-              </button>
-            </SettingGroup>
-          </div>
+                  <span className='grid min-w-0 flex-1 gap-1'>
+                    <span className='text-sm font-semibold'>رقم الجوال</span>
+                    <span
+                      className='truncate text-xs text-muted-foreground'
+                      dir='ltr'
+                    >
+                      {settings.merchant.phone || 'غير محدد'}
+                    </span>
+                  </span>
+                  <span className='shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground'>
+                    ثابت
+                  </span>
+                </div>
+                <SettingRow
+                  icon={MapPin}
+                  title='موقع المتجر'
+                  value={merchantProfile.location || 'أضف المدينة والعنوان'}
+                  onClick={() => openSettingsDialog('location')}
+                />
+              </SettingGroup>
+
+              <SettingGroup
+                title='واجهة المتجر'
+                description='اجعل تجربة التسوق أقرب إلى علامتك'
+              >
+                <button
+                  type='button'
+                  onClick={() => void navigate({ to: '/storefront' })}
+                  className='flex items-center gap-3 rounded-lg p-3 text-start transition-colors hover:bg-muted/60'
+                >
+                  <span className='grid size-10 place-items-center rounded-lg bg-primary/10 text-primary'>
+                    <Palette className='size-5' />
+                  </span>
+                  <span className='grid flex-1 gap-1'>
+                    <span className='text-sm font-semibold'>قوالب المتجر</span>
+                    <span className='text-xs text-muted-foreground'>
+                      اختيار ومعاينة المظهر
+                    </span>
+                  </span>
+                  <span className='rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary'>
+                    جديد
+                  </span>
+                  <span className='text-muted-foreground' aria-hidden='true'>
+                    ←
+                  </span>
+                </button>
+                <SettingRow
+                  icon={MessageSquareText}
+                  title='رسالة الترحيب'
+                  value={settings.merchant.welcomeMessage || 'غير محددة'}
+                  onClick={() => openSettingsDialog('welcome')}
+                />
+                <SettingRow
+                  icon={Truck}
+                  title='التوصيل المجاني'
+                  value={shippingDescription(settings.merchant)}
+                  onClick={() => openSettingsDialog('shipping')}
+                />
+              </SettingGroup>
+
+              <SettingGroup
+                title='المساعد والتواصل'
+                description='أدوات تساعدك على خدمة عملائك'
+              >
+                <SettingRow
+                  icon={Bot}
+                  title='المساعد الذكي'
+                  value={
+                    settings.assistant.enabled
+                      ? `مفعّل — ${settings.assistant.botName}`
+                      : 'غير مفعّل'
+                  }
+                  onClick={() => openSettingsDialog('assistant')}
+                />
+                <SettingRow
+                  icon={MessagesSquare}
+                  title='ربط المساعد بواتساب'
+                  value={whatsappStatus}
+                  onClick={() => openSettingsDialog('whatsapp')}
+                />
+              </SettingGroup>
+
+              <SettingGroup
+                title='التنبيهات والحساب'
+                description='إدارة الإشعارات والجلسة الحالية'
+              >
+                <div className='flex items-center gap-3 rounded-lg p-3'>
+                  <span className='grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary'>
+                    <Bell className='size-5' />
+                  </span>
+                  <span className='grid flex-1 gap-1'>
+                    <span className='text-sm font-semibold'>
+                      تنبيهات الطلبات الجديدة
+                    </span>
+                    <span className='text-xs text-muted-foreground'>
+                      إشعار عند وصول طلب جديد أثناء اتصال لوحة التاجر؛ يتطلب
+                      السماح بالتنبيهات في المتصفح.
+                    </span>
+                  </span>
+                  <Switch
+                    checked={
+                      settings.merchant.pushNotifications &&
+                      'Notification' in window &&
+                      Notification.permission === 'granted'
+                    }
+                    disabled={notificationMutation.isPending}
+                    aria-label='تنبيهات الطلبات الجديدة'
+                    onCheckedChange={(checked) =>
+                      notificationMutation.mutate(checked)
+                    }
+                  />
+                </div>
+                <button
+                  type='button'
+                  onClick={() => setLogoutOpen(true)}
+                  className='flex items-center gap-3 rounded-lg p-3 text-start text-destructive transition-colors hover:bg-destructive/5'
+                >
+                  <span className='grid size-10 place-items-center rounded-lg bg-destructive/10'>
+                    <LogOut className='size-5' />
+                  </span>
+                  <span className='grid flex-1 gap-1'>
+                    <span className='text-sm font-semibold'>تسجيل الخروج</span>
+                    <span className='text-xs text-muted-foreground'>
+                      إنهاء الجلسة على هذا الجهاز
+                    </span>
+                  </span>
+                  <span aria-hidden='true'>←</span>
+                </button>
+              </SettingGroup>
+            </div>
+          </>
         ) : null}
       </Main>
 
