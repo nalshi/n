@@ -18,6 +18,9 @@ export function buildSelectedConfig(
   identity: { storeName: string; phone: string; slogan: string }
 ): ConfigRecord {
   const config = JSON.parse(JSON.stringify(base)) as ConfigRecord
+  const savedIdentity = record(base.store_identity)
+  const savedNavigation = record(base.navigation_settings)
+  const savedTopBar = record(savedNavigation.top_bar)
   const modes = record(config.modes)
   const lightMode = record(modes.light)
   const darkMode = record(modes.dark)
@@ -72,6 +75,16 @@ export function buildSelectedConfig(
       top_bar: {
         ...record(currentNav.top_bar),
         ...record(themeNavigation.top_bar),
+      },
+    }
+  }
+  if (typeof savedTopBar.logo_icon === 'string') {
+    const currentNav = record(config.navigation_settings)
+    config.navigation_settings = {
+      ...currentNav,
+      top_bar: {
+        ...record(currentNav.top_bar),
+        logo_icon: savedTopBar.logo_icon,
       },
     }
   }
@@ -139,6 +152,12 @@ export function buildSelectedConfig(
   const storeIdentity = record(config.store_identity)
   config.store_identity = {
     ...storeIdentity,
+    ...(typeof savedIdentity.logo_url === 'string'
+      ? { logo_url: savedIdentity.logo_url }
+      : {}),
+    ...(typeof savedIdentity.logo === 'string'
+      ? { logo: savedIdentity.logo }
+      : {}),
     ...(identity.storeName ? { store_name: identity.storeName } : {}),
     ...(identity.slogan ? { slogan: identity.slogan } : {}),
   }

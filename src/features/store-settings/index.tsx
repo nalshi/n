@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
   Bell,
   Bot,
   Check,
+  Crown,
+  Flame,
+  Gem,
+  ImagePlus,
   LoaderCircle,
   LogOut,
   MapPin,
@@ -12,8 +16,14 @@ import {
   MessagesSquare,
   Palette,
   Phone,
+  ShoppingBag,
+  Star,
   Store,
+  Tag,
+  Trash2,
   Truck,
+  Zap,
+  type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
@@ -80,17 +90,24 @@ import {
 } from '@/features/dashboard/dashboard-data'
 import {
   storefrontLibraryQueryKey,
+  storefrontMerchantSettingsQueryKey,
   type StorefrontLibrary,
 } from '@/features/storefront/storefront-data'
 import {
+  fetchStoreLogoSettings,
   fetchStoreSettings,
   logoutMerchant,
   merchantSettingsQueryKey,
   saveAiAssistantSettings,
+  saveStoreLogoConfig,
   saveMerchantSettings,
   saveWhatsappSettings,
+  STORE_LOGO_ICONS,
+  updateStoreLogoConfig,
+  uploadStoreLogo,
   type AiAssistantSettings,
   type MerchantSettings,
+  type StoreLogoSettings,
   type StoreSettingsData,
   type WhatsappSettings,
 } from './store-settings-data'
@@ -218,6 +235,244 @@ function shippingDescription(merchant: MerchantSettings) {
   const operator =
     merchant.freeShippingType === 'item_count' ? 'عند شراء' : 'عند بلوغ'
   return `${operator} ${merchant.freeShippingThreshold.toLocaleString('ar-YE')} ${unit}`
+}
+
+const storeLogoIconComponents: Record<string, LucideIcon> = {
+  'fa-store': Store,
+  'fa-shopping-bag': ShoppingBag,
+  'fa-tag': Tag,
+  'fa-star': Star,
+  'fa-gem': Gem,
+  'fa-fire': Flame,
+  'fa-bolt': Zap,
+  'fa-crown': Crown,
+}
+
+type StoreLogoAction =
+  | { type: 'upload'; file: File }
+  | { type: 'icon'; icon: string }
+  | { type: 'remove' }
+
+function StoreLogoSettings({
+  merchantId,
+  storeName,
+}: {
+  merchantId: string
+  storeName: string
+}) {
+  const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  const [brokenLogoUrl, setBrokenLogoUrl] = useState('')
+  const logoQuery = useQuery({
+    queryKey: ['merchant-store-logo', merchantId],
+    queryFn: fetchStoreLogoSettings,
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+  })
+
+  const logoMutation = useMutation({
+    mutationFn: async (action: StoreLogoAction) => {
+      const current = logoQuery.data
+      if (!current) throw new Error('تعذر تحميل إعدادات هوية المتجر.')
+
+      const logoUrl =
+        action.type === 'upload'
+          ? await uploadStoreLogo(action.file, setUploadProgress)
+          : ''
+      const icon = action.type === 'icon' ? action.icon : current.icon
+      const config = updateStoreLogoConfig(current.config, logoUrl, icon)
+      const message = await saveStoreLogoConfig(current.username, config)
+      return {
+        settings: { ...current, config, logoUrl, icon },
+        message,
+      }
+    },
+    onSuccess: ({ settings: updated, message }) => {
+      queryClient.setQueryData<StoreLogoSettings>(
+        ['merchant-store-logo', merchantId],
+        updated
+      )
+      setBrokenLogoUrl('')
+      void queryClient.invalidateQueries({
+        queryKey: storefrontMerchantSettingsQueryKey(merchantId),
+      })
+      setUploadProgress(null)
+      toast.success(message || 'تم تحديث هوية المتجر.')
+    },
+    onError: (error) => {
+      setUploadProgress(null)
+      toast.error(
+        error instanceof Error ? error.message : 'تعذر تحديث هوية المتجر.'
+      )
+    },
+  })
+
+  const handleFileSelection = (file?: File) => {
+    if (!file) return
+    setUploadProgress(0)
+    logoMutation.mutate({ type: 'upload', file })
+  }
+
+  if (logoQuery.isPending) {
+    return (
+      <div className='flex items-center gap-2 border-t px-3 pt-4 text-xs text-muted-foreground'>
+        <LoaderCircle className='size-4 animate-spin' aria-hidden='true' />
+        جارٍ تحميل إعدادات الشعار…
+      </div>
+    )
+  }
+
+  if (logoQuery.isError || !logoQuery.data) {
+    return (
+      <div className='grid gap-2 border-t px-3 pt-4'>
+        <p className='text-sm font-semibold'>شعار المتجر</p>
+        <p className='text-xs text-destructive'>
+          {logoQuery.error instanceof Error
+            ? logoQuery.error.message
+            : 'تعذر تحميل إعدادات الشعار.'}
+        </p>
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          className='w-fit'
+          onClick={() => void logoQuery.refetch()}
+        >
+          إعادة المحاولة
+        </Button>
+      </div>
+    )
+  }
+
+  const logoUrl = logoQuery.data.logoUrl
+  const showImage = Boolean(logoUrl) && brokenLogoUrl !== logoUrl
+  const PreviewIcon = storeLogoIconComponents[logoQuery.data.icon] || Store
+
+  return (
+    <div className='grid gap-3 border-t px-3 pt-4'>
+      <div className='flex items-center gap-3'>
+        <div className='grid size-16 shrink-0 place-items-center overflow-hidden rounded-xl border bg-muted text-primary'>
+          {showImage ? (
+            <img
+              src={logoUrl}
+              alt={`شعار ${storeName || 'المتجر'}`}
+              className='size-full object-contain p-1'
+              onError={() => setBrokenLogoUrl(logoUrl)}
+            />
+          ) : (
+            <PreviewIcon className='size-8' aria-hidden='true' />
+          )}
+        </div>
+        <div className='min-w-0 flex-1'>
+          <p className='text-sm font-semibold'>شعار المتجر</p>
+          <p className='mt-1 text-xs leading-relaxed text-muted-foreground'>
+            يظهر بجانب اسم متجرك. PNG أو JPG أو WebP، حتى 1 ميغابايت بعد الضغط.
+          </p>
+        </div>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type='file'
+        accept='image/png,image/jpeg,image/webp'
+        className='sr-only'
+        aria-label='اختيار صورة شعار المتجر'
+        disabled={logoMutation.isPending}
+        onChange={(event) => {
+          handleFileSelection(event.currentTarget.files?.[0])
+          event.currentTarget.value = ''
+        }}
+      />
+      <div className='flex flex-wrap gap-2'>
+        <Button
+          type='button'
+          size='sm'
+          disabled={logoMutation.isPending}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {logoMutation.isPending && uploadProgress !== null ? (
+            <LoaderCircle className='animate-spin' aria-hidden='true' />
+          ) : (
+            <ImagePlus aria-hidden='true' />
+          )}
+          {logoUrl ? 'استبدال الشعار' : 'رفع شعار'}
+        </Button>
+        {logoUrl && (
+          <Button
+            type='button'
+            size='sm'
+            variant='outline'
+            disabled={logoMutation.isPending}
+            onClick={() => logoMutation.mutate({ type: 'remove' })}
+          >
+            <Trash2 aria-hidden='true' />
+            إزالة الصورة
+          </Button>
+        )}
+      </div>
+
+      {logoMutation.isPending && uploadProgress !== null && (
+        <div className='grid gap-1' aria-live='polite'>
+          <div className='flex items-center justify-between text-xs text-muted-foreground'>
+            <span>
+              {uploadProgress > 0
+                ? 'جارٍ رفع الشعار…'
+                : 'جارٍ تجهيز الصورة…'}
+            </span>
+            {uploadProgress > 0 && <span>{uploadProgress}%</span>}
+          </div>
+          <div
+            role='progressbar'
+            aria-label='تقدم رفع الشعار'
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={uploadProgress}
+            className='h-1.5 overflow-hidden rounded-full bg-muted'
+          >
+            <div
+              className='h-full rounded-full bg-primary transition-[width]'
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className='grid gap-2'>
+        <p className='text-xs font-semibold text-muted-foreground'>
+          أو اختر أيقونة المتجر
+        </p>
+        <div
+          role='group'
+          aria-label='اختيار أيقونة بديلة لشعار المتجر'
+          className='flex flex-wrap gap-2'
+        >
+          {STORE_LOGO_ICONS.map(({ value, label }) => {
+            const Icon = storeLogoIconComponents[value] || Store
+            const active = !logoUrl && value === logoQuery.data.icon
+            return (
+              <button
+                key={value}
+                type='button'
+                aria-label={`استخدام أيقونة ${label}`}
+                aria-pressed={active}
+                disabled={logoMutation.isPending}
+                onClick={() => logoMutation.mutate({ type: 'icon', icon: value })}
+                className={`grid size-10 place-items-center rounded-lg border transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 ${
+                  active
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border text-muted-foreground'
+                }`}
+                title={label}
+              >
+                <Icon className='size-5' aria-hidden='true' />
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function StoreSettings() {
@@ -565,6 +820,10 @@ export function StoreSettings() {
                 title='اسم المتجر'
                 value={settings.merchant.storeName || 'غير محدد'}
                 onClick={() => openSettingsDialog('name')}
+              />
+              <StoreLogoSettings
+                merchantId={merchantId}
+                storeName={settings.merchant.storeName}
               />
               <SettingRow
                 icon={Store}

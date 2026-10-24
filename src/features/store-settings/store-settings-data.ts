@@ -1,4 +1,6 @@
 import { authApiRequest } from '@/lib/auth-api'
+import { compressDashboardImage } from '@/features/dashboard/dashboard-data'
+import { saveStorefrontConfig } from '@/features/storefront/storefront-data'
 
 type ApiRecord = Record<string, unknown>
 
@@ -36,6 +38,27 @@ export type StoreSettingsData = {
   assistant: AiAssistantSettings
   whatsapp: WhatsappSettings
 }
+
+export type StoreLogoSettings = {
+  config: ApiRecord
+  username: string
+  logoUrl: string
+  icon: string
+}
+
+export const STORE_LOGO_ICONS = [
+  { value: 'fa-store', label: 'متجر' },
+  { value: 'fa-shopping-bag', label: 'حقيبة' },
+  { value: 'fa-tag', label: 'بطاقة' },
+  { value: 'fa-star', label: 'نجمة' },
+  { value: 'fa-gem', label: 'جوهرة' },
+  { value: 'fa-fire', label: 'نار' },
+  { value: 'fa-bolt', label: 'برق' },
+  { value: 'fa-crown', label: 'تاج' },
+] as const
+
+const MAX_STORE_LOGO_SOURCE_BYTES = 10 * 1024 * 1024
+const MAX_STORE_LOGO_BYTES = 1024 * 1024
 
 export const merchantSettingsQueryKey = (merchantId: string) =>
   ['merchant-store-settings', merchantId] as const
@@ -156,6 +179,170 @@ export async function fetchStoreSettings(): Promise<StoreSettingsData> {
       verifyToken: readString(whatsapp.verify_token),
     },
   }
+}
+
+export async function fetchStoreLogoSettings(): Promise<StoreLogoSettings> {
+  const [configResult, merchantResult] = await Promise.all([
+    authApiRequest('get_storefront_config', {}),
+    authApiRequest('get_merchant_settings', {}),
+  ])
+
+  assertSuccess(
+    configResult.status,
+    configResult.message,
+    'تعذر تحميل هوية المتجر.'
+  )
+  assertSuccess(
+    merchantResult.status,
+    merchantResult.message,
+    'تعذر تحميل بيانات المتجر.'
+  )
+
+  const configData = asRecord(configResult.data)
+  const config = asRecord(configData?.config)
+  const merchant = asRecord(merchantResult.data)
+  if (!config || !merchant) {
+    throw new Error('صيغة بيانات هوية المتجر غير متوقعة.')
+  }
+
+  const identity = asRecord(config.store_identity) || {}
+  const navigation = asRecord(config.navigation_settings) || {}
+  const topBar = asRecord(navigation.top_bar) || {}
+  const icon = readString(topBar.logo_icon)
+
+  return {
+    config,
+    username: readString(merchant.username, merchant.store_username).replace(
+      /^@/,
+      ''
+    ),
+    logoUrl: readString(identity.logo_url, identity.logo),
+    icon: STORE_LOGO_ICONS.some((option) => option.value === icon)
+      ? icon
+      : STORE_LOGO_ICONS[0].value,
+  }
+}
+
+async function getSupportedLogoSourceType(file: File): Promise<string> {
+  if (!file.size || file.size > MAX_STORE_LOGO_SOURCE_BYTES) {
+    throw new Error('يجب ألا يتجاوز حجم الصورة الأصلية 10 ميغابايت.')
+  }
+
+  const buffer = await file.slice(0, 12).arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  let mimeType = ''
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  ) {
+    mimeType = 'image/png'
+  } else if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  ) {
+    mimeType = 'image/jpeg'
+  } else if (
+    bytes.length >= 12 &&
+    String.fromCharCode(...bytes.subarray(0, 4)) === 'RIFF' &&
+    String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP'
+  ) {
+    mimeType = 'image/webp'
+  }
+  if (!mimeType || (file.type && file.type !== mimeType)) {
+    throw new Error('صيغة الشعار غير مدعومة. استخدم PNG أو JPG أو WebP.')
+  }
+  return mimeType
+}
+
+function isSafeStoreLogoUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return (
+      url.protocol === 'https:' &&
+      url.hostname === 'cdn.jsdelivr.net' &&
+      url.pathname.startsWith('/gh/') &&
+      !url.username &&
+      !url.password
+    )
+  } catch {
+    return false
+  }
+}
+
+export async function uploadStoreLogo(
+  file: File,
+  onUploadProgress?: (progress: number) => void
+): Promise<string> {
+  await getSupportedLogoSourceType(file)
+  const compressedImage = await compressDashboardImage(file, 0.8, 1024)
+  if (
+    compressedImage.type !== 'image/webp' ||
+    compressedImage.size > MAX_STORE_LOGO_BYTES
+  ) {
+    throw new Error('تعذر ضغط الشعار إلى أقل من 1 ميغابايت.')
+  }
+
+  const payload = new FormData()
+  payload.append('image_file', compressedImage, 'store-logo.webp')
+  const result = onUploadProgress
+    ? await authApiRequest('upload_store_logo', payload, onUploadProgress)
+    : await authApiRequest('upload_store_logo', payload)
+  const record = asRecord(result.data)
+  const url = readString(result.url, record?.url)
+  if (
+    (result.status !== 'success' && result.status !== 'ok') ||
+    !url ||
+    !isSafeStoreLogoUrl(url)
+  ) {
+    throw new Error(result.message || 'تعذر رفع شعار المتجر بأمان.')
+  }
+  return url
+}
+
+export function updateStoreLogoConfig(
+  currentConfig: ApiRecord,
+  logoUrl: string,
+  icon: string
+): ApiRecord {
+  if (!STORE_LOGO_ICONS.some((option) => option.value === icon)) {
+    throw new Error('أيقونة الشعار المحددة غير صالحة.')
+  }
+  if (logoUrl && !isSafeStoreLogoUrl(logoUrl)) {
+    throw new Error('رابط شعار المتجر غير آمن.')
+  }
+
+  const identity = asRecord(currentConfig.store_identity) || {}
+  const navigation = asRecord(currentConfig.navigation_settings) || {}
+  const topBar = asRecord(navigation.top_bar) || {}
+
+  return {
+    ...currentConfig,
+    store_identity: {
+      ...identity,
+      logo: logoUrl,
+      logo_url: logoUrl,
+    },
+    navigation_settings: {
+      ...navigation,
+      top_bar: {
+        ...topBar,
+        logo_icon: icon,
+      },
+    },
+  }
+}
+
+export async function saveStoreLogoConfig(
+  username: string,
+  config: ApiRecord
+): Promise<string> {
+  if (!username) throw new Error('تعذر تحديد اسم المتجر لنشر الشعار.')
+  return saveStorefrontConfig(username, config)
 }
 
 export async function saveMerchantSettings(

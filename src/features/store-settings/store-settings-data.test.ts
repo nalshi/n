@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { authApiRequest } from '@/lib/auth-api'
 import {
+  fetchStoreLogoSettings,
   fetchStoreSettings,
   logoutMerchant,
   saveAiAssistantSettings,
+  saveStoreLogoConfig,
   saveMerchantSettings,
   saveWhatsappSettings,
+  updateStoreLogoConfig,
 } from './store-settings-data'
 
 vi.mock('@/lib/auth-api', () => ({
@@ -95,6 +98,89 @@ describe('store settings data', () => {
         verifyToken: 'verify',
       },
     })
+  })
+
+  it('loads the current store logo and icon from the storefront configuration', async () => {
+    mockedAuthApiRequest.mockImplementation(async (action) => {
+      if (action === 'get_storefront_config') {
+        return {
+          status: 'success',
+          data: {
+            config: {
+              store_identity: {
+                store_name: 'متجر نالش',
+                logo_url: 'https://cdn.jsdelivr.net/gh/owner/repo/logo.webp',
+              },
+              navigation_settings: {
+                top_bar: { logo_icon: 'fa-gem' },
+              },
+            },
+          },
+        }
+      }
+      if (action === 'get_merchant_settings') {
+        return {
+          status: 'success',
+          data: { username: '@nalsh' },
+        }
+      }
+      return { status: 'error', message: 'طلب غير معروف' }
+    })
+
+    await expect(fetchStoreLogoSettings()).resolves.toMatchObject({
+      username: 'nalsh',
+      logoUrl: 'https://cdn.jsdelivr.net/gh/owner/repo/logo.webp',
+      icon: 'fa-gem',
+    })
+  })
+
+  it('updates logo URL and a validated icon without dropping other storefront settings', async () => {
+    const config = {
+      store_identity: { store_name: 'متجري', logo_url: 'old-logo' },
+      navigation_settings: {
+        top_bar: { logo_icon: 'fa-store', show_search_btn: false },
+      },
+      theme_name: 'nalsh_indigo',
+    }
+
+    expect(
+      updateStoreLogoConfig(
+        config,
+        'https://cdn.jsdelivr.net/gh/owner/repo/logo.webp',
+        'fa-gem'
+      )
+    ).toEqual({
+      store_identity: {
+        store_name: 'متجري',
+        logo_url: 'https://cdn.jsdelivr.net/gh/owner/repo/logo.webp',
+        logo: 'https://cdn.jsdelivr.net/gh/owner/repo/logo.webp',
+      },
+      navigation_settings: {
+        top_bar: { logo_icon: 'fa-gem', show_search_btn: false },
+      },
+      theme_name: 'nalsh_indigo',
+    })
+    expect(() =>
+      updateStoreLogoConfig(config, '', 'fa-store" onerror="bad')
+    ).toThrow('أيقونة الشعار المحددة غير صالحة.')
+  })
+
+  it('publishes logo settings through the authenticated storefront action', async () => {
+    mockedAuthApiRequest.mockResolvedValueOnce({
+      status: 'success',
+      message: 'تم نشر الشعار',
+    })
+
+    await expect(
+      saveStoreLogoConfig('nalsh', { store_identity: { logo_url: '' } })
+    ).resolves.toBe('تم نشر الشعار')
+    expect(mockedAuthApiRequest).toHaveBeenCalledWith(
+      'save_storefront_config',
+      {
+        config: { store_identity: { logo_url: '' } },
+        merchant_username: 'nalsh',
+      }
+    )
   })
 
   it('saves merchant profile and shipping settings using the legacy payload', async () => {

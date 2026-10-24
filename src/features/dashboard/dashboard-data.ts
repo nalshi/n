@@ -757,7 +757,8 @@ export async function updateDashboardProductStock(
 
 export async function compressDashboardImage(
   file: File,
-  quality = 0.8
+  quality = 0.8,
+  maxDimension = 1200
 ): Promise<Blob> {
   const signature = await file.slice(0, 12).arrayBuffer()
   const header = Array.from(new Uint8Array(signature))
@@ -778,7 +779,10 @@ export async function compressDashboardImage(
   try {
     image.src = objectUrl
     await image.decode()
-    const baseScale = Math.min(1, 1200 / Math.max(image.width, image.height))
+    const baseScale = Math.min(
+      1,
+      maxDimension / Math.max(image.width, image.height)
+    )
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
     if (!context) throw new Error('تعذر تجهيز الصورة.')
