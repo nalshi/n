@@ -23,6 +23,7 @@ const WORKER_ACTIONS = new Set([
   'save_ai_assistant_config',
   'get_whatsapp_config',
   'save_whatsapp_config',
+  'upload_store_logo',
   'get_storefront_config',
   'save_storefront_config',
   'save_storefront_selection',

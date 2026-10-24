@@ -75,6 +75,23 @@ describe('merchant API transport', () => {
     expect(mockedFetch.mock.calls[0][0]).toBe('/api/work/')
   })
 
+  it('routes store logo uploads through /api/work instead of api.php', async () => {
+    localStorage.setItem('merchant_token', 'merchant-token')
+    mockedFetch.mockResolvedValue(jsonResponse({ status: 'success' }))
+    const payload = new FormData()
+    payload.set(
+      'image_file',
+      new File(['logo'], 'logo.webp', { type: 'image/webp' })
+    )
+
+    await apiRequest('upload_store_logo', payload, csrfToken)
+
+    const [url, options] = mockedFetch.mock.calls[0]
+    expect(url).toBe('/api/work/')
+    expect(options?.credentials).toBe('omit')
+    expect(payload.get('action')).toBe('upload_store_logo')
+  })
+
   it('does not fall back for legacy no-fallback actions', async () => {
     mockedFetch.mockRejectedValue(new TypeError('Failed to fetch'))
 
@@ -96,6 +113,8 @@ describe('merchant API transport', () => {
   })
 
   it('reports real upload progress for multipart Worker requests', async () => {
+    const xhrInstances: Array<{ openedUrl: string }> = []
+
     class MockXhr extends EventTarget {
       upload = new EventTarget()
       withCredentials = false
@@ -103,6 +122,11 @@ describe('merchant API transport', () => {
       responseText = JSON.stringify({ status: 'success', id: 'product-1' })
       sentBody: FormData | null = null
       openedUrl = ''
+
+      constructor() {
+        super()
+        xhrInstances.push(this)
+      }
 
       open(_method: string, url: string) {
         this.openedUrl = url
@@ -132,12 +156,13 @@ describe('merchant API transport', () => {
     payload.set('name', 'منتج')
 
     await expect(
-      apiRequest('save_product', payload, csrfToken, (value) =>
+      apiRequest('upload_store_logo', payload, csrfToken, (value) =>
         progress.push(value)
       )
     ).resolves.toMatchObject({ status: 'success', id: 'product-1' })
 
+    expect(xhrInstances[0]?.openedUrl).toBe('/api/work/')
     expect(progress).toEqual([50, 100])
-    expect(payload.get('action')).toBe('save_product')
+    expect(payload.get('action')).toBe('upload_store_logo')
   })
 })
