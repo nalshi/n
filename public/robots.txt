@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://dash.appi.dpdns.org/sitemap.xml
+Sitemap:/sitemap.xml
