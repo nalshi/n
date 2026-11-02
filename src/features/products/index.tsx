@@ -1,6 +1,5 @@
 import {
   useDeferredValue,
-  useEffect,
   useMemo,
   useState,
   type ChangeEvent,
@@ -68,6 +67,9 @@ import {
 import {
   buildPendingCategoryChain,
   deleteDashboardProduct,
+  createDashboardCategory,
+  updateDashboardCategory,
+  deleteDashboardCategory,
   fetchDashboardCategories,
   fetchDashboardProducts,
   fetchDashboardUsername,
@@ -349,36 +351,17 @@ function ProductsWorkspace({
   const [editingProduct, setEditingProduct] = useState<DashboardProduct | null>(
     null
   )
-  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false)
-  const [inventoryView, setInventoryView] = useState(tab === 'inventory')
+  const inventoryView =
+    tab === 'inventory' || tab === 'categories' || manageCategories
+  const inventoryTab =
+    tab === 'categories' || manageCategories ? 'categories' : 'stock'
   const [stockDrafts, setStockDrafts] = useState<Record<string, StockDraft>>({})
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
-  const [categories, setCategories] = useState<DashboardCategory[]>([])
   const [qrProduct, setQrProduct] = useState<DashboardProduct | null>(null)
   const [deleteProduct, setDeleteProduct] = useState<DashboardProduct | null>(
     null
   )
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase())
-
-  useEffect(() => {
-    if (tab === 'inventory') {
-      setInventoryView(true)
-    } else if (tab === 'catalog') {
-      setInventoryView(false)
-    }
-  }, [tab])
-
-  useEffect(() => {
-    if (manageCategories || tab === 'categories') {
-      setCategoryManagerOpen(true)
-    }
-  }, [manageCategories, tab])
-
-  useEffect(() => {
-    if (create || tab === 'new') {
-      setEditorOpen(true)
-    }
-  }, [create, tab])
 
   const clearCreateShortcut = () => {
     if (create || tab === 'new') {
@@ -388,20 +371,6 @@ function ProductsWorkspace({
           ...prev,
           create: undefined,
           tab: prev.tab === 'new' ? undefined : prev.tab,
-        }),
-        replace: true,
-      })
-    }
-  }
-
-  const clearCategoryShortcut = () => {
-    if (manageCategories || tab === 'categories') {
-      void navigate({
-        to: '/products',
-        search: (prev) => ({
-          ...prev,
-          manageCategories: undefined,
-          tab: prev.tab === 'categories' ? undefined : prev.tab,
         }),
         replace: true,
       })
@@ -426,24 +395,10 @@ function ProductsWorkspace({
     retry: false,
   })
 
-  const categoryList = useMemo(() => {
-    const loaded = categoriesQuery.data || []
-    const pending = categories.filter(
-      (category) =>
-        category.id.startsWith('NEW:') &&
-        !loaded.some(
-          (item) =>
-            item.parentId === category.parentId &&
-            item.name.toLocaleLowerCase() === category.name.toLocaleLowerCase()
-        )
-    )
-    return [
-      ...loaded,
-      ...pending.filter(
-        (category) => !loaded.some((item) => item.id === category.id)
-      ),
-    ]
-  }, [categories, categoriesQuery.data])
+  const categoryList = useMemo(
+    () => categoriesQuery.data || [],
+    [categoriesQuery.data]
+  )
   const categoryOptions = useMemo(
     () => flattenCategories(categoryList),
     [categoryList]
@@ -704,6 +659,39 @@ function ProductsWorkspace({
       ),
   })
 
+  const createCategoryMutation = useMutation({
+    mutationFn: ({ name, parentId }: { name: string; parentId: string }) =>
+      createDashboardCategory(name, parentId),
+    onSuccess: async () => {
+      toast.success('تم إنشاء الفئة وحفظها.')
+      await refreshMerchantData()
+    },
+  })
+
+  const updateCategoryMutation = useMutation({
+    mutationFn: ({
+      id,
+      name,
+      parentId,
+    }: {
+      id: string
+      name: string
+      parentId: string
+    }) => updateDashboardCategory(id, name, parentId),
+    onSuccess: async () => {
+      toast.success('تم تحديث الفئة.')
+      await refreshMerchantData()
+    },
+  })
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: (id: string) => deleteDashboardCategory(id),
+    onSuccess: async () => {
+      toast.success('تم حذف الفئة.')
+      await refreshMerchantData()
+    },
+  })
+
   const changeStockDraft = (
     product: DashboardProduct,
     update: (stock: StockDraft) => StockDraft
@@ -734,10 +722,10 @@ function ProductsWorkspace({
         <div className='mb-6'>
           <MerchantPageHeading
             section={{ title: 'المنتجات', url: '/products' }}
-            title={inventoryView ? 'إدارة المخزون' : 'قائمة المنتجات'}
+            title={inventoryView ? 'المخزون والفئات' : 'قائمة المنتجات'}
             description={
               inventoryView
-                ? 'راجع رصيد جميع المنتجات وخياراتها، وعدّل المخزون مباشرة.'
+                ? 'تابع كميات المنتجات ونظّم فئات متجرك من مساحة واحدة.'
                 : 'نظّم منتجات متجرك وأسعارها ومخزونها وفئاتها من مكان واحد.'
             }
             actions={
@@ -745,7 +733,6 @@ function ProductsWorkspace({
                 <Button
                   variant={!inventoryView ? 'default' : 'outline'}
                   onClick={() => {
-                    setInventoryView(false)
                     void navigate({
                       to: '/products',
                       search: {},
@@ -757,20 +744,13 @@ function ProductsWorkspace({
                 <Button
                   variant={inventoryView ? 'default' : 'outline'}
                   onClick={() => {
-                    setInventoryView(true)
                     void navigate({
                       to: '/products',
                       search: { tab: 'inventory' },
                     })
                   }}
                 >
-                  <Boxes aria-hidden='true' /> إدارة المخزون
-                </Button>
-                <Button
-                  variant='outline'
-                  onClick={() => setCategoryManagerOpen(true)}
-                >
-                  <Tags aria-hidden='true' /> إدارة الفئات
+                  <Boxes aria-hidden='true' /> المخزون والفئات
                 </Button>
                 <Button onClick={() => openEditor()}>
                   <Plus aria-hidden='true' /> منتج جديد
@@ -786,7 +766,6 @@ function ProductsWorkspace({
             value={products.length}
             icon={Package}
             onClick={() => {
-              setInventoryView(false)
               void navigate({ to: '/products', search: {} })
             }}
           />
@@ -807,7 +786,6 @@ function ProductsWorkspace({
             }
             icon={Boxes}
             onClick={() => {
-              setInventoryView(true)
               void navigate({ to: '/products', search: { tab: 'inventory' } })
             }}
           />
@@ -893,50 +871,167 @@ function ProductsWorkspace({
         ) : null}
 
         {inventoryView ? (
-          productsQuery.isPending ? (
-            <p className='py-10 text-center text-sm text-muted-foreground'>
-              جارٍ تحميل المخزون...
-            </p>
-          ) : productsQuery.isError && !productsQuery.data ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>تعذر تحميل المخزون</CardTitle>
-                <CardDescription>
-                  {productsQuery.error instanceof Error
-                    ? productsQuery.error.message
-                    : 'تحقق من الاتصال ثم أعد المحاولة.'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button
-                  onClick={() => {
-                    clearAuthApiCache()
-                    void productsQuery.refetch()
+          <section aria-label='إدارة المخزون والفئات'>
+            <div
+              className='mb-4 grid grid-cols-2 gap-1 rounded-xl border bg-muted/40 p-1 sm:w-fit sm:min-w-72'
+              role='tablist'
+              aria-label='أقسام المخزون والفئات'
+            >
+              <Button
+                id='inventory-stock-tab'
+                role='tab'
+                aria-selected={inventoryTab === 'stock'}
+                aria-controls='inventory-panel'
+                variant={inventoryTab === 'stock' ? 'default' : 'ghost'}
+                className='min-w-0'
+                onClick={() => {
+                  void navigate({
+                    to: '/products',
+                    search: { tab: 'inventory' },
+                    replace: true,
+                  })
+                }}
+              >
+                <Boxes aria-hidden='true' /> المخزون
+              </Button>
+              <Button
+                id='inventory-categories-tab'
+                role='tab'
+                aria-selected={inventoryTab === 'categories'}
+                aria-controls='inventory-panel'
+                variant={inventoryTab === 'categories' ? 'default' : 'ghost'}
+                className='min-w-0'
+                onClick={() => {
+                  void navigate({
+                    to: '/products',
+                    search: { tab: 'categories' },
+                    replace: true,
+                  })
+                }}
+              >
+                <Tags aria-hidden='true' /> الفئات
+                <span className='text-xs opacity-70'>
+                  {categoriesQuery.data?.length ?? 0}
+                </span>
+              </Button>
+            </div>
+
+            <div
+              id='inventory-panel'
+              role='tabpanel'
+              aria-labelledby={
+                inventoryTab === 'stock'
+                  ? 'inventory-stock-tab'
+                  : 'inventory-categories-tab'
+              }
+              tabIndex={0}
+            >
+              {inventoryTab === 'stock' ? (
+                productsQuery.isPending ? (
+                  <div className='grid gap-3' aria-label='جارٍ تحميل المخزون'>
+                    {Array.from({ length: 3 }, (_, index) => (
+                      <div
+                        key={index}
+                        className='h-36 animate-pulse rounded-xl border bg-muted/40'
+                      />
+                    ))}
+                  </div>
+                ) : productsQuery.isError && !productsQuery.data ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>تعذر تحميل المخزون</CardTitle>
+                      <CardDescription>
+                        {productsQuery.error instanceof Error
+                          ? productsQuery.error.message
+                          : 'تحقق من الاتصال ثم أعد المحاولة.'}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Button
+                        onClick={() => {
+                          clearAuthApiCache()
+                          void productsQuery.refetch()
+                        }}
+                      >
+                        إعادة المحاولة
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <StockManager
+                    products={products}
+                    drafts={stockDrafts}
+                    savingProductId={
+                      stockMutation.isPending
+                        ? stockMutation.variables?.product.id
+                        : undefined
+                    }
+                    onChange={changeStockDraft}
+                    onSave={(product) =>
+                      stockMutation.mutate({
+                        product,
+                        stock:
+                          stockDrafts[product.id] ||
+                          stockDraftFromProduct(product),
+                      })
+                    }
+                  />
+                )
+              ) : categoriesQuery.isPending || productsQuery.isPending ? (
+                <div className='grid gap-3 md:grid-cols-[minmax(240px,0.8fr)_minmax(0,1.2fr)]'>
+                  <div className='h-72 animate-pulse rounded-xl border bg-muted/40' />
+                  <div className='h-72 animate-pulse rounded-xl border bg-muted/40' />
+                </div>
+              ) : categoriesQuery.isError || productsQuery.isError ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>تعذر تحميل بيانات الفئات</CardTitle>
+                    <CardDescription>
+                      تحقق من الاتصال ثم أعد المحاولة. لن تُفقد التغييرات
+                      المحفوظة.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      onClick={() => {
+                        clearAuthApiCache()
+                        void Promise.all([
+                          categoriesQuery.refetch(),
+                          productsQuery.refetch(),
+                        ])
+                      }}
+                    >
+                      إعادة المحاولة
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <CategoryManager
+                  categories={categoriesQuery.data || []}
+                  products={products}
+                  saving={
+                    createCategoryMutation.isPending ||
+                    updateCategoryMutation.isPending ||
+                    deleteCategoryMutation.isPending
+                  }
+                  onCreate={async (name, parentId) => {
+                    await createCategoryMutation.mutateAsync({
+                      name,
+                      parentId,
+                    })
                   }}
-                >
-                  إعادة المحاولة
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <StockManager
-              products={products}
-              drafts={stockDrafts}
-              savingProductId={
-                stockMutation.isPending
-                  ? stockMutation.variables?.product.id
-                  : undefined
-              }
-              onChange={changeStockDraft}
-              onSave={(product) =>
-                stockMutation.mutate({
-                  product,
-                  stock:
-                    stockDrafts[product.id] || stockDraftFromProduct(product),
-                })
-              }
-            />
-          )
+                  onUpdate={(id, name, parentId) =>
+                    updateCategoryMutation.mutateAsync({
+                      id,
+                      name,
+                      parentId,
+                    })
+                  }
+                  onDelete={(id) => deleteCategoryMutation.mutateAsync(id)}
+                />
+              )}
+            </div>
+          </section>
         ) : null}
 
         {!inventoryView && productsQuery.isPending ? (
@@ -1058,7 +1153,7 @@ function ProductsWorkspace({
 
       <ProductEditor
         key={`${editorOpen || create === true ? 'open' : 'closed'}:${editingProduct?.id ?? 'new'}`}
-        open={editorOpen || create === true}
+        open={editorOpen || create === true || tab === 'new'}
         product={editingProduct}
         categories={categoryList}
         categoriesLoading={categoriesQuery.isLoading}
@@ -1074,25 +1169,13 @@ function ProductsWorkspace({
           if (!open) clearCreateShortcut()
         }}
         onSave={(draft) => saveMutation.mutate(draft)}
-        onCategoryAdded={(category) => {
-          setCategories((current) => [...current, category])
-          void categoriesQuery.refetch()
-        }}
+        onCategoryAdded={(name, parentId) =>
+          createCategoryMutation.mutateAsync({ name, parentId })
+        }
         onManageCategories={() => {
           setEditorOpen(false)
-          setCategoryManagerOpen(true)
-          clearCreateShortcut()
+          void navigate({ to: '/products', search: { tab: 'categories' } })
         }}
-      />
-
-      <CategoryManager
-        open={categoryManagerOpen || manageCategories}
-        categories={categoryList}
-        onOpenChange={(open) => {
-          setCategoryManagerOpen(open)
-          if (!open) clearCategoryShortcut()
-        }}
-        onChange={setCategories}
       />
 
       <Dialog
@@ -1334,7 +1417,10 @@ function ProductEditor({
   uploadProgress: number | null
   onOpenChange: (open: boolean) => void
   onSave: (draft: ProductDraft) => void
-  onCategoryAdded: (category: DashboardCategory) => void
+  onCategoryAdded: (
+    name: string,
+    parentId: string
+  ) => Promise<DashboardCategory>
   onManageCategories: () => void
 }) {
   const [draft, setDraft] = useState<ProductDraft>(() =>
@@ -1343,6 +1429,7 @@ function ProductEditor({
   const [newCategoryName, setNewCategoryName] = useState('')
   const [newCategoryParent, setNewCategoryParent] = useState('')
   const [addCategoryOpen, setAddCategoryOpen] = useState(false)
+  const [creatingCategory, setCreatingCategory] = useState(false)
   const [imagePreview, setImagePreview] = useState(product?.image || '')
   const [imageProcessing, setImageProcessing] = useState(false)
   const [processingOptionImages, setProcessingOptionImages] = useState(
@@ -1375,7 +1462,7 @@ function ProductEditor({
     }
   }
 
-  const addPendingCategory = () => {
+  const addPendingCategory = async () => {
     const name = newCategoryName.trim()
     if (name.length < 2 || name.length > 60) {
       toast.error('اسم الفئة يجب أن يتكون من حرفين إلى 60 حرفاً.')
@@ -1391,17 +1478,18 @@ function ProductEditor({
       toast.error('هذه الفئة موجودة مسبقاً.')
       return
     }
-    const category = {
-      id: `NEW:${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name,
-      parentId: newCategoryParent,
+    setCreatingCategory(true)
+    try {
+      const category = await onCategoryAdded(name, newCategoryParent)
+      setDraft((current) => ({ ...current, categoryId: category.id }))
+      setNewCategoryName('')
+      setNewCategoryParent('')
+      setAddCategoryOpen(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'تعذر إنشاء الفئة.')
+    } finally {
+      setCreatingCategory(false)
     }
-    onCategoryAdded(category)
-    setDraft((current) => ({ ...current, categoryId: category.id }))
-    setNewCategoryName('')
-    setNewCategoryParent('')
-    setAddCategoryOpen(false)
-    toast.success('أُضيفت الفئة مؤقتاً، وسيتم حفظها مع أول منتج تستخدم فيه.')
   }
 
   const addOption = () => {
@@ -1802,8 +1890,8 @@ function ProductEditor({
               <DialogTitle>إضافة فئة</DialogTitle>
               <DialogDescription>
                 اختر أي مستوى كفئة أب لإنشاء فئات متداخلة، مثل إلكترونيات /
-                جوالات / سامسونج / جالكسي. تحفظ الفئات الجديدة مع أول منتج
-                يستخدمها.
+                جوالات / سامسونج / جالكسي. تُحفظ الفئة فوراً ويمكن استخدامها
+                مباشرة.
               </DialogDescription>
             </DialogHeader>
             <div className='grid gap-4'>
@@ -1858,11 +1946,19 @@ function ProductEditor({
             <DialogFooter>
               <Button
                 variant='outline'
+                disabled={creatingCategory}
                 onClick={() => setAddCategoryOpen(false)}
               >
                 إلغاء
               </Button>
-              <Button onClick={addPendingCategory}>إضافة الفئة</Button>
+              <Button disabled={creatingCategory} onClick={addPendingCategory}>
+                {creatingCategory ? (
+                  <LoaderCircle className='animate-spin' aria-hidden='true' />
+                ) : (
+                  <Plus aria-hidden='true' />
+                )}
+                {creatingCategory ? 'جارٍ الحفظ' : 'إضافة الفئة'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -2204,20 +2300,30 @@ function StockManager({
 }
 
 function CategoryManager({
-  open,
   categories,
-  onOpenChange,
-  onChange,
+  products,
+  saving,
+  onCreate,
+  onUpdate,
+  onDelete,
 }: {
-  open: boolean
   categories: DashboardCategory[]
-  onOpenChange: (open: boolean) => void
-  onChange: (categories: DashboardCategory[]) => void
+  products: DashboardProduct[]
+  saving: boolean
+  onCreate: (name: string, parentId: string) => Promise<void>
+  onUpdate: (id: string, name: string, parentId: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
 }) {
   const [name, setName] = useState('')
-  const [mode, setMode] = useState<'main' | 'sub'>('main')
   const [parentId, setParentId] = useState('')
   const [search, setSearch] = useState('')
+  const [editingCategory, setEditingCategory] =
+    useState<DashboardCategory | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editParentId, setEditParentId] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<DashboardCategory | null>(
+    null
+  )
   const flatCategories = useMemo(
     () => flattenCategories(categories),
     [categories]
@@ -2225,120 +2331,140 @@ function CategoryManager({
   const matches = flatCategories.filter((category) =>
     category.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())
   )
+  const editingBranch = useMemo(() => {
+    if (!editingCategory) return new Set<string>()
+    const branch = new Set([editingCategory.id])
+    let updated = true
+    while (updated) {
+      updated = false
+      categories.forEach((category) => {
+        if (branch.has(category.parentId) && !branch.has(category.id)) {
+          branch.add(category.id)
+          updated = true
+        }
+      })
+    }
+    return branch
+  }, [categories, editingCategory])
 
-  const add = () => {
+  const hasDuplicate = (
+    candidateName: string,
+    candidateParent: string,
+    id = ''
+  ) =>
+    categories.some(
+      (category) =>
+        category.id !== id &&
+        category.parentId === candidateParent &&
+        category.name.trim().toLocaleLowerCase() ===
+          candidateName.trim().toLocaleLowerCase()
+    )
+
+  const add = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
     const cleanName = name.trim()
     if (cleanName.length < 2 || cleanName.length > 60) {
       toast.error('اسم الفئة يجب أن يتكون من حرفين إلى 60 حرفاً.')
       return
     }
-    if (mode === 'sub' && !parentId) {
-      toast.error('اختر الفئة الرئيسية التي ستندرج تحتها الفئة الفرعية.')
-      return
-    }
-    if (
-      categories.some(
-        (category) =>
-          category.parentId === (mode === 'sub' ? parentId : '') &&
-          category.name.trim().toLocaleLowerCase() ===
-            cleanName.toLocaleLowerCase()
-      )
-    ) {
+    if (hasDuplicate(cleanName, parentId)) {
       toast.error('هذه الفئة موجودة مسبقاً.')
       return
     }
-    const category = {
-      id: `NEW:${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name: cleanName,
-      parentId: mode === 'sub' ? parentId : '',
+    try {
+      await onCreate(cleanName, parentId)
+      setName('')
+      setParentId('')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'تعذر إنشاء الفئة.')
     }
-    onChange([...categories, category])
-    setName('')
-    setParentId('')
-    setMode('main')
-    toast.success('أُضيفت الفئة مؤقتاً، وستحفظ مع أول منتج يستخدمها.')
   }
 
-  const remove = (id: string) => {
-    if (!id.startsWith('NEW:')) return
-    const removeIds = new Set([id])
-    let changed = true
-    while (changed) {
-      changed = false
-      categories.forEach((category) => {
-        if (removeIds.has(category.parentId) && !removeIds.has(category.id)) {
-          removeIds.add(category.id)
-          changed = true
-        }
-      })
+  const beginEdit = (category: DashboardCategory) => {
+    setEditingCategory(category)
+    setEditName(category.name)
+    setEditParentId(category.parentId)
+  }
+
+  const saveEdit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!editingCategory) return
+    const cleanName = editName.trim()
+    if (cleanName.length < 2 || cleanName.length > 60) {
+      toast.error('اسم الفئة يجب أن يتكون من حرفين إلى 60 حرفاً.')
+      return
     }
-    onChange(categories.filter((category) => !removeIds.has(category.id)))
+    if (editingBranch.has(editParentId)) {
+      toast.error('لا يمكن نقل الفئة إلى نفسها أو إلى أحد فروعها.')
+      return
+    }
+    if (hasDuplicate(cleanName, editParentId, editingCategory.id)) {
+      toast.error('هذه الفئة موجودة مسبقاً في المستوى المحدد.')
+      return
+    }
+    try {
+      await onUpdate(editingCategory.id, cleanName, editParentId)
+      setEditingCategory(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'تعذر تحديث الفئة.')
+    }
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    try {
+      await onDelete(deleteTarget.id)
+      setDeleteTarget(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'تعذر حذف الفئة.')
+    }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-h-[90svh] overflow-y-auto font-ibm-plex-sans-arabic sm:max-w-2xl'>
-        <DialogHeader>
-          <DialogTitle>إدارة الفئات</DialogTitle>
-          <DialogDescription>
-            أنشئ مستويات متداخلة باختيار أي فئة كأب، مثل إلكترونيات / جوالات /
-            سامسونج / جالكسي. تحفظ الفئات الجديدة مع أول منتج يستخدمها.
-          </DialogDescription>
-        </DialogHeader>
-        <div className='grid gap-5 md:grid-cols-[minmax(230px,0.8fr)_minmax(0,1.2fr)]'>
-          <section className='grid content-start gap-3 rounded-xl border p-4'>
-            <h3 className='font-semibold'>إضافة فئة جديدة</h3>
-            <Field label='اسم الفئة'>
+    <>
+      <div className='grid min-w-0 gap-4 xl:grid-cols-[minmax(260px,0.72fr)_minmax(0,1.28fr)]'>
+        <section className='grid content-start gap-4 rounded-xl border bg-card p-4 sm:p-5'>
+          <div>
+            <h2 className='font-semibold'>إضافة فئة</h2>
+            <p className='mt-1 text-sm text-muted-foreground'>
+              أنشئ فئة رئيسية أو أدرجها داخل مستوى موجود.
+            </p>
+          </div>
+          <form className='grid gap-4' onSubmit={add}>
+            <Field label='اسم الفئة' required>
               <Input
+                autoComplete='off'
                 value={name}
                 onChange={(event) => setName(event.target.value)}
+                minLength={2}
                 maxLength={60}
-                placeholder='مثال: سامسونج'
+                required
+                placeholder='مثال: جوالات'
               />
             </Field>
-            <fieldset className='grid gap-2'>
-              <legend className='text-sm font-medium'>نوع الفئة</legend>
-              <div className='grid grid-cols-2 gap-2'>
-                <Button
-                  type='button'
-                  variant={mode === 'main' ? 'default' : 'outline'}
-                  aria-pressed={mode === 'main'}
-                  onClick={() => {
-                    setMode('main')
-                    setParentId('')
-                  }}
-                >
-                  فئة رئيسية
-                </Button>
-                <Button
-                  type='button'
-                  variant={mode === 'sub' ? 'default' : 'outline'}
-                  aria-pressed={mode === 'sub'}
-                  onClick={() => setMode('sub')}
-                >
-                  فئة فرعية
-                </Button>
-              </div>
-            </fieldset>
-            {mode === 'sub' && (
-              <Field label='تتبع الفئة'>
-                <Select value={parentId} onValueChange={setParentId}>
-                  <SelectTrigger className='w-full'>
-                    <SelectValue placeholder='اختر الفئة الأب' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {flatCategories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        {categoryPath(category, categories)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            )}
-            {mode === 'sub' && parentId && (
+            <Field label='الفئة الرئيسية'>
+              <Select
+                value={parentId || '__root__'}
+                onValueChange={(value) =>
+                  setParentId(value === '__root__' ? '' : value)
+                }
+              >
+                <SelectTrigger className='w-full'>
+                  <SelectValue placeholder='فئة رئيسية' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='__root__'>بدون فئة رئيسية</SelectItem>
+                  {flatCategories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {categoryPath(category, categories)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            {parentId && (
               <p className='text-xs text-muted-foreground' aria-live='polite'>
-                المسار:{' '}
+                ستظهر ضمن:{' '}
                 {categoryPath(
                   categories.find((category) => category.id === parentId) || {
                     id: parentId,
@@ -2350,70 +2476,227 @@ function CategoryManager({
                 {name.trim() ? ` / ${name.trim()}` : ''}
               </p>
             )}
-            <Button onClick={add}>
-              <Plus aria-hidden='true' /> إضافة الفئة
+            <Button type='submit' disabled={saving}>
+              {saving ? (
+                <LoaderCircle className='animate-spin' aria-hidden='true' />
+              ) : (
+                <Plus aria-hidden='true' />
+              )}
+              {saving ? 'جارٍ الحفظ' : 'إضافة الفئة'}
             </Button>
-          </section>
-          <section className='grid content-start gap-3 rounded-xl border p-4'>
-            <h3 className='font-semibold'>كل الفئات ({categories.length})</h3>
+          </form>
+        </section>
+
+        <section className='min-w-0 rounded-xl border bg-card'>
+          <div className='grid gap-3 border-b p-4 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.7fr)] sm:items-center sm:p-5'>
+            <div>
+              <h2 className='font-semibold'>فئات المتجر</h2>
+              <p className='mt-1 text-sm text-muted-foreground'>
+                {categories.length} فئة — الفئات المشتركة للعرض فقط.
+              </p>
+            </div>
             <label className='relative'>
               <Search className='absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground' />
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder='ابحث عن فئة...'
+                aria-label='ابحث في الفئات'
                 className='ps-9'
               />
             </label>
-            {matches.length ? (
-              <ul className='grid max-h-80 gap-1 overflow-y-auto'>
-                {matches.map((category) => (
+          </div>
+          {matches.length ? (
+            <ul className='grid gap-2 p-3 sm:p-4'>
+              {matches.map((category) => {
+                const productCount = products.filter(
+                  (product) => product.categoryId === category.id
+                ).length
+                const childCount = categories.filter(
+                  (item) => item.parentId === category.id
+                ).length
+                const deletionBlocked =
+                  category.isShared || productCount > 0 || childCount > 0
+                const isEditing = editingCategory?.id === category.id
+                const deleteReason = category.isShared
+                  ? 'فئة مشتركة لا يمكن تغييرها'
+                  : productCount
+                    ? `انقل ${productCount} منتج إلى فئة أخرى قبل الحذف`
+                    : childCount
+                      ? `انقل ${childCount} فئة فرعية قبل الحذف`
+                      : 'حذف الفئة'
+
+                return (
                   <li
                     key={category.id}
-                    className='flex items-center gap-2 rounded-md border px-3 py-2 text-sm'
+                    className='grid min-w-0 gap-3 rounded-lg border p-3 sm:p-4'
                     style={{
-                      marginInlineStart: `${Math.min(category.depth, 6) * 14}px`,
+                      marginInlineStart: `${Math.min(category.depth, 4) * 12}px`,
                     }}
                   >
-                    <span className='min-w-0 flex-1 truncate'>
-                      {categoryPath(category, categories)}
-                    </span>
-                    {category.id.startsWith('NEW:') ? (
-                      <>
-                        <span className='rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-700'>
-                          معلّقة
-                        </span>
-                        <Button
-                          variant='ghost'
-                          size='icon'
-                          aria-label={`حذف الفئة ${category.name}`}
-                          onClick={() => remove(category.id)}
-                        >
-                          <Trash2 className='size-4 text-destructive' />
-                        </Button>
-                      </>
+                    {isEditing ? (
+                      <form className='grid gap-3' onSubmit={saveEdit}>
+                        <Field label='اسم الفئة' required>
+                          <Input
+                            autoFocus
+                            value={editName}
+                            onChange={(event) =>
+                              setEditName(event.target.value)
+                            }
+                            minLength={2}
+                            maxLength={60}
+                            required
+                          />
+                        </Field>
+                        <Field label='الفئة الرئيسية'>
+                          <Select
+                            value={editParentId || '__root__'}
+                            onValueChange={(value) =>
+                              setEditParentId(value === '__root__' ? '' : value)
+                            }
+                          >
+                            <SelectTrigger className='w-full'>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value='__root__'>
+                                بدون فئة رئيسية
+                              </SelectItem>
+                              {flatCategories
+                                .filter((item) => !editingBranch.has(item.id))
+                                .map((item) => (
+                                  <SelectItem key={item.id} value={item.id}>
+                                    {categoryPath(item, categories)}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                        <div className='flex flex-wrap justify-end gap-2'>
+                          <Button
+                            type='button'
+                            variant='outline'
+                            disabled={saving}
+                            onClick={() => setEditingCategory(null)}
+                          >
+                            إلغاء
+                          </Button>
+                          <Button type='submit' disabled={saving}>
+                            {saving ? 'جارٍ الحفظ' : 'حفظ التعديل'}
+                          </Button>
+                        </div>
+                      </form>
                     ) : (
-                      <span className='text-[10px] text-muted-foreground'>
-                        محفوظة
-                      </span>
+                      <div className='flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+                        <div className='min-w-0'>
+                          <p className='text-sm font-medium break-words'>
+                            {categoryPath(category, categories)}
+                          </p>
+                          <p className='mt-1 text-xs text-muted-foreground'>
+                            {category.isShared
+                              ? 'فئة مشتركة'
+                              : `${productCount} منتج · ${childCount} فئة فرعية`}
+                          </p>
+                        </div>
+                        <div className='grid grid-cols-2 gap-2 sm:flex sm:shrink-0'>
+                          {!category.isShared && (
+                            <Button
+                              type='button'
+                              variant='outline'
+                              size='sm'
+                              disabled={saving}
+                              onClick={() => beginEdit(category)}
+                            >
+                              <Pencil aria-hidden='true' /> تعديل
+                            </Button>
+                          )}
+                          <Button
+                            type='button'
+                            variant='outline'
+                            size='sm'
+                            disabled={saving || deletionBlocked}
+                            aria-label={deleteReason}
+                            title={deleteReason}
+                            onClick={() => setDeleteTarget(category)}
+                          >
+                            <Trash2
+                              aria-hidden='true'
+                              className='text-destructive'
+                            />
+                            حذف
+                          </Button>
+                        </div>
+                        {deletionBlocked && !category.isShared && (
+                          <p
+                            className='text-xs text-muted-foreground sm:basis-full'
+                            aria-live='polite'
+                          >
+                            {deleteReason}.
+                          </p>
+                        )}
+                      </div>
                     )}
                   </li>
-                ))}
-              </ul>
-            ) : (
-              <p className='py-8 text-center text-sm text-muted-foreground'>
+                )
+              })}
+            </ul>
+          ) : (
+            <div className='grid justify-items-center gap-2 px-4 py-12 text-center'>
+              <Tags
+                className='size-8 text-muted-foreground'
+                aria-hidden='true'
+              />
+              <p className='font-medium'>
                 {search ? 'لا توجد نتائج مطابقة.' : 'لا توجد فئات بعد.'}
               </p>
-            )}
-          </section>
-        </div>
-        <DialogFooter>
-          <Button variant='outline' onClick={() => onOpenChange(false)}>
-            إغلاق
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+              <p className='max-w-sm text-sm text-muted-foreground'>
+                {search
+                  ? 'جرّب كلمة بحث أخرى.'
+                  : 'أضف فئة لتسهيل ترتيب المنتجات ومخزونها.'}
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <DialogContent className='font-ibm-plex-sans-arabic'>
+          <DialogHeader>
+            <DialogTitle>حذف الفئة</DialogTitle>
+            <DialogDescription>
+              هل تريد حذف «{deleteTarget?.name}»؟ لا يمكن التراجع عن هذا
+              الإجراء.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              disabled={saving}
+              onClick={() => setDeleteTarget(null)}
+            >
+              إلغاء
+            </Button>
+            <Button
+              type='button'
+              variant='destructive'
+              disabled={saving}
+              onClick={() => void confirmDelete()}
+            >
+              {saving ? (
+                <LoaderCircle className='animate-spin' aria-hidden='true' />
+              ) : (
+                <Trash2 aria-hidden='true' />
+              )}
+              تأكيد الحذف
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

@@ -3,6 +3,19 @@ import { render } from 'vitest-browser-react'
 import { DashboardIntro } from './dashboard-intro'
 
 describe('DashboardIntro', () => {
+  it('replaces the static startup intro after mounting', async () => {
+    const startupIntro = document.createElement('div')
+    startupIntro.id = 'startup-intro'
+    document.body.append(startupIntro)
+
+    await render(
+      <DashboardIntro isReady={false} onComplete={() => undefined} />
+    )
+
+    expect(document.querySelector('#startup-intro')).toBeNull()
+    expect(document.querySelector('.merchant-intro')).not.toBeNull()
+  })
+
   it('shows only the animated mark and completes the intro', async () => {
     const onComplete = vi.fn()
     await render(<DashboardIntro isReady onComplete={onComplete} />)

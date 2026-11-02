@@ -39,6 +39,7 @@ export type DashboardCategory = {
   id: string
   name: string
   parentId: string
+  isShared?: boolean
 }
 
 export type DashboardOrder = {
@@ -483,6 +484,13 @@ function normalizeCategories(result: ApiResult): DashboardCategory[] {
         readIdentifier(category.parent_id) === '0'
           ? ''
           : readIdentifier(category.parent_id),
+      ...(category.is_shared !== undefined && category.is_shared !== null
+        ? {
+            isShared:
+              category.is_shared === true ||
+              readNumber(category.is_shared) === 1,
+          }
+        : {}),
     }))
     .filter((category) => category.id && category.name)
 }
@@ -620,6 +628,59 @@ export async function fetchDashboardProducts(): Promise<DashboardProduct[]> {
 
 export async function fetchDashboardCategories(): Promise<DashboardCategory[]> {
   return (await fetchDashboardInitialization()).categories
+}
+
+export async function createDashboardCategory(
+  name: string,
+  parentId: string
+): Promise<DashboardCategory> {
+  const result = await authApiRequest('create_category', {
+    name,
+    parent_id: parentId || 0,
+  })
+  if (result.status !== 'success') {
+    throw new Error(result.message || 'تعذر إنشاء الفئة.')
+  }
+  const category = asRecord(result.category)
+  const createdCategory = category
+    ? {
+        id: readIdentifier(category.id),
+        name: readString(category.name),
+        parentId:
+          readIdentifier(category.parent_id) === '0'
+            ? ''
+            : readIdentifier(category.parent_id),
+      }
+    : null
+  if (!createdCategory?.id || !createdCategory.name) {
+    throw new Error('استجابة إنشاء الفئة غير مكتملة. أعد تحميل الفئات.')
+  }
+  clearDashboardInitializationCache()
+  return createdCategory
+}
+
+export async function updateDashboardCategory(
+  id: string,
+  name: string,
+  parentId: string
+): Promise<void> {
+  const result = await authApiRequest('update_category', {
+    id,
+    name,
+    parent_id: parentId || 0,
+  })
+  if (result.status !== 'success') {
+    throw new Error(result.message || 'تعذر تحديث الفئة.')
+  }
+  clearDashboardInitializationCache()
+}
+
+export async function deleteDashboardCategory(id: string): Promise<void> {
+  const result = await authApiRequest('delete_category', { id })
+  if (result.status !== 'success') {
+    throw new Error(result.message || 'تعذر حذف الفئة.')
+  }
+  clearDashboardInitializationCache()
 }
 
 export async function fetchDashboardOrders(

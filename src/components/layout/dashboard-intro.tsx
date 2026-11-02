@@ -17,6 +17,7 @@ export function DashboardIntro({ isReady, onComplete }: DashboardIntroProps) {
     const intro = introRef.current
     if (!intro) return
 
+    document.getElementById('startup-intro')?.remove()
     startedAtRef.current = performance.now()
     const updateDocumentVisibility = () => {
       intro.classList.toggle('is-document-hidden', document.hidden)

@@ -8,6 +8,9 @@ import {
   fetchDashboardUsername,
   saveDashboardProduct,
   deleteDashboardProduct,
+  createDashboardCategory,
+  updateDashboardCategory,
+  deleteDashboardCategory,
   updateDashboardAvailability,
   fetchDashboardOrders,
   updateDashboardOrderStatus,
@@ -475,6 +478,18 @@ describe('fetchDashboardData', () => {
     ])
   })
 
+  it('marks shared categories as read-only metadata', async () => {
+    mockDashboardResponse(
+      dashboardSnapshot({
+        categories: [{ id: 1, name: 'عام', parent_id: 0, is_shared: 1 }],
+      })
+    )
+
+    await expect(fetchDashboardCategories()).resolves.toEqual([
+      { id: '1', name: 'عام', parentId: '', isShared: true },
+    ])
+  })
+
   it('uses merchant settings for the public store username', async () => {
     mockDashboardResponse(
       dashboardSnapshot({
@@ -492,6 +507,37 @@ describe('fetchDashboardData', () => {
 
     await expect(saveDashboardProduct(payload)).resolves.toBe('17')
     expect(authApiRequest).toHaveBeenCalledWith('save_product', payload)
+  })
+
+  it('creates, updates, and deletes categories through the Worker API', async () => {
+    authApiRequest
+      .mockResolvedValueOnce({
+        status: 'success',
+        category: { id: 8, name: 'أجهزة', parent_id: 0 },
+      })
+      .mockResolvedValueOnce({ status: 'success' })
+      .mockResolvedValueOnce({ status: 'success' })
+
+    await expect(createDashboardCategory('أجهزة', '')).resolves.toEqual({
+      id: '8',
+      name: 'أجهزة',
+      parentId: '',
+    })
+    await updateDashboardCategory('12', 'هواتف', '4')
+    await deleteDashboardCategory('12')
+
+    expect(authApiRequest).toHaveBeenNthCalledWith(1, 'create_category', {
+      name: 'أجهزة',
+      parent_id: 0,
+    })
+    expect(authApiRequest).toHaveBeenNthCalledWith(2, 'update_category', {
+      id: '12',
+      name: 'هواتف',
+      parent_id: '4',
+    })
+    expect(authApiRequest).toHaveBeenNthCalledWith(3, 'delete_category', {
+      id: '12',
+    })
   })
 
   it('deletes a product and updates availability using the merchant API', async () => {

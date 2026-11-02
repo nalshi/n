@@ -237,9 +237,11 @@ export async function injectCategories(
   merchantId: string,
   categories: DashboardCategory[]
 ): Promise<void> {
-  if (!categories.length) return
   const database = await openMerchantLocalDB(merchantId)
-  await database.categories.bulkPut(categories)
+  await database.transaction('rw', database.categories, async () => {
+    await database.categories.clear()
+    if (categories.length) await database.categories.bulkPut(categories)
+  })
 }
 
 // ─── دوال حالة المزامنة ───────────────────────────────────────────────────

@@ -21,10 +21,12 @@ import {
 import { getMerchantIdentityFromToken } from '@/lib/merchant-accounts'
 import {
   fetchDashboardInitialization,
+  normalizeRealtimeCategories,
   normalizeRealtimeOrders,
   normalizeRealtimeProducts,
   type DashboardData,
   type DashboardInitialization,
+  type DashboardCategory,
   type DashboardOrder,
   type DashboardProduct,
 } from '@/features/dashboard/dashboard-data'
@@ -226,6 +228,27 @@ export async function refreshMerchantSnapshot(
   await writeSnapshotQueries(queryClient, merchantId, snapshot)
   _localBus?.postMessage({ type: 'SNAPSHOT_MUTATED', merchantId })
   return snapshot
+}
+
+export async function updateMerchantCategoriesCache(
+  queryClient: QueryClient,
+  merchantId: string,
+  categories: DashboardCategory[]
+) {
+  if (!merchantId) {
+    throw new Error('تعذر تحديد حساب التاجر لتحديث ذاكرة الفئات.')
+  }
+  const database = await openMerchantLocalDB(merchantId)
+  await database.transaction('rw', database.categories, async () => {
+    await database.categories.clear()
+    if (categories.length) await database.categories.bulkPut(categories)
+  })
+  queryClient.setQueryData(merchantQueryKeys.categories(merchantId), categories)
+  queryClient.setQueryData<DashboardInitialization>(
+    merchantBootstrapKey(merchantId),
+    (snapshot) => (snapshot ? { ...snapshot, categories } : snapshot)
+  )
+  _localBus?.postMessage({ type: 'SNAPSHOT_MUTATED', merchantId })
 }
 
 export async function updateMerchantProductCache(
@@ -1032,6 +1055,17 @@ export function useLegacyWorkerRealtimeSync(
       }
       const message = readRecord(parsed)
       if (!message) return
+      if (
+        message.event === 'categories_updated' &&
+        Array.isArray(message.categories)
+      ) {
+        await updateMerchantCategoriesCache(
+          queryClient,
+          merchantId,
+          normalizeRealtimeCategories(message.categories)
+        )
+        return
+      }
       if (message.type === 'error') {
         setStatus(
           'disconnected',

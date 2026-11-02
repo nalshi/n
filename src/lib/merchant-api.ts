@@ -6,6 +6,9 @@ const WORKER_ACTIONS = new Set([
   'toggle_availability',
   'update_product_stock',
   'get_categories_tree',
+  'create_category',
+  'update_category',
+  'delete_category',
   'get_merchant_settings',
   'save_merchant_settings',
   'get_merchant_orders',
@@ -62,6 +65,7 @@ export type ApiResult = {
   name?: string
   id?: string | number
   url?: string
+  category?: unknown
   data?: unknown
   products?: unknown
   orders?: unknown

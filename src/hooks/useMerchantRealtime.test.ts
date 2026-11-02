@@ -17,6 +17,7 @@ import {
   merchantQueryKeys,
   removeMerchantProductFromCache,
   refreshMerchantSnapshot,
+  updateMerchantCategoriesCache,
   updateMerchantProductCache,
   updateMerchantOrderStatusCache,
 } from './useMerchantRealtime'
@@ -72,6 +73,11 @@ describe('refreshMerchantSnapshot', () => {
   })
 
   it('replaces product, order, category, and bootstrap caches with server data', async () => {
+    await localDatabase.categories.put({
+      id: 'stale-category',
+      name: 'فئة قديمة',
+      parentId: '',
+    })
     await refreshMerchantSnapshot(queryClient, merchantId)
 
     expect(fetch).toHaveBeenCalledWith(
@@ -87,6 +93,9 @@ describe('refreshMerchantSnapshot', () => {
     expect(
       queryClient.getQueryData(merchantQueryKeys.categories(merchantId))
     ).toMatchObject([{ id: '4', name: 'فئة' }])
+    expect(await localDatabase.categories.toArray()).toMatchObject([
+      { id: '4', name: 'فئة' },
+    ])
     expect(
       queryClient.getQueryData(merchantBootstrapKey(merchantId))
     ).toMatchObject({ dashboard: { products: [{ id: '9', price: 99 }] } })
@@ -193,6 +202,25 @@ describe('refreshMerchantSnapshot', () => {
       expect(
         queryClient.getQueryData(merchantQueryKeys.products(merchantId))
       ).toMatchObject([{ id: 'product-1', name: 'بعد التحديث', price: 15 }])
+    })
+
+    it('replaces category data in the query and durable local caches', async () => {
+      await localDatabase.categories.put({
+        id: 'stale-category',
+        name: 'فئة قديمة',
+        parentId: '',
+      })
+
+      await updateMerchantCategoriesCache(queryClient, merchantId, [
+        { id: 'category-2', name: 'جوالات', parentId: 'category-1' },
+      ])
+
+      expect(await localDatabase.categories.toArray()).toEqual([
+        { id: 'category-2', name: 'جوالات', parentId: 'category-1' },
+      ])
+      expect(
+        queryClient.getQueryData(merchantQueryKeys.categories(merchantId))
+      ).toEqual([{ id: 'category-2', name: 'جوالات', parentId: 'category-1' }])
     })
 
     it('updates and deletes products in query and durable caches after API mutations', async () => {

@@ -49,6 +49,27 @@ describe('merchant API transport', () => {
     })
   })
 
+  it('routes category management actions through the authenticated Worker', async () => {
+    localStorage.setItem('merchant_token', 'merchant-token')
+    mockedFetch.mockImplementation(async () =>
+      jsonResponse({ status: 'success' })
+    )
+
+    for (const action of [
+      'create_category',
+      'update_category',
+      'delete_category',
+    ]) {
+      await apiRequest(action, { name: 'فئة' }, csrfToken)
+    }
+
+    expect(mockedFetch).toHaveBeenCalledTimes(3)
+    for (const [url, options] of mockedFetch.mock.calls) {
+      expect(url).toBe('/api/work/')
+      expect(options?.credentials).toBe('omit')
+    }
+  })
+
   it('keeps Worker actions behind the secure proxy when the Worker is unavailable', async () => {
     localStorage.setItem('merchant_token', 'merchant-token')
     mockedFetch.mockRejectedValue(new TypeError('Failed to fetch'))

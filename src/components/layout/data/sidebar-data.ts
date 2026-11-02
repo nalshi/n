@@ -10,7 +10,6 @@ import {
   Settings,
   ShoppingBag,
   Store,
-  Tags,
 } from 'lucide-react'
 import { type SidebarData } from '../types'
 
@@ -38,14 +37,9 @@ export const sidebarData: SidebarData = {
               icon: List,
             },
             {
-              title: 'إدارة المخزون',
+              title: 'المخزون والفئات',
               url: '/products?tab=inventory',
               icon: Boxes,
-            },
-            {
-              title: 'الفئات',
-              url: '/products?manageCategories=true',
-              icon: Tags,
             },
             {
               title: 'إضافة منتج',
