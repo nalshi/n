@@ -25,7 +25,6 @@ describe('merchant API transport', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
-    delete window.API_URL
     delete window.WORKER_API_URL
     delete window.CF_WORKER_URL
     delete window.CLOUDFLARE_WORKER_URL
@@ -102,14 +101,44 @@ describe('merchant API transport', () => {
     expect(mockedFetch).toHaveBeenCalledTimes(1)
   })
 
-  it('uses api.php directly for actions outside the worker action set', async () => {
+  it('routes legacy authentication actions through the same-origin proxy', async () => {
     mockedFetch.mockResolvedValue(jsonResponse({ status: 'success' }))
 
     await apiRequest('login', { phone: '771234567' }, csrfToken)
 
     const [url, options] = mockedFetch.mock.calls[0]
-    expect(url).toBe('https://api.nalsh.dpdns.org/api.php')
+    expect(url).toBe('/api/legacy')
     expect(options?.credentials).toBe('include')
+    expect(new Headers(options?.headers).get('X-CSRF-TOKEN')).toBe(
+      'csrf-initial'
+    )
+  })
+
+  it('routes device verification and account activation through the legacy proxy', async () => {
+    mockedFetch.mockImplementation(async () =>
+      jsonResponse({ status: 'success' })
+    )
+
+    for (const action of [
+      'verify_new_device_otp',
+      'register_verify',
+      'recover_check_otp',
+      'resend_device_otp',
+    ]) {
+      await apiRequest(action, { otp: '123456' }, csrfToken)
+    }
+
+    expect(mockedFetch).toHaveBeenCalledTimes(4)
+    for (const [url] of mockedFetch.mock.calls) {
+      expect(url).toBe('/api/legacy')
+    }
+  })
+
+  it('rejects unknown API actions instead of sending them to an origin URL', async () => {
+    await expect(
+      apiRequest('unexpected_action', {}, csrfToken)
+    ).rejects.toThrow('إجراء API غير مسموح به')
+    expect(mockedFetch).not.toHaveBeenCalled()
   })
 
   it('reports real upload progress for multipart Worker requests', async () => {

@@ -14,6 +14,9 @@ import {
   writeSyncCursor,
   readSyncCursor,
   injectOrder,
+  injectProduct,
+  removeOrder,
+  removeProduct,
 } from '@/lib/db'
 import { getMerchantIdentityFromToken } from '@/lib/merchant-accounts'
 import {
@@ -91,7 +94,7 @@ export const merchantQueryKeys = {
     ['merchant-store-username', merchantId] as const,
 }
 
-type MerchantEvent = {
+export type MerchantEvent = {
   eventId: number
   timestamp: number
   type: 'order' | 'product'
@@ -115,11 +118,11 @@ function getSessionIdentity(): string {
   return getMerchantIdentityFromToken(token)
 }
 
-function writeSnapshotQueries(
+async function writeSnapshotQueries(
   queryClient: QueryClient,
   merchantId: string,
   snapshot: DashboardInitialization
-) {
+): Promise<void> {
   const { dashboard, categories } = snapshot
   queryClient.setQueryData(merchantBootstrapKey(merchantId), snapshot)
   queryClient.setQueryData(merchantQueryKeys.dashboard(merchantId), dashboard)
@@ -145,20 +148,73 @@ function writeSnapshotQueries(
   )
   queryClient.setQueryData(merchantQueryKeys.categories(merchantId), categories)
 
-  // حقن Snapshot في Dexie IndexedDB بشكل غير متزامن
-  // نستخدم void لأن هذا الحقن لا يحتاج أن يُكمل قبل تحديث الـ UI.
-  // الـ UI يتحدث فوراً من TanStack Query، بينما Dexie تُحدَّث في الخلفية
-  // لضمان المخزن الدائم (Offline-First persistence).
-  void hydrateFromSnapshot({
+  await hydrateFromSnapshot({
     merchantId,
     orders: [...dashboard.activeOrders, ...dashboard.archivedOrders],
     products: dashboard.products,
     categories,
     lastEventId: snapshot.lastEventId ?? 0,
     lastTimestamp: snapshot.lastTimestamp ?? 0,
-  }).catch((err) => {
-    console.warn('[db] فشل حفظ Snapshot في IndexedDB:', err)
   })
+}
+
+async function refreshLocalSnapshotQueries(
+  queryClient: QueryClient,
+  merchantId: string
+) {
+  const database = await openMerchantLocalDB(merchantId)
+  const [products, orders, categories, cursor] = await Promise.all([
+    database.products.toArray(),
+    database.orders.toArray(),
+    database.categories.toArray(),
+    database.syncState.get('cursor'),
+  ])
+  const activeOrders = orders.filter(
+    (order) => order.status !== 'completed' && order.status !== 'cancelled'
+  )
+  const archivedOrders = orders.filter(
+    (order) => order.status === 'completed' || order.status === 'cancelled'
+  )
+
+  queryClient.setQueryData(merchantQueryKeys.products(merchantId), products)
+  queryClient.setQueryData(
+    merchantQueryKeys.dashboardProducts(merchantId),
+    products
+  )
+  queryClient.setQueryData(
+    merchantQueryKeys.orders(merchantId, 'active'),
+    activeOrders
+  )
+  queryClient.setQueryData(
+    merchantQueryKeys.orders(merchantId, 'archived'),
+    archivedOrders
+  )
+  queryClient.setQueryData(merchantQueryKeys.categories(merchantId), categories)
+  queryClient.setQueryData<DashboardData>(
+    merchantQueryKeys.dashboard(merchantId),
+    (dashboard) =>
+      dashboard
+        ? { ...dashboard, products, activeOrders, archivedOrders }
+        : dashboard
+  )
+  queryClient.setQueryData<DashboardInitialization>(
+    merchantBootstrapKey(merchantId),
+    (snapshot) =>
+      snapshot
+        ? {
+            ...snapshot,
+            dashboard: {
+              ...snapshot.dashboard,
+              products,
+              activeOrders,
+              archivedOrders,
+            },
+            categories,
+            lastEventId: cursor?.lastEventId ?? snapshot.lastEventId,
+            lastTimestamp: cursor?.lastTimestamp ?? snapshot.lastTimestamp,
+          }
+        : snapshot
+  )
 }
 
 export async function refreshMerchantSnapshot(
@@ -167,8 +223,87 @@ export async function refreshMerchantSnapshot(
 ) {
   if (!merchantId) throw new Error('تعذر تحديد حساب التاجر لتحديث اللوحة.')
   const snapshot = await fetchDashboardInitialization(true)
-  writeSnapshotQueries(queryClient, merchantId, snapshot)
+  await writeSnapshotQueries(queryClient, merchantId, snapshot)
+  _localBus?.postMessage({ type: 'SNAPSHOT_MUTATED', merchantId })
   return snapshot
+}
+
+export async function updateMerchantProductCache(
+  queryClient: QueryClient,
+  merchantId: string,
+  productId: string,
+  patch: Partial<DashboardProduct>
+) {
+  if (!merchantId || !productId) {
+    throw new Error('تعذر تحديد المنتج لتحديث ذاكرة اللوحة.')
+  }
+  const cachedProducts =
+    queryClient.getQueryData<DashboardProduct[]>(
+      merchantQueryKeys.products(merchantId)
+    ) || []
+  const database = await openMerchantLocalDB(merchantId)
+  const current =
+    cachedProducts.find((product) => product.id === productId) ||
+    (await database.products.get(productId))
+  if (!current) {
+    throw new Error(
+      'لم يعد المنتج موجوداً في ذاكرة اللوحة. أعد تحميل البيانات.'
+    )
+  }
+  const updated = { ...current, ...patch, id: productId }
+  await injectProduct(merchantId, updated)
+
+  const next = upsertProduct(cachedProducts, updated)
+  queryClient.setQueryData(merchantQueryKeys.products(merchantId), next)
+  queryClient.setQueryData(
+    merchantQueryKeys.dashboardProducts(merchantId),
+    next
+  )
+  queryClient.setQueryData<DashboardData>(
+    merchantQueryKeys.dashboard(merchantId),
+    (dashboard) => (dashboard ? { ...dashboard, products: next } : dashboard)
+  )
+  queryClient.setQueryData<DashboardInitialization>(
+    merchantBootstrapKey(merchantId),
+    (snapshot) =>
+      snapshot
+        ? { ...snapshot, dashboard: { ...snapshot.dashboard, products: next } }
+        : snapshot
+  )
+  _localBus?.postMessage({ type: 'PRODUCT_MUTATED', productId, merchantId })
+}
+
+export async function removeMerchantProductFromCache(
+  queryClient: QueryClient,
+  merchantId: string,
+  productId: string
+) {
+  if (!merchantId || !productId) {
+    throw new Error('تعذر تحديد المنتج لحذفه من ذاكرة اللوحة.')
+  }
+  await removeProduct(merchantId, productId)
+  const next = (
+    queryClient.getQueryData<DashboardProduct[]>(
+      merchantQueryKeys.products(merchantId)
+    ) || []
+  ).filter((product) => product.id !== productId)
+  queryClient.setQueryData(merchantQueryKeys.products(merchantId), next)
+  queryClient.setQueryData(
+    merchantQueryKeys.dashboardProducts(merchantId),
+    next
+  )
+  queryClient.setQueryData<DashboardData>(
+    merchantQueryKeys.dashboard(merchantId),
+    (dashboard) => (dashboard ? { ...dashboard, products: next } : dashboard)
+  )
+  queryClient.setQueryData<DashboardInitialization>(
+    merchantBootstrapKey(merchantId),
+    (snapshot) =>
+      snapshot
+        ? { ...snapshot, dashboard: { ...snapshot.dashboard, products: next } }
+        : snapshot
+  )
+  _localBus?.postMessage({ type: 'PRODUCT_MUTATED', productId, merchantId })
 }
 
 export function updateMerchantOrderStatusCache(
@@ -248,11 +383,11 @@ function upsertOrder(
   return orders.map((item) => (item.id === order.id ? order : item))
 }
 
-function applyMerchantEvent(
+export async function applyMerchantEvent(
   queryClient: QueryClient,
   merchantId: string,
   event: MerchantEvent
-) {
+): Promise<void> {
   const key = merchantBootstrapKey(merchantId)
   if (event.type === 'product') {
     const productId =
@@ -265,6 +400,16 @@ function applyMerchantEvent(
         merchantQueryKeys.products(merchantId)
       ) || []
     const [eventProduct] = normalizeRealtimeProducts([event.data])
+    if (!productId) {
+      throw new Error('وصل تحديث منتج دون معرّف صالح.')
+    }
+    if (event.action === 'deleted') {
+      await removeProduct(merchantId, productId)
+    } else if (eventProduct) {
+      await injectProduct(merchantId, eventProduct)
+    } else {
+      throw new Error('تعذر قراءة بيانات المنتج من حدث المزامنة.')
+    }
     const next =
       event.action === 'deleted'
         ? current.filter((product) => product.id !== productId)
@@ -304,6 +449,16 @@ function applyMerchantEvent(
     )
   const [eventOrder] =
     event.action === 'deleted' ? [] : normalizeRealtimeOrders([event.data])
+  if (!orderId) {
+    throw new Error('وصل تحديث طلب دون معرّف صالح.')
+  }
+  if (event.action === 'deleted') {
+    await removeOrder(merchantId, orderId)
+  } else if (eventOrder) {
+    await injectOrder(merchantId, eventOrder)
+  } else {
+    throw new Error('تعذر قراءة بيانات الطلب من حدث المزامنة.')
+  }
   const nextActive = eventOrder
     ? eventOrder.status === 'completed' || eventOrder.status === 'cancelled'
       ? active.filter((order) => order.id !== eventOrder.id)
@@ -371,8 +526,8 @@ async function refreshOrdersFromFirebaseSignal(
       merchantQueryKeys.orders(merchantId, 'active')
     ) || []
   const knownOrderIds = new Set(previousOrders.map((order) => order.id))
-  writeSnapshotQueries(queryClient, merchantId, snapshot)
-  _localBus?.postMessage({ type: 'ORDER_MUTATED', merchantId })
+  await writeSnapshotQueries(queryClient, merchantId, snapshot)
+  _localBus?.postMessage({ type: 'SNAPSHOT_MUTATED', merchantId })
   for (const order of snapshot.dashboard.activeOrders) {
     if (
       !knownOrderIds.has(order.id) &&
@@ -572,6 +727,8 @@ function useFirebaseOrderSignals(
 
 export function useMerchantData(merchantId: string) {
   const queryClient = useQueryClient()
+  // The client is a stable service dependency and not part of the query identity.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const query = useQuery({
     queryKey: merchantBootstrapKey(merchantId),
     queryFn: async (): Promise<DashboardInitialization> => {
@@ -605,12 +762,12 @@ export function useMerchantData(merchantId: string) {
           lastTimestamp: Date.now(),
           lastEventId: 0,
         }
-        writeSnapshotQueries(queryClient, merchantId, snapshot)
+        await writeSnapshotQueries(queryClient, merchantId, snapshot)
         return snapshot
       }
 
       const snapshot = await fetchDashboardInitialization(true)
-      writeSnapshotQueries(queryClient, merchantId, snapshot)
+      await writeSnapshotQueries(queryClient, merchantId, snapshot)
       return snapshot
     },
     enabled: Boolean(merchantId),
@@ -656,61 +813,24 @@ export function useRealtimeSync(merchantId: string, enabled: boolean) {
         return
       }
 
-      if (message.type === 'ORDER_MUTATED') {
-        const database = getMerchantLocalDB(merchantId)
-        void database.orders.toArray().then((orders) => {
-          const activeOrders = orders.filter(
-            (order) =>
-              order.status !== 'completed' && order.status !== 'cancelled'
-          )
-          const archivedOrders = orders.filter(
-            (order) =>
-              order.status === 'completed' || order.status === 'cancelled'
-          )
-          queryClient.setQueryData(
-            merchantQueryKeys.orders(merchantId, 'active'),
-            activeOrders
-          )
-          queryClient.setQueryData(
-            merchantQueryKeys.orders(merchantId, 'archived'),
-            archivedOrders
-          )
-          queryClient.setQueryData<DashboardData>(
-            merchantQueryKeys.dashboard(merchantId),
-            (dashboard) =>
-              dashboard
-                ? { ...dashboard, activeOrders, archivedOrders }
-                : dashboard
-          )
-          queryClient.setQueryData<DashboardInitialization>(
-            merchantBootstrapKey(merchantId),
-            (snapshot) =>
-              snapshot
-                ? {
-                    ...snapshot,
-                    dashboard: {
-                      ...snapshot.dashboard,
-                      activeOrders,
-                      archivedOrders,
-                    },
-                  }
-                : snapshot
-          )
-        })
-      }
-
-      if (message.type === 'PRODUCT_MUTATED') {
-        const database = getMerchantLocalDB(merchantId)
-        void database.products.toArray().then((products) => {
-          queryClient.setQueryData(
-            merchantQueryKeys.products(merchantId),
-            products
-          )
-          queryClient.setQueryData(
-            merchantQueryKeys.dashboardProducts(merchantId),
-            products
-          )
-        })
+      if (
+        message.type === 'ORDER_MUTATED' ||
+        message.type === 'PRODUCT_MUTATED' ||
+        message.type === 'SNAPSHOT_MUTATED'
+      ) {
+        void refreshLocalSnapshotQueries(queryClient, merchantId).catch(
+          (error: unknown) => {
+            toast.error(
+              'تم تحديث اللوحة في تبويب آخر، لكن تعذرت قراءة الذاكرة المحلية.',
+              {
+                description:
+                  error instanceof Error
+                    ? error.message
+                    : 'خطأ تخزين غير معروف.',
+              }
+            )
+          }
+        )
       }
     }
 
@@ -839,9 +959,9 @@ export function useLegacyWorkerRealtimeSync(
       }, delay)
     }
 
-    const advanceCursor = (
+    const advanceCursor = async (
       event: MerchantEvent
-    ): Array<{ event: MerchantEvent; wasKnown: boolean }> => {
+    ): Promise<Array<{ event: MerchantEvent; wasKnown: boolean }>> => {
       const snapshot = queryClient.getQueryData<DashboardInitialization>(
         merchantBootstrapKey(merchantId)
       )
@@ -865,7 +985,7 @@ export function useLegacyWorkerRealtimeSync(
             ...(current?.dashboard.activeOrders || []),
             ...(current?.dashboard.archivedOrders || []),
           ].some((order) => order.id === next.entityId)
-        applyMerchantEvent(queryClient, merchantId, next)
+        await applyMerchantEvent(queryClient, merchantId, next)
         lastEventId = next.eventId
         lastTimestamp = next.timestamp
         appliedEvents.push({ event: next, wasKnown })
@@ -884,9 +1004,7 @@ export function useLegacyWorkerRealtimeSync(
 
       // ? تحديث Dexie cursor بعد كل دفعة من الأحداث (غير مُعلِّق) ?
       if (appliedEvents.length > 0) {
-        void writeSyncCursor(merchantId, lastEventId, lastTimestamp).catch(
-          (err: unknown) => console.warn('[db] فشل تحديث sync cursor:', err)
-        )
+        await writeSyncCursor(merchantId, lastEventId, lastTimestamp)
       }
 
       if (pendingEvents.current.size && gapTimer === undefined) {
@@ -903,7 +1021,7 @@ export function useLegacyWorkerRealtimeSync(
       return appliedEvents
     }
 
-    const handleMessage = (raw: unknown) => {
+    const handleMessage = async (raw: unknown) => {
       if (typeof raw !== 'string') return
       let parsed: unknown
       try {
@@ -946,7 +1064,7 @@ export function useLegacyWorkerRealtimeSync(
         return
       }
 
-      const committedEvents = advanceCursor(event)
+      const committedEvents = await advanceCursor(event)
       for (const committed of committedEvents) {
         const committedEvent = committed.event
         const data = readRecord(committedEvent.data)
@@ -1029,12 +1147,30 @@ export function useLegacyWorkerRealtimeSync(
             if (socket.readyState === WebSocket.OPEN) {
               try {
                 socket.send(JSON.stringify({ type: 'ping' }))
-              } catch (_) {}
+              } catch (error) {
+                setStatus(
+                  'disconnected',
+                  error instanceof Error
+                    ? error.message
+                    : 'تعذر إرسال إشارة إبقاء الاتصال.'
+                )
+              }
             }
           }, 35_000)
         })
+        let messageQueue = Promise.resolve()
         socket.addEventListener('message', (event) => {
-          if (socketRef.current === socket) handleMessage(event.data)
+          if (socketRef.current !== socket) return
+          messageQueue = messageQueue
+            .then(() => handleMessage(event.data))
+            .catch((error: unknown) => {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : 'فشلت مزامنة بيانات المتجر.'
+              setStatus('disconnected', message)
+              socket.close(1012, 'Local data sync failed')
+            })
         })
         socket.addEventListener('error', () => {
           if (socketRef.current === socket) {
@@ -1068,10 +1204,10 @@ export function useLegacyWorkerRealtimeSync(
       void connect()
       void refreshMerchantSnapshot(queryClient, merchantId).catch(
         (error: unknown) => {
-          console.warn(
-            '[merchant-sync] تعذر تحديث بيانات المتجر بعد الاتصال:',
-            error
-          )
+          toast.error('عاد الاتصال، لكن تعذر تحديث بيانات المتجر.', {
+            description:
+              error instanceof Error ? error.message : 'خطأ غير معروف.',
+          })
         }
       )
     }

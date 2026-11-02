@@ -157,18 +157,21 @@ function SettingRow({
   value,
   onClick,
   badge,
+  disabled = false,
 }: {
   icon: typeof Store
   title: string
   value: string
   onClick: () => void
   badge?: string
+  disabled?: boolean
 }) {
   return (
     <button
       type='button'
       onClick={onClick}
-      className='flex min-w-0 items-center gap-3 rounded-lg p-3 text-start transition-colors hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring'
+      disabled={disabled}
+      className='flex min-w-0 items-center gap-3 rounded-lg p-3 text-start transition-colors hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-70'
     >
       <span className='grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary'>
         <Icon className='size-5' aria-hidden='true' />
@@ -650,7 +653,7 @@ export function StoreSettings() {
   })
 
   const openSettingsDialog = (name: Exclude<DialogName, null>) => {
-    if (!settings) return
+    if (!settings || name === 'whatsapp') return
     if (name === 'location') {
       setLocationDraft(getMerchantProfile(merchantId).location)
     }
@@ -729,12 +732,6 @@ export function StoreSettings() {
       toast.error('تعذر النسخ تلقائياً من هذا المتصفح.')
     }
   }
-
-  const whatsappStatus = settings?.whatsapp.enabled
-    ? 'مربوط ومفعّل'
-    : settings?.whatsapp.hasAccessToken
-      ? 'الإعداد محفوظ وغير مفعّل'
-      : 'غير مربوط'
 
   return (
     <>
@@ -887,8 +884,10 @@ export function StoreSettings() {
                 <SettingRow
                   icon={MessagesSquare}
                   title='ربط المساعد بواتساب'
-                  value={whatsappStatus}
+                  value='الميزة ستتوفر قريباً'
                   onClick={() => openSettingsDialog('whatsapp')}
+                  badge='قريباً'
+                  disabled
                 />
               </SettingGroup>
 

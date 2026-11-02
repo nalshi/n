@@ -28,7 +28,9 @@ import { toast } from 'sonner'
 import { clearAuthApiCache } from '@/lib/auth-api'
 import {
   merchantQueryKeys,
+  removeMerchantProductFromCache,
   refreshMerchantSnapshot,
+  updateMerchantProductCache,
   useMerchantIdentity,
 } from '@/hooks/useMerchantRealtime'
 import { Button } from '@/components/ui/button'
@@ -595,8 +597,47 @@ function ProductsWorkspace({
         hasImageUploads ? setUploadProgress : undefined
       )
     },
-    onSuccess: async () => {
+    onSuccess: async (productId, draft) => {
       setUploadProgress(null)
+      if (draft.id) {
+        const previous =
+          products.find((product) => product.id === draft.id) || editingProduct
+        await updateMerchantProductCache(queryClient, merchantId, productId, {
+          name: draft.name.trim(),
+          description: draft.description.trim(),
+          type:
+            categoryList.find((category) => category.id === draft.categoryId)
+              ?.name ||
+            previous?.type ||
+            '',
+          categoryId: draft.categoryId.startsWith('NEW:')
+            ? (previous?.categoryId ?? '')
+            : draft.categoryId,
+          image: draft.imageFile
+            ? (previous?.image ?? draft.image)
+            : draft.image,
+          price: Number(draft.price),
+          costPrice: Number(draft.costPrice) || 0,
+          discount: Number(draft.discount) || 0,
+          currency: draft.currency,
+          quantity: draft.variantsEnabled
+            ? draft.options.some(
+                (option) => option.quantityType === 'unlimited'
+              )
+              ? 9999
+              : draft.options.reduce((sum, option) => sum + option.quantity, 0)
+            : draft.quantityType === 'unlimited'
+              ? 9999
+              : Math.max(0, Number(draft.quantity) || 0),
+          quantityType: draft.variantsEnabled ? 'tracked' : draft.quantityType,
+          isAvailable: draft.isAvailable,
+          options: draft.variantsEnabled
+            ? draft.options.map(
+                ({ imageFile: _imageFile, ...option }) => option
+              )
+            : [],
+        })
+      }
       toast.success(
         editingProduct
           ? 'تم تحديث المنتج، وجارٍ تحديث ملفات المتجر.'
@@ -614,8 +655,10 @@ function ProductsWorkspace({
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (product: DashboardProduct) =>
-      deleteDashboardProduct(product.id),
+    mutationFn: async (product: DashboardProduct) => {
+      await deleteDashboardProduct(product.id)
+      await removeMerchantProductFromCache(queryClient, merchantId, product.id)
+    },
     onSuccess: async () => {
       toast.success('تم حذف المنتج.')
       await refreshMerchantData()

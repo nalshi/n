@@ -1,26 +1,37 @@
 import { QueryClient } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  getMerchantLocalDB,
+  hydrateFromSnapshot,
+  type MerchantLocalDB,
+} from '@/lib/db'
+import {
   clearDashboardInitializationCache,
   type DashboardData,
   type DashboardOrder,
 } from '@/features/dashboard/dashboard-data'
 import {
+  applyMerchantEvent,
   fetchMerchantOrderSignals,
   merchantBootstrapKey,
   merchantQueryKeys,
+  removeMerchantProductFromCache,
   refreshMerchantSnapshot,
+  updateMerchantProductCache,
   updateMerchantOrderStatusCache,
 } from './useMerchantRealtime'
 
 describe('refreshMerchantSnapshot', () => {
   let queryClient: QueryClient
+  let localDatabase: MerchantLocalDB
+  let merchantId: string
 
   beforeEach(() => {
     clearDashboardInitializationCache()
+    merchantId = `snapshot-${crypto.randomUUID()}`
     localStorage.setItem(
       'merchant_token',
-      `header.${btoa(JSON.stringify({ user_id: 42 }))}.signature`
+      `header.${btoa(JSON.stringify({ user_id: merchantId }))}.signature`
     )
     vi.stubGlobal(
       'fetch',
@@ -49,32 +60,159 @@ describe('refreshMerchantSnapshot', () => {
       )
     )
     queryClient = new QueryClient()
+    localDatabase = getMerchantLocalDB(merchantId)
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     queryClient.clear()
     clearDashboardInitializationCache()
     vi.unstubAllGlobals()
+    localDatabase.close()
+    await localDatabase.delete()
   })
 
   it('replaces product, order, category, and bootstrap caches with server data', async () => {
-    await refreshMerchantSnapshot(queryClient, '42')
+    await refreshMerchantSnapshot(queryClient, merchantId)
 
     expect(fetch).toHaveBeenCalledWith(
       '/api/work/api/merchant/bootstrap?refresh=1',
       expect.objectContaining({ method: 'GET', cache: 'no-store' })
     )
     expect(
-      queryClient.getQueryData(merchantQueryKeys.products('42'))
+      queryClient.getQueryData(merchantQueryKeys.products(merchantId))
     ).toMatchObject([{ id: '9', price: 99 }])
     expect(
-      queryClient.getQueryData(merchantQueryKeys.orders('42', 'active'))
+      queryClient.getQueryData(merchantQueryKeys.orders(merchantId, 'active'))
     ).toMatchObject([{ id: '11', customerName: 'عميل' }])
     expect(
-      queryClient.getQueryData(merchantQueryKeys.categories('42'))
+      queryClient.getQueryData(merchantQueryKeys.categories(merchantId))
     ).toMatchObject([{ id: '4', name: 'فئة' }])
-    expect(queryClient.getQueryData(merchantBootstrapKey('42'))).toMatchObject({
-      dashboard: { products: [{ id: '9', price: 99 }] },
+    expect(
+      queryClient.getQueryData(merchantBootstrapKey(merchantId))
+    ).toMatchObject({ dashboard: { products: [{ id: '9', price: 99 }] } })
+  })
+
+  describe('applyMerchantEvent', () => {
+    let queryClient: QueryClient
+    let merchantId: string
+    let localDatabase: MerchantLocalDB
+
+    beforeEach(async () => {
+      merchantId = `realtime-${crypto.randomUUID()}`
+      queryClient = new QueryClient()
+      localDatabase = getMerchantLocalDB(merchantId)
+      await hydrateFromSnapshot({
+        merchantId,
+        orders: [],
+        products: [
+          {
+            id: 'product-1',
+            productNumber: '',
+            name: 'قبل التحديث',
+            description: '',
+            type: '',
+            categoryId: '',
+            image: '',
+            price: 10,
+            costPrice: 0,
+            discount: 0,
+            currency: 'YER',
+            createdAt: '',
+            quantity: 0,
+            quantityType: 'tracked',
+            isAvailable: true,
+            approvalStatus: '',
+            options: [],
+          },
+        ],
+        categories: [],
+        lastEventId: 1,
+        lastTimestamp: 1,
+      })
+      queryClient.setQueryData(merchantQueryKeys.products(merchantId), [
+        {
+          id: 'product-1',
+          productNumber: '',
+          name: 'قبل التحديث',
+          description: '',
+          type: '',
+          categoryId: '',
+          image: '',
+          price: 10,
+          costPrice: 0,
+          discount: 0,
+          currency: 'YER',
+          createdAt: '',
+          quantity: 0,
+          quantityType: 'tracked',
+          isAvailable: true,
+          approvalStatus: '',
+          options: [],
+        },
+      ])
+    })
+
+    afterEach(async () => {
+      queryClient.clear()
+      localDatabase.close()
+      await localDatabase.delete()
+    })
+
+    it('removes deleted products from both the query cache and durable local store', async () => {
+      await applyMerchantEvent(queryClient, merchantId, {
+        eventId: 2,
+        timestamp: 2,
+        type: 'product',
+        action: 'deleted',
+        entityId: 'product-1',
+        scope: 'active',
+        data: { id: 'product-1' },
+      })
+
+      expect(
+        queryClient.getQueryData(merchantQueryKeys.products(merchantId))
+      ).toEqual([])
+      expect(await localDatabase.products.get('product-1')).toBeUndefined()
+    })
+
+    it('writes product updates to durable local storage before broadcasting them', async () => {
+      await applyMerchantEvent(queryClient, merchantId, {
+        eventId: 2,
+        timestamp: 2,
+        type: 'product',
+        action: 'updated',
+        entityId: 'product-1',
+        scope: 'active',
+        data: { id: 'product-1', name: 'بعد التحديث', price: 15 },
+      })
+
+      expect(await localDatabase.products.get('product-1')).toMatchObject({
+        name: 'بعد التحديث',
+        price: 15,
+      })
+      expect(
+        queryClient.getQueryData(merchantQueryKeys.products(merchantId))
+      ).toMatchObject([{ id: 'product-1', name: 'بعد التحديث', price: 15 }])
+    })
+
+    it('updates and deletes products in query and durable caches after API mutations', async () => {
+      await updateMerchantProductCache(queryClient, merchantId, 'product-1', {
+        name: 'تعديل محفوظ',
+        price: 25,
+      })
+      expect(await localDatabase.products.get('product-1')).toMatchObject({
+        name: 'تعديل محفوظ',
+        price: 25,
+      })
+      expect(
+        queryClient.getQueryData(merchantQueryKeys.products(merchantId))
+      ).toMatchObject([{ name: 'تعديل محفوظ', price: 25 }])
+
+      await removeMerchantProductFromCache(queryClient, merchantId, 'product-1')
+      expect(await localDatabase.products.get('product-1')).toBeUndefined()
+      expect(
+        queryClient.getQueryData(merchantQueryKeys.products(merchantId))
+      ).toEqual([])
     })
   })
 
@@ -100,10 +238,15 @@ describe('refreshMerchantSnapshot', () => {
       activeOrders: [order],
       archivedOrders: [],
     }
-    queryClient.setQueryData(merchantQueryKeys.orders('42', 'active'), [order])
-    queryClient.setQueryData(merchantQueryKeys.orders('42', 'archived'), [])
-    queryClient.setQueryData(merchantQueryKeys.dashboard('42'), dashboard)
-    queryClient.setQueryData(merchantBootstrapKey('42'), {
+    queryClient.setQueryData(merchantQueryKeys.orders(merchantId, 'active'), [
+      order,
+    ])
+    queryClient.setQueryData(
+      merchantQueryKeys.orders(merchantId, 'archived'),
+      []
+    )
+    queryClient.setQueryData(merchantQueryKeys.dashboard(merchantId), dashboard)
+    queryClient.setQueryData(merchantBootstrapKey(merchantId), {
       dashboard,
       categories: [],
       lastTimestamp: 0,
@@ -111,13 +254,13 @@ describe('refreshMerchantSnapshot', () => {
     })
 
     expect(
-      updateMerchantOrderStatusCache(queryClient, '42', '11', 'completed')
+      updateMerchantOrderStatusCache(queryClient, merchantId, '11', 'completed')
     ).toBe(true)
     expect(
-      queryClient.getQueryData(merchantQueryKeys.orders('42', 'active'))
+      queryClient.getQueryData(merchantQueryKeys.orders(merchantId, 'active'))
     ).toEqual([])
     expect(
-      queryClient.getQueryData(merchantQueryKeys.orders('42', 'archived'))
+      queryClient.getQueryData(merchantQueryKeys.orders(merchantId, 'archived'))
     ).toMatchObject([{ id: '11', status: 'completed' }])
     expect(fetch).not.toHaveBeenCalled()
   })
