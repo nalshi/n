@@ -20,7 +20,10 @@
 - صفحة التعريف العامة موجودة على `/platform/` وتُبنى من `public/platform/index.html` كمحتوى HTML ثابت قابل للقراءة قبل تشغيل JavaScript.
 - يعرض `public/sitemap.xml` صفحة التعريف فقط. يسمح `public/robots.txt` بالزحف كي تقرأ محركات البحث وسم `noindex` في تطبيق لوحة التاجر.
 - يوجّه `public/_redirects` مسار `/platform` إلى عنوانه المعتمد `/platform/`.
-- نطاق canonical الحالي `https://dash.appi.dpdns.org` افتراض يحتاج إلى تأكيد قبل النشر. يجب أن يتطابق النطاق في بيانات الصفحة وملفي sitemap وrobots، ثم يُرسل sitemap إلى Google Search Console.
+- النطاق المعتمد لبيانات canonical وملفي sitemap وrobots هو `https://dash.appi.dpdns.org`. بعد النشر، أرسل `https://dash.appi.dpdns.org/sitemap.xml` إلى Google Search Console؛ فإعداد SEO لا يضمن ترتيبًا أو ظهورًا فوريًا في نتائج البحث.
+- تستخدم الصفحة كلمات البحث ذات الصلة بنالش وNalsh ولوحة تحكم التاجر والمتجر الإلكتروني والمنتجات والطلبات. لا يمكن ضمان الظهور لأي كلمة بحث عامة أو غير مرتبطة بخدمات المنصة.
+- ملفا `public/favicon.ico` و`public/images/favicon-48.png` مشتقان من أيقونة نالش الحالية مقاس 512×512، ويجب أن يبقيا متاحين من الجذر `/favicon.ico` كي تتعرف محركات البحث على أيقونة الموقع.
+- صورة المشاركة `public/platform/og-card.png` تعرض معاينة واجهة المنتجات الملتقطة من صفحة التعريف مع أيقونة نالش.
 
 <details>
 <summary>Customized Components (click to expand)</summary>
