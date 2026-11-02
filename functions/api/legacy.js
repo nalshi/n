@@ -3,17 +3,12 @@ const ALLOWED_ACTIONS = new Set([
   'check_phone',
   'login',
   'register_init',
-<<<<<<< HEAD
   'register_verify',
   'recover_init',
   'recover_check_otp',
   'recover_set_password',
   'verify_new_device_otp',
   'resend_device_otp',
-=======
-  'recover_init',
-  'recover_set_password',
->>>>>>> 6afa680cf0e9b5a81df5149da2d5573b93e6ea27
   'logout',
   'upload_image',
 ])
@@ -127,7 +122,6 @@ export async function onRequestPost({ request }) {
 }
 
 export async function onRequest({ request }) {
-<<<<<<< HEAD
   if (request.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
@@ -157,10 +151,6 @@ export async function onRequest({ request }) {
         },
       }
     )
-=======
-  if (request.method !== 'POST') {
-    return jsonResponse(405, 'طريقة الطلب غير مسموح بها.')
->>>>>>> 6afa680cf0e9b5a81df5149da2d5573b93e6ea27
   }
   return onRequestPost({ request })
 }

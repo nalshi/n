@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-nalshi
-=======
 # بوابة التاجر
 
 لوحة تحكم عربية لإدارة المتجر والمنتجات والطلبات، مبنية باستخدام React وShadcn UI وVite.
@@ -206,4 +203,3 @@ Crafted with 🤍 by [@satnaing](https://github.com/satnaing)
 ## License
 
 Licensed under the [MIT License](https://choosealicense.com/licenses/mit/)
->>>>>>> 6afa680 (اكتب هنا وصفاً للتعديل الذي قمت به)
