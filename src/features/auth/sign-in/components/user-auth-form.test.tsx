@@ -145,7 +145,7 @@ describe('UserAuthForm', () => {
     )
   })
 
-  it('shows the intro while the login request is loading', async () => {
+  it('locks the sign-in screen under a transparent loader while login is pending', async () => {
     let resolveLogin: (response: {
       status: string
       token: string
@@ -180,7 +180,9 @@ describe('UserAuthForm', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'تسجيل الدخول' }))
 
-    expect(document.querySelector('.merchant-intro')).not.toBeNull()
+    expect(document.querySelector('.merchant-intro')).toBeNull()
+    expect(document.querySelector('.merchant-operation-loader')).not.toBeNull()
+    expect(document.querySelector('[aria-busy="true"][inert]')).not.toBeNull()
     expect(
       apiRequestMock.mock.calls.filter(([action]) => action === 'login')
     ).toHaveLength(1)
@@ -195,6 +197,9 @@ describe('UserAuthForm', () => {
     })
     await vi.waitFor(() =>
       expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
+    )
+    await vi.waitFor(() =>
+      expect(document.querySelector('.merchant-operation-loader')).toBeNull()
     )
   })
 

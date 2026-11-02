@@ -1,4 +1,3 @@
-const API_URL = 'https://api.nalsh.dpdns.org/api.php'
 const WORKER_ACTIONS = new Set([
   'save_product',
   'list_products',
@@ -33,9 +32,17 @@ const WORKER_ACTIONS = new Set([
   'save_color_palette_draft',
   'publish_color_palette',
 ])
+const LEGACY_API_ACTIONS = new Set([
+  'check_phone',
+  'login',
+  'register_init',
+  'recover_init',
+  'recover_set_password',
+  'logout',
+  'upload_image',
+])
 declare global {
   interface Window {
-    API_URL?: string
     WORKER_API_URL?: string
     CF_WORKER_URL?: string
     CLOUDFLARE_WORKER_URL?: string
@@ -58,10 +65,6 @@ export type ApiResult = {
     merchant?: { name?: string }
     delivery?: { name?: string }
   }
-}
-
-function getApiUrl() {
-  return typeof window === 'undefined' ? API_URL : window.API_URL || API_URL
 }
 
 export function getWorkerApiUrl() {
@@ -239,29 +242,31 @@ export async function apiRequest(
       : localStorage.getItem('merchant_token') ||
         sessionStorage.getItem('merchant_token') ||
         ''
-  const apiUrl = getApiUrl()
   const useWorker = WORKER_ACTIONS.has(action)
   const workerUrl = getWorkerApiUrl()
 
-  if (!useWorker) {
+  if (useWorker) {
     return executeFetch(
-      apiUrl,
+      workerUrl,
       action,
       payload,
       csrfToken,
       token,
-      false,
+      true,
       onUploadProgress
     )
   }
+  if (!LEGACY_API_ACTIONS.has(action)) {
+    throw new Error(`إجراء API غير مسموح به: ${action}`)
+  }
 
   return executeFetch(
-    workerUrl,
+    '/api/legacy',
     action,
     payload,
     csrfToken,
     token,
-    true,
+    false,
     onUploadProgress
   )
 }

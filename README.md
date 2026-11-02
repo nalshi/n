@@ -128,6 +128,14 @@ the Worker's gateway secret. A successful bootstrap request should return JSON;
 if `/api/work/api/merchant/bootstrap` returns the site's HTML page, the Pages
 Function route is not active in that deployment.
 
+Legacy authentication and recovery actions are routed through the same-origin
+Cloudflare Pages Function at `/api/legacy`. Deploy the Function with the
+dashboard; it forwards only the allowlisted legacy actions to the PHP API and
+rewrites upstream cookie domains for the dashboard origin. The PHP endpoint is
+server-side only in the dashboard bundle, but this proxy does not prevent
+clients from calling a publicly reachable PHP origin directly. Restricting or
+authenticating direct origin access requires configuration on the PHP host.
+
 Deploy the API Worker containing the bootstrap route from `work-surs`:
 
 ```bash

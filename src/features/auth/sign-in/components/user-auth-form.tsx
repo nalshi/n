@@ -43,7 +43,7 @@ export function UserAuthForm({
   const [isPhone, setIsPhone] = useState(false)
   const navigate = useNavigate()
   const flow = useAuthFlowStore()
-  const { startIntro, finishIntro, beginOperation } = useDashboardIntro()
+  const { finishIntro, beginOperation } = useDashboardIntro()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -130,7 +130,7 @@ export function UserAuthForm({
     }
 
     setIsLoading(true)
-    startIntro()
+    const finishOperation = beginOperation()
     try {
       const response = await authApiRequest('login', {
         phone: flow.identifier,
@@ -169,6 +169,7 @@ export function UserAuthForm({
       )
     } finally {
       setIsLoading(false)
+      finishOperation()
     }
   }
 
