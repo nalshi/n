@@ -15,25 +15,25 @@ export function SignUp() {
 
   return (
     <AuthLayout>
-      <Card className='auth-form-card mx-auto w-full max-w-2xl gap-0 border-0 bg-transparent py-0 shadow-none'>
-        <CardHeader className='gap-3 px-0 pt-2 pb-5'>
+      <Card className='mx-auto w-full max-w-2xl gap-0 overflow-hidden rounded-2xl py-0 font-[Cairo] sm:rounded-3xl'>
+        <CardHeader className='px-5 pt-6 pb-4 sm:px-7 sm:pt-8 sm:pb-5'>
           <CardTitle className='text-2xl tracking-tight sm:text-3xl'>
             أنشئ متجرك
           </CardTitle>
-          <CardDescription className='max-w-prose text-sm leading-7'>
+          <CardDescription className='text-sm leading-7'>
             أدخل بيانات المتجر ورقم جوالك للبدء. لديك متجر بالفعل؟{' '}
             <Link
               to='/sign-in'
-              className='font-bold text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary'
+              className='font-semibold text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary'
             >
               تسجيل الدخول
             </Link>
           </CardDescription>
         </CardHeader>
-        <CardContent className='px-0 pb-5'>
+        <CardContent className='px-5 pb-6 sm:px-7 sm:pb-7'>
           <SignUpForm initialPhone={phone} />
         </CardContent>
-        <CardFooter className='border-0 bg-transparent px-0 pt-4 pb-0'>
+        <CardFooter className='border-t bg-muted/20 px-5 py-4 sm:px-7 sm:py-5'>
           <p className='w-full text-center text-xs leading-6 text-muted-foreground'>
             بعد تأكيد رقم الجوال ستختار قالب واجهة متجرك.
           </p>

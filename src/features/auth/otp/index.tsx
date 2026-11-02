@@ -16,8 +16,8 @@ export function Otp() {
 
   return (
     <AuthLayout>
-      <Card className='auth-form-card mx-auto w-full max-w-md gap-0 border-0 bg-transparent py-0 shadow-none'>
-        <CardHeader className='gap-3 px-0 pt-2 pb-5'>
+      <Card className='mx-auto w-full max-w-md gap-0 overflow-hidden rounded-2xl font-[Cairo] sm:rounded-3xl'>
+        <CardHeader className='gap-2 px-5 pt-6 pb-4 sm:px-7 sm:pt-8 sm:pb-5'>
           <CardTitle className='text-2xl tracking-tight sm:text-3xl'>
             {context === 'login_otp' ? 'تأكيد الجهاز' : 'رمز التحقق'}
           </CardTitle>
@@ -26,10 +26,10 @@ export function Otp() {
             {context === 'recover' ? '، ثم اختر كلمة مرور جديدة.' : '.'}
           </CardDescription>
         </CardHeader>
-        <CardContent className='px-0 pb-5'>
+        <CardContent className='px-5 pb-6 sm:px-7 sm:pb-7'>
           <OtpForm />
         </CardContent>
-        <CardFooter className='border-0 bg-transparent px-0 pt-4 pb-0'>
+        <CardFooter className='border-t bg-muted/20 px-5 py-4 sm:px-7 sm:py-5'>
           <p className='w-full text-center text-sm leading-6 text-muted-foreground'>
             لم يصلك الرمز؟{' '}
             <Link
