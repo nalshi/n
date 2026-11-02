@@ -87,7 +87,7 @@ export function SignIn() {
 
   return (
     <AuthLayout>
-      <Card className='mx-auto w-full max-w-xl gap-0 overflow-hidden rounded-2xl py-0 font-[Cairo] sm:rounded-3xl'>
+      <Card className='mx-auto w-full max-w-xl gap-0 overflow-hidden rounded-2xl border-border/70 bg-card py-0 font-[Cairo] shadow-sm'>
         <CardHeader className='gap-2 px-5 pt-6 pb-4 sm:px-7 sm:pt-8 sm:pb-5'>
           <CardTitle className='text-2xl tracking-tight sm:text-3xl'>
             مرحبًا بعودتك

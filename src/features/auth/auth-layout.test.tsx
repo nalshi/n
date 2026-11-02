@@ -27,6 +27,9 @@ describe('AuthLayout', () => {
     await userEvent.click(
       screen.getByRole('button', { name: 'التبديل إلى الوضع الداكن' })
     )
+    expect(
+      screen.getByRole('heading', { name: 'متجرك يبدأ من هنا' })
+    ).toBeInTheDocument()
     await expect
       .poll(() => document.documentElement.classList.contains('dark'))
       .toBe(true)
