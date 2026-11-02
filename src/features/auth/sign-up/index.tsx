@@ -15,7 +15,7 @@ export function SignUp() {
 
   return (
     <AuthLayout>
-      <Card className='mx-auto w-full max-w-2xl gap-0 overflow-hidden py-0 font-[Cairo]'>
+      <Card className='mx-auto w-full max-w-2xl gap-0 overflow-hidden rounded-2xl py-0 font-[Cairo] sm:rounded-3xl'>
         <CardHeader className='px-5 pt-6 pb-4 sm:px-7 sm:pt-8 sm:pb-5'>
           <CardTitle className='text-2xl tracking-tight sm:text-3xl'>
             أنشئ متجرك

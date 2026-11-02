@@ -48,6 +48,7 @@ test('proxies only allowlisted legacy actions and rewrites upstream cookie domai
   assert.doesNotMatch(response.headers.get('Set-Cookie') || '', /Domain=/i)
 })
 
+<<<<<<< HEAD
 test('proxies device verification and new-account OTP actions', async () => {
   const proxiedActions = []
   globalThis.fetch = async (_url, options) => {
@@ -79,6 +80,8 @@ test('proxies device verification and new-account OTP actions', async () => {
   ])
 })
 
+=======
+>>>>>>> 6afa680cf0e9b5a81df5149da2d5573b93e6ea27
 test('rejects unknown legacy actions without contacting the PHP origin', async () => {
   let contactedOrigin = false
   globalThis.fetch = async () => {
@@ -105,6 +108,7 @@ test('rejects unsupported methods', async () => {
     }),
   })
   assert.equal(response.status, 405)
+<<<<<<< HEAD
   assert.equal(response.headers.get('Allow'), 'POST, OPTIONS')
   assert.deepEqual(await response.json(), {
     status: 'error',
@@ -129,6 +133,8 @@ test('accepts preflight checks for same-origin-compatible request headers', asyn
     response.headers.get('Access-Control-Allow-Headers') || '',
     /X-CSRF-TOKEN/
   )
+=======
+>>>>>>> 6afa680cf0e9b5a81df5149da2d5573b93e6ea27
 })
 
 test('rejects cross-origin browser requests', async () => {

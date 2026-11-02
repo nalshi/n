@@ -74,7 +74,7 @@ export function ForgotPasswordForm({
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className={cn('grid gap-3', className)}
+        className={cn('grid gap-4', className)}
         dir='rtl'
         {...props}
       >
@@ -86,6 +86,7 @@ export function ForgotPasswordForm({
               <FormLabel>رقم الجوال</FormLabel>
               <FormControl>
                 <Input
+                  className='h-11 bg-background'
                   autoComplete='tel'
                   inputMode='tel'
                   placeholder='77XXXXXXX'
@@ -97,7 +98,7 @@ export function ForgotPasswordForm({
             </FormItem>
           )}
         />
-        <Button className='mt-2' disabled={isLoading}>
+        <Button className='mt-1 h-11' disabled={isLoading}>
           {isLoading ? <Loader2 className='animate-spin' /> : <ArrowRight />}
           إرسال رمز التحقق
         </Button>

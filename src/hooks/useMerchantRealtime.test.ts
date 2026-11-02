@@ -17,7 +17,10 @@ import {
   merchantQueryKeys,
   removeMerchantProductFromCache,
   refreshMerchantSnapshot,
+<<<<<<< HEAD
   updateMerchantCategoriesCache,
+=======
+>>>>>>> 6afa680cf0e9b5a81df5149da2d5573b93e6ea27
   updateMerchantProductCache,
   updateMerchantOrderStatusCache,
 } from './useMerchantRealtime'
@@ -73,11 +76,14 @@ describe('refreshMerchantSnapshot', () => {
   })
 
   it('replaces product, order, category, and bootstrap caches with server data', async () => {
+<<<<<<< HEAD
     await localDatabase.categories.put({
       id: 'stale-category',
       name: 'فئة قديمة',
       parentId: '',
     })
+=======
+>>>>>>> 6afa680cf0e9b5a81df5149da2d5573b93e6ea27
     await refreshMerchantSnapshot(queryClient, merchantId)
 
     expect(fetch).toHaveBeenCalledWith(
@@ -93,9 +99,12 @@ describe('refreshMerchantSnapshot', () => {
     expect(
       queryClient.getQueryData(merchantQueryKeys.categories(merchantId))
     ).toMatchObject([{ id: '4', name: 'فئة' }])
+<<<<<<< HEAD
     expect(await localDatabase.categories.toArray()).toMatchObject([
       { id: '4', name: 'فئة' },
     ])
+=======
+>>>>>>> 6afa680cf0e9b5a81df5149da2d5573b93e6ea27
     expect(
       queryClient.getQueryData(merchantBootstrapKey(merchantId))
     ).toMatchObject({ dashboard: { products: [{ id: '9', price: 99 }] } })
@@ -204,6 +213,7 @@ describe('refreshMerchantSnapshot', () => {
       ).toMatchObject([{ id: 'product-1', name: 'بعد التحديث', price: 15 }])
     })
 
+<<<<<<< HEAD
     it('replaces category data in the query and durable local caches', async () => {
       await localDatabase.categories.put({
         id: 'stale-category',
@@ -223,6 +233,8 @@ describe('refreshMerchantSnapshot', () => {
       ).toEqual([{ id: 'category-2', name: 'جوالات', parentId: 'category-1' }])
     })
 
+=======
+>>>>>>> 6afa680cf0e9b5a81df5149da2d5573b93e6ea27
     it('updates and deletes products in query and durable caches after API mutations', async () => {
       await updateMerchantProductCache(queryClient, merchantId, 'product-1', {
         name: 'تعديل محفوظ',

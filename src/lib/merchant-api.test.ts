@@ -135,6 +135,7 @@ describe('merchant API transport', () => {
     )
   })
 
+<<<<<<< HEAD
   it('routes device verification and account activation through the legacy proxy', async () => {
     mockedFetch.mockImplementation(async () =>
       jsonResponse({ status: 'success' })
@@ -155,6 +156,8 @@ describe('merchant API transport', () => {
     }
   })
 
+=======
+>>>>>>> 6afa680cf0e9b5a81df5149da2d5573b93e6ea27
   it('rejects unknown API actions instead of sending them to an origin URL', async () => {
     await expect(
       apiRequest('unexpected_action', {}, csrfToken)

@@ -39,12 +39,17 @@ const LEGACY_API_ACTIONS = new Set([
   'check_phone',
   'login',
   'register_init',
+<<<<<<< HEAD
   'register_verify',
   'recover_init',
   'recover_check_otp',
   'recover_set_password',
   'verify_new_device_otp',
   'resend_device_otp',
+=======
+  'recover_init',
+  'recover_set_password',
+>>>>>>> 6afa680cf0e9b5a81df5149da2d5573b93e6ea27
   'logout',
   'upload_image',
 ])

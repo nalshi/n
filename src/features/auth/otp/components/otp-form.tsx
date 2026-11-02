@@ -244,7 +244,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
       <Form {...passwordForm}>
         <form
           onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}
-          className={cn('grid gap-3', className)}
+          className={cn('grid gap-4', className)}
           dir='rtl'
           {...props}
         >
@@ -256,6 +256,8 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
                 <FormLabel>كلمة المرور الجديدة</FormLabel>
                 <FormControl>
                   <PasswordInput
+                    className='h-11'
+                    inputClassName='h-11 bg-background'
                     autoComplete='new-password'
                     placeholder='8 أحرف على الأقل'
                     {...field}
@@ -278,6 +280,8 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
                 <FormLabel>تأكيد كلمة المرور</FormLabel>
                 <FormControl>
                   <PasswordInput
+                    className='h-11'
+                    inputClassName='h-11 bg-background'
                     autoComplete='new-password'
                     placeholder='أعد إدخال كلمة المرور'
                     {...field}
@@ -287,7 +291,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
               </FormItem>
             )}
           />
-          <Button disabled={isLoading}>
+          <Button className='h-11' disabled={isLoading}>
             {isLoading && <Loader2 className='animate-spin' />}
             حفظ كلمة المرور
           </Button>
@@ -300,7 +304,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
     <Form {...otpForm}>
       <form
         onSubmit={otpForm.handleSubmit(onOtpSubmit)}
-        className={cn('grid gap-3', className)}
+        className={cn('grid gap-4', className)}
         dir='rtl'
         {...props}
       >
@@ -317,7 +321,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
                   maxLength={6}
                   placeholder='••••••'
                   dir='ltr'
-                  className='text-center text-xl tracking-[0.5em]'
+                  className='h-12 text-center text-xl tracking-[0.5em] tabular-nums'
                   {...field}
                   onChange={(event) =>
                     field.onChange(
@@ -330,7 +334,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
             </FormItem>
           )}
         />
-        <Button className='mt-2' disabled={isLoading}>
+        <Button className='mt-1 h-11' disabled={isLoading}>
           {isLoading ? <Loader2 className='animate-spin' /> : null}
           تأكيد الرمز
         </Button>

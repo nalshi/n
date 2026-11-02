@@ -230,6 +230,7 @@ export async function refreshMerchantSnapshot(
   return snapshot
 }
 
+<<<<<<< HEAD
 export async function updateMerchantCategoriesCache(
   queryClient: QueryClient,
   merchantId: string,
@@ -251,6 +252,8 @@ export async function updateMerchantCategoriesCache(
   _localBus?.postMessage({ type: 'SNAPSHOT_MUTATED', merchantId })
 }
 
+=======
+>>>>>>> 6afa680cf0e9b5a81df5149da2d5573b93e6ea27
 export async function updateMerchantProductCache(
   queryClient: QueryClient,
   merchantId: string,
