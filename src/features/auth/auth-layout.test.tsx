@@ -24,6 +24,11 @@ describe('AuthLayout', () => {
       </ThemeProvider>
     )
 
+    expect(
+      screen.getByRole('heading', { name: 'متجرك، بخطوة واضحة.' })
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('أقسام لوحة التاجر')).toBeInTheDocument()
+
     await userEvent.click(
       screen.getByRole('button', { name: 'التبديل إلى الوضع الداكن' })
     )
@@ -33,6 +38,7 @@ describe('AuthLayout', () => {
 
     for (const [width, height] of [
       [360, 640],
+      [390, 844],
       [768, 1024],
       [1440, 900],
     ]) {
@@ -41,6 +47,11 @@ describe('AuthLayout', () => {
       expect(
         document.querySelector('main')?.getBoundingClientRect().width
       ).toBe(width)
+      if (width <= 1023) {
+        expect(
+          document.querySelector('.auth-brand')?.getBoundingClientRect().height
+        ).toBeLessThanOrEqual(240)
+      }
     }
 
     expect(
