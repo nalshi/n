@@ -100,6 +100,29 @@ describe('merchant API transport', () => {
     }
   })
 
+  it('routes shared catalog actions through the authenticated Worker', async () => {
+    localStorage.setItem('merchant_token', 'merchant-token')
+    mockedFetch.mockImplementation(async () =>
+      jsonResponse({ status: 'success' })
+    )
+
+    for (const action of [
+      'set_product_sharing',
+      'list_my_shared_products',
+      'list_shared_product_catalog',
+      'list_my_shared_product_imports',
+      'import_shared_product',
+    ]) {
+      await apiRequest(action, {}, csrfToken)
+    }
+
+    expect(mockedFetch).toHaveBeenCalledTimes(5)
+    for (const [url, options] of mockedFetch.mock.calls) {
+      expect(url).toBe('/api/work/')
+      expect(options?.credentials).toBe('omit')
+    }
+  })
+
   it('keeps Worker actions behind the secure proxy when the Worker is unavailable', async () => {
     localStorage.setItem('merchant_token', 'merchant-token')
     mockedFetch.mockRejectedValue(new TypeError('Failed to fetch'))

@@ -29,8 +29,8 @@ export const sidebarData: SidebarData = {
           icon: LayoutDashboard,
         },
         {
-          title: 'Nalsh Trade',
-          url: '/trade',
+          title: 'كتالوج التجار',
+          url: '/shared-catalog',
           icon: Handshake,
         },
         {

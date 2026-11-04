@@ -24,7 +24,7 @@ import {
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { clearAuthApiCache } from '@/lib/auth-api'
+import { authApiRequest, clearAuthApiCache } from '@/lib/auth-api'
 import {
   merchantQueryKeys,
   removeMerchantProductFromCache,
@@ -382,6 +382,30 @@ function ProductsWorkspace({
     queryFn: fetchDashboardProducts,
     staleTime: Number.POSITIVE_INFINITY,
   })
+  const sharedProductsQuery = useQuery({
+    queryKey: ['merchant-shared-products', merchantId],
+    queryFn: async () => {
+      const result = await authApiRequest('list_my_shared_products', {})
+      if (result.status !== 'success' && result.status !== 'ok') {
+        throw new Error(result.message || 'تعذر تحميل حالة مشاركة المنتجات.')
+      }
+      const data = Array.isArray(result.data) ? result.data : []
+      return new Set(
+        data.flatMap((item: unknown) =>
+          typeof item === 'object' &&
+          item !== null &&
+          'product_id' in item &&
+          typeof item.product_id === 'string' &&
+          'is_shared' in item &&
+          item.is_shared === true
+            ? [item.product_id]
+            : []
+        )
+      )
+    },
+    enabled: !inventoryView,
+    staleTime: 60_000,
+  })
   const categoriesQuery = useQuery({
     queryKey: merchantQueryKeys.categories(merchantId),
     queryFn: fetchDashboardCategories,
@@ -404,6 +428,35 @@ function ProductsWorkspace({
     [categoryList]
   )
   const products = useMemo(() => productsQuery.data || [], [productsQuery.data])
+  const shareMutation = useMutation({
+    mutationFn: async ({
+      product,
+      isShared,
+    }: {
+      product: DashboardProduct
+      isShared: boolean
+    }) => {
+      const result = await authApiRequest('set_product_sharing', {
+        product_id: product.id,
+        is_shared: !isShared,
+      })
+      if (result.status !== 'success' && result.status !== 'ok') {
+        throw new Error(result.message || 'تعذر تحديث مشاركة المنتج.')
+      }
+      return { product, isShared: !isShared }
+    },
+    onSuccess: async ({ product, isShared }) => {
+      toast.success(
+        isShared
+          ? `أصبح «${product.name}» متاحاً للتجار.`
+          : `تم إيقاف مشاركة «${product.name}».`
+      )
+      await queryClient.invalidateQueries({
+        queryKey: ['merchant-shared-products', merchantId],
+      })
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
   const refreshMerchantData = async () => {
     try {
       await refreshMerchantSnapshot(queryClient, merchantId)
@@ -759,6 +812,23 @@ function ProductsWorkspace({
             }
           />
         </div>
+        {!inventoryView && sharedProductsQuery.isError && (
+          <div
+            role='alert'
+            className='mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive'
+          >
+            <span>
+              تعذر تحميل حالة مشاركة المنتجات؛ أعد المحاولة قبل تغييرها.
+            </span>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => void sharedProductsQuery.refetch()}
+            >
+              إعادة المحاولة
+            </Button>
+          </div>
+        )}
 
         <div className='mb-5 grid grid-cols-3 gap-2 sm:gap-3'>
           <StatCard
@@ -1081,6 +1151,16 @@ function ProductsWorkspace({
                   onQr={() => setQrProduct(product)}
                   onAvailability={() => availabilityMutation.mutate(product)}
                   availabilityPending={availabilityMutation.isPending}
+                  isShared={sharedProductsQuery.data?.has(product.id) ?? false}
+                  sharingStatusReady={sharedProductsQuery.isSuccess}
+                  onSharing={() =>
+                    shareMutation.mutate({
+                      product,
+                      isShared:
+                        sharedProductsQuery.data?.has(product.id) ?? false,
+                    })
+                  }
+                  sharingPending={shareMutation.isPending}
                 />
               ))}
             </div>
@@ -1267,6 +1347,10 @@ function ProductCard({
   onQr,
   onAvailability,
   availabilityPending,
+  isShared,
+  sharingStatusReady,
+  onSharing,
+  sharingPending,
 }: {
   product: DashboardProduct
   categoryName: string
@@ -1275,6 +1359,10 @@ function ProductCard({
   onQr: () => void
   onAvailability: () => void
   availabilityPending: boolean
+  isShared: boolean
+  sharingStatusReady: boolean
+  onSharing: () => void
+  sharingPending: boolean
 }) {
   const discountedPrice = product.price * (1 - product.discount / 100)
   return (
@@ -1342,6 +1430,30 @@ function ProductCard({
             {getStock(product)}
           </span>
         </div>
+        <Button
+          type='button'
+          variant={isShared ? 'secondary' : 'outline'}
+          size='sm'
+          className='w-full'
+          disabled={
+            (!product.isAvailable && !isShared) ||
+            sharingPending ||
+            !sharingStatusReady
+          }
+          onClick={onSharing}
+          aria-label={
+            isShared
+              ? `إيقاف مشاركة ${product.name} مع التجار`
+              : `مشاركة ${product.name} مع التجار`
+          }
+        >
+          {sharingPending ? (
+            <LoaderCircle className='animate-spin' aria-hidden='true' />
+          ) : (
+            <Share2 aria-hidden='true' />
+          )}
+          {isShared ? 'إيقاف المشاركة' : 'مشاركة للتجار'}
+        </Button>
         {product.options.length > 0 && (
           <p className='line-clamp-1 text-[10px] text-muted-foreground'>
             {product.options.length} خيارات:{' '}

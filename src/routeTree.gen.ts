@@ -16,6 +16,7 @@ import { Route as AuthenticatedTradeRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedSuppliersRouteImport } from './routes/_authenticated/suppliers'
 import { Route as AuthenticatedStorefrontRouteImport } from './routes/_authenticated/storefront'
 import { Route as AuthenticatedStoreSettingsRouteImport } from './routes/_authenticated/store-settings'
+import { Route as AuthenticatedSharedCatalogRouteImport } from './routes/_authenticated/shared-catalog'
 import { Route as AuthenticatedProductsRouteImport } from './routes/_authenticated/products'
 import { Route as AuthenticatedProductCatalogRouteImport } from './routes/_authenticated/product-catalog'
 import { Route as AuthenticatedPreviousOrdersRouteImport } from './routes/_authenticated/previous-orders'
@@ -78,6 +79,12 @@ const AuthenticatedStoreSettingsRoute =
   AuthenticatedStoreSettingsRouteImport.update({
     id: '/store-settings',
     path: '/store-settings',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSharedCatalogRoute =
+  AuthenticatedSharedCatalogRouteImport.update({
+    id: '/shared-catalog',
+    path: '/shared-catalog',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedProductsRoute = AuthenticatedProductsRouteImport.update({
@@ -249,6 +256,7 @@ export interface FileRoutesByFullPath {
   '/previous-orders': typeof AuthenticatedPreviousOrdersRoute
   '/product-catalog': typeof AuthenticatedProductCatalogRoute
   '/products': typeof AuthenticatedProductsRoute
+  '/shared-catalog': typeof AuthenticatedSharedCatalogRoute
   '/store-settings': typeof AuthenticatedStoreSettingsRoute
   '/storefront': typeof AuthenticatedStorefrontRoute
   '/suppliers': typeof AuthenticatedSuppliersRoute
@@ -283,6 +291,7 @@ export interface FileRoutesByTo {
   '/previous-orders': typeof AuthenticatedPreviousOrdersRoute
   '/product-catalog': typeof AuthenticatedProductCatalogRoute
   '/products': typeof AuthenticatedProductsRoute
+  '/shared-catalog': typeof AuthenticatedSharedCatalogRoute
   '/store-settings': typeof AuthenticatedStoreSettingsRoute
   '/storefront': typeof AuthenticatedStorefrontRoute
   '/suppliers': typeof AuthenticatedSuppliersRoute
@@ -321,6 +330,7 @@ export interface FileRoutesById {
   '/_authenticated/previous-orders': typeof AuthenticatedPreviousOrdersRoute
   '/_authenticated/product-catalog': typeof AuthenticatedProductCatalogRoute
   '/_authenticated/products': typeof AuthenticatedProductsRoute
+  '/_authenticated/shared-catalog': typeof AuthenticatedSharedCatalogRoute
   '/_authenticated/store-settings': typeof AuthenticatedStoreSettingsRoute
   '/_authenticated/storefront': typeof AuthenticatedStorefrontRoute
   '/_authenticated/suppliers': typeof AuthenticatedSuppliersRoute
@@ -360,6 +370,7 @@ export interface FileRouteTypes {
     | '/previous-orders'
     | '/product-catalog'
     | '/products'
+    | '/shared-catalog'
     | '/store-settings'
     | '/storefront'
     | '/suppliers'
@@ -394,6 +405,7 @@ export interface FileRouteTypes {
     | '/previous-orders'
     | '/product-catalog'
     | '/products'
+    | '/shared-catalog'
     | '/store-settings'
     | '/storefront'
     | '/suppliers'
@@ -431,6 +443,7 @@ export interface FileRouteTypes {
     | '/_authenticated/previous-orders'
     | '/_authenticated/product-catalog'
     | '/_authenticated/products'
+    | '/_authenticated/shared-catalog'
     | '/_authenticated/store-settings'
     | '/_authenticated/storefront'
     | '/_authenticated/suppliers'
@@ -517,6 +530,13 @@ declare module '@tanstack/react-router' {
       path: '/store-settings'
       fullPath: '/store-settings'
       preLoaderRoute: typeof AuthenticatedStoreSettingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/shared-catalog': {
+      id: '/_authenticated/shared-catalog'
+      path: '/shared-catalog'
+      fullPath: '/shared-catalog'
+      preLoaderRoute: typeof AuthenticatedSharedCatalogRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/products': {
@@ -747,6 +767,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPreviousOrdersRoute: typeof AuthenticatedPreviousOrdersRoute
   AuthenticatedProductCatalogRoute: typeof AuthenticatedProductCatalogRoute
   AuthenticatedProductsRoute: typeof AuthenticatedProductsRoute
+  AuthenticatedSharedCatalogRoute: typeof AuthenticatedSharedCatalogRoute
   AuthenticatedStoreSettingsRoute: typeof AuthenticatedStoreSettingsRoute
   AuthenticatedStorefrontRoute: typeof AuthenticatedStorefrontRoute
   AuthenticatedSuppliersRoute: typeof AuthenticatedSuppliersRoute
@@ -766,6 +787,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPreviousOrdersRoute: AuthenticatedPreviousOrdersRoute,
   AuthenticatedProductCatalogRoute: AuthenticatedProductCatalogRoute,
   AuthenticatedProductsRoute: AuthenticatedProductsRoute,
+  AuthenticatedSharedCatalogRoute: AuthenticatedSharedCatalogRoute,
   AuthenticatedStoreSettingsRoute: AuthenticatedStoreSettingsRoute,
   AuthenticatedStorefrontRoute: AuthenticatedStorefrontRoute,
   AuthenticatedSuppliersRoute: AuthenticatedSuppliersRoute,

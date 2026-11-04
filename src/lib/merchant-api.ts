@@ -34,6 +34,11 @@ const WORKER_ACTIONS = new Set([
   'get_color_palette_admin',
   'save_color_palette_draft',
   'publish_color_palette',
+  'set_product_sharing',
+  'list_my_shared_products',
+  'list_shared_product_catalog',
+  'list_my_shared_product_imports',
+  'import_shared_product',
   'trade_get_context',
   'trade_save_supplier_profile',
   'trade_list_marketplace',
@@ -80,6 +85,8 @@ export type ApiResult = {
   category?: unknown
   data?: unknown
   products?: unknown
+  product_id?: string
+  already_imported?: boolean
   orders?: unknown
   accounts?: {
     merchant?: { name?: string }
