@@ -220,8 +220,13 @@ function errorPanel(message: string, retry?: () => void) {
   )
 }
 
-export function TradeWorkspace() {
-  const [tab, setTab] = useState<Tab>('market')
+type TradeWorkspaceProps = {
+  section?: 'market' | 'supplier'
+}
+
+export function TradeWorkspace({ section = 'market' }: TradeWorkspaceProps) {
+  const isSupplierSection = section === 'supplier'
+  const [tab, setTab] = useState<Tab>(isSupplierSection ? 'supplier' : 'market')
   const [search, setSearch] = useState('')
   const [mode, setMode] = useState('all')
   const [editingOffer, setEditingOffer] = useState<TradeOffer | null>(null)
@@ -338,16 +343,18 @@ export function TradeWorkspace() {
       <MerchantWorkspaceHeader />
       <Main className='space-y-6'>
         <MerchantPageHeading
-          title='Nalsh Trade'
-          description='اكتشف عروض الموردين، واستورد المنتجات المسموح بها إلى متجرك، وتابع تنفيذ الطلبات.'
+          title={isSupplierSection ? 'قسم الموردين' : 'Nalsh Trade'}
+          description={isSupplierSection
+            ? 'اعرض منتجاتك وشروط التوريد للتجار، وأدر عروضك من حساب التاجر الحالي.'
+            : 'اكتشف عروض الموردين، واستورد المنتجات المسموح بها إلى متجرك، وتابع تنفيذ الطلبات.'}
           actions={profile ? <StatusTag tone={profile.status === 'approved' ? 'good' : 'warn'}>{profileStatus[profile.status] || profile.status}</StatusTag> : undefined}
         />
 
-        <section className='grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-3 sm:p-5' aria-label='طريقة عمل سوق الموردين'>
+        {!isSupplierSection && <section className='grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-3 sm:p-5' aria-label='طريقة عمل سوق الموردين'>
           <div className='flex items-start gap-3'><Search className='mt-0.5 size-4 text-primary' /><p className='text-sm leading-6'><strong className='block text-foreground'>اكتشف</strong><span className='text-muted-foreground'>راجع شروط المورد والمخزون قبل الاستيراد.</span></p></div>
           <div className='flex items-start gap-3'><Store className='mt-0.5 size-4 text-primary' /><p className='text-sm leading-6'><strong className='block text-foreground'>أضف لمتجرك</strong><span className='text-muted-foreground'>تبدأ المنتجات المستوردة بسعر المورد؛ عدّل سعر البيع قبل الترويج.</span></p></div>
           <div className='flex items-start gap-3'><Truck className='mt-0.5 size-4 text-primary' /><p className='text-sm leading-6'><strong className='block text-foreground'>تابع التنفيذ</strong><span className='text-muted-foreground'>تأكيد الطلب والشحن يدويان في الإصدار التجريبي.</span></p></div>
-        </section>
+        </section>}
 
         {!profile && (
           <Card>
@@ -367,7 +374,7 @@ export function TradeWorkspace() {
           </div>
         )}
 
-        <nav className='flex gap-1 overflow-x-auto border-b' aria-label='أقسام Nalsh Trade'>
+        {!isSupplierSection && <nav className='flex gap-1 overflow-x-auto border-b' aria-label='أقسام Nalsh Trade'>
           {tabs.map(([value, label]) => (
             <button
               key={value}
@@ -379,7 +386,7 @@ export function TradeWorkspace() {
               {label}
             </button>
           ))}
-        </nav>
+        </nav>}
 
         {tab === 'market' && (
           <section className='space-y-4'>
@@ -484,6 +491,10 @@ export function TradeWorkspace() {
       </Main>
     </>
   )
+}
+
+export function SupplierWorkspace() {
+  return <TradeWorkspace section='supplier' />
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

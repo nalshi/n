@@ -13,6 +13,7 @@ import { Route as StorefrontSetupRouteImport } from './routes/storefront-setup'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedTradeRouteImport } from './routes/_authenticated/trade'
+import { Route as AuthenticatedSuppliersRouteImport } from './routes/_authenticated/suppliers'
 import { Route as AuthenticatedStorefrontRouteImport } from './routes/_authenticated/storefront'
 import { Route as AuthenticatedStoreSettingsRouteImport } from './routes/_authenticated/store-settings'
 import { Route as AuthenticatedProductsRouteImport } from './routes/_authenticated/products'
@@ -59,6 +60,11 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
 const AuthenticatedTradeRoute = AuthenticatedTradeRouteImport.update({
   id: '/trade',
   path: '/trade',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedSuppliersRoute = AuthenticatedSuppliersRouteImport.update({
+  id: '/suppliers',
+  path: '/suppliers',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedStorefrontRoute = AuthenticatedStorefrontRouteImport.update({
@@ -233,6 +239,7 @@ export interface FileRoutesByFullPath {
   '/products': typeof AuthenticatedProductsRoute
   '/store-settings': typeof AuthenticatedStoreSettingsRoute
   '/storefront': typeof AuthenticatedStorefrontRoute
+  '/suppliers': typeof AuthenticatedSuppliersRoute
   '/trade': typeof AuthenticatedTradeRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
@@ -264,6 +271,7 @@ export interface FileRoutesByTo {
   '/products': typeof AuthenticatedProductsRoute
   '/store-settings': typeof AuthenticatedStoreSettingsRoute
   '/storefront': typeof AuthenticatedStorefrontRoute
+  '/suppliers': typeof AuthenticatedSuppliersRoute
   '/trade': typeof AuthenticatedTradeRoute
   '/': typeof AuthenticatedIndexRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
@@ -299,6 +307,7 @@ export interface FileRoutesById {
   '/_authenticated/products': typeof AuthenticatedProductsRoute
   '/_authenticated/store-settings': typeof AuthenticatedStoreSettingsRoute
   '/_authenticated/storefront': typeof AuthenticatedStorefrontRoute
+  '/_authenticated/suppliers': typeof AuthenticatedSuppliersRoute
   '/_authenticated/trade': typeof AuthenticatedTradeRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
@@ -335,6 +344,7 @@ export interface FileRouteTypes {
     | '/products'
     | '/store-settings'
     | '/storefront'
+    | '/suppliers'
     | '/trade'
     | '/errors/$error'
     | '/settings/account'
@@ -366,6 +376,7 @@ export interface FileRouteTypes {
     | '/products'
     | '/store-settings'
     | '/storefront'
+    | '/suppliers'
     | '/trade'
     | '/'
     | '/errors/$error'
@@ -400,6 +411,7 @@ export interface FileRouteTypes {
     | '/_authenticated/products'
     | '/_authenticated/store-settings'
     | '/_authenticated/storefront'
+    | '/_authenticated/suppliers'
     | '/_authenticated/trade'
     | '/_authenticated/'
     | '/_authenticated/errors/$error'
@@ -458,6 +470,13 @@ declare module '@tanstack/react-router' {
       path: '/trade'
       fullPath: '/trade'
       preLoaderRoute: typeof AuthenticatedTradeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/suppliers': {
+      id: '/_authenticated/suppliers'
+      path: '/suppliers'
+      fullPath: '/suppliers'
+      preLoaderRoute: typeof AuthenticatedSuppliersRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/storefront': {
@@ -690,6 +709,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProductsRoute: typeof AuthenticatedProductsRoute
   AuthenticatedStoreSettingsRoute: typeof AuthenticatedStoreSettingsRoute
   AuthenticatedStorefrontRoute: typeof AuthenticatedStorefrontRoute
+  AuthenticatedSuppliersRoute: typeof AuthenticatedSuppliersRoute
   AuthenticatedTradeRoute: typeof AuthenticatedTradeRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
@@ -708,6 +728,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedProductsRoute: AuthenticatedProductsRoute,
   AuthenticatedStoreSettingsRoute: AuthenticatedStoreSettingsRoute,
   AuthenticatedStorefrontRoute: AuthenticatedStorefrontRoute,
+  AuthenticatedSuppliersRoute: AuthenticatedSuppliersRoute,
   AuthenticatedTradeRoute: AuthenticatedTradeRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,

@@ -34,6 +34,11 @@ export const sidebarData: SidebarData = {
           icon: Handshake,
         },
         {
+          title: 'الموردون',
+          url: '/suppliers',
+          icon: Boxes,
+        },
+        {
           title: 'المنتجات',
           icon: Package,
           items: [
