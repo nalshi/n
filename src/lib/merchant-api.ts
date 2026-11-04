@@ -34,18 +34,6 @@ const WORKER_ACTIONS = new Set([
   'get_color_palette_admin',
   'save_color_palette_draft',
   'publish_color_palette',
-  'trade_get_context',
-  'trade_save_supplier_profile',
-  'trade_list_marketplace',
-  'trade_list_my_offers',
-  'trade_save_offer',
-  'trade_import_offer',
-  'trade_list_imports',
-  'trade_update_import_price',
-  'trade_list_orders',
-  'trade_update_supplier_order',
-  'trade_admin_queue',
-  'trade_review_item',
 ])
 const LEGACY_API_ACTIONS = new Set([
   'check_phone',

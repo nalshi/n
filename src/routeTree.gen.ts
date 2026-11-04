@@ -42,6 +42,8 @@ import { Route as AuthenticatedSettingsDisplayRouteImport } from './routes/_auth
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedSettingsAccountRouteImport } from './routes/_authenticated/settings/account'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as authDropshippingSignUpRouteImport } from './routes/(auth)/dropshipping/sign-up'
+import { Route as authDropshippingSignInRouteImport } from './routes/(auth)/dropshipping/sign-in'
 
 const StorefrontSetupRoute = StorefrontSetupRouteImport.update({
   id: '/storefront-setup',
@@ -218,6 +220,16 @@ const AuthenticatedErrorsErrorRoute =
     path: '/errors/$error',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const authDropshippingSignUpRoute = authDropshippingSignUpRouteImport.update({
+  id: '/(auth)/dropshipping/sign-up',
+  path: '/dropshipping/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const authDropshippingSignInRoute = authDropshippingSignInRouteImport.update({
+  id: '/(auth)/dropshipping/sign-in',
+  path: '/dropshipping/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -241,6 +253,8 @@ export interface FileRoutesByFullPath {
   '/storefront': typeof AuthenticatedStorefrontRoute
   '/suppliers': typeof AuthenticatedSuppliersRoute
   '/trade': typeof AuthenticatedTradeRoute
+  '/dropshipping/sign-in': typeof authDropshippingSignInRoute
+  '/dropshipping/sign-up': typeof authDropshippingSignUpRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -274,6 +288,8 @@ export interface FileRoutesByTo {
   '/suppliers': typeof AuthenticatedSuppliersRoute
   '/trade': typeof AuthenticatedTradeRoute
   '/': typeof AuthenticatedIndexRoute
+  '/dropshipping/sign-in': typeof authDropshippingSignInRoute
+  '/dropshipping/sign-up': typeof authDropshippingSignUpRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -310,6 +326,8 @@ export interface FileRoutesById {
   '/_authenticated/suppliers': typeof AuthenticatedSuppliersRoute
   '/_authenticated/trade': typeof AuthenticatedTradeRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/(auth)/dropshipping/sign-in': typeof authDropshippingSignInRoute
+  '/(auth)/dropshipping/sign-up': typeof authDropshippingSignUpRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -346,6 +364,8 @@ export interface FileRouteTypes {
     | '/storefront'
     | '/suppliers'
     | '/trade'
+    | '/dropshipping/sign-in'
+    | '/dropshipping/sign-up'
     | '/errors/$error'
     | '/settings/account'
     | '/settings/appearance'
@@ -379,6 +399,8 @@ export interface FileRouteTypes {
     | '/suppliers'
     | '/trade'
     | '/'
+    | '/dropshipping/sign-in'
+    | '/dropshipping/sign-up'
     | '/errors/$error'
     | '/settings/account'
     | '/settings/appearance'
@@ -414,6 +436,8 @@ export interface FileRouteTypes {
     | '/_authenticated/suppliers'
     | '/_authenticated/trade'
     | '/_authenticated/'
+    | '/(auth)/dropshipping/sign-in'
+    | '/(auth)/dropshipping/sign-up'
     | '/_authenticated/errors/$error'
     | '/_authenticated/settings/account'
     | '/_authenticated/settings/appearance'
@@ -440,6 +464,8 @@ export interface RootRouteChildren {
   errors404Route: typeof errors404Route
   errors500Route: typeof errors500Route
   errors503Route: typeof errors503Route
+  authDropshippingSignInRoute: typeof authDropshippingSignInRoute
+  authDropshippingSignUpRoute: typeof authDropshippingSignUpRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -675,6 +701,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/(auth)/dropshipping/sign-up': {
+      id: '/(auth)/dropshipping/sign-up'
+      path: '/dropshipping/sign-up'
+      fullPath: '/dropshipping/sign-up'
+      preLoaderRoute: typeof authDropshippingSignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(auth)/dropshipping/sign-in': {
+      id: '/(auth)/dropshipping/sign-in'
+      path: '/dropshipping/sign-in'
+      fullPath: '/dropshipping/sign-in'
+      preLoaderRoute: typeof authDropshippingSignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -755,6 +795,8 @@ const rootRouteChildren: RootRouteChildren = {
   errors404Route: errors404Route,
   errors500Route: errors500Route,
   errors503Route: errors503Route,
+  authDropshippingSignInRoute: authDropshippingSignInRoute,
+  authDropshippingSignUpRoute: authDropshippingSignUpRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
