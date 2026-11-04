@@ -3,6 +3,7 @@ import {
   CirclePlus,
   Clock3,
   History,
+  Handshake,
   LayoutDashboard,
   List,
   Package,
@@ -26,6 +27,11 @@ export const sidebarData: SidebarData = {
           title: 'الرئيسية',
           url: '/',
           icon: LayoutDashboard,
+        },
+        {
+          title: 'Nalsh Trade',
+          url: '/trade',
+          icon: Handshake,
         },
         {
           title: 'المنتجات',
