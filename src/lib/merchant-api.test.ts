@@ -70,6 +70,36 @@ describe('merchant API transport', () => {
     }
   })
 
+  it('routes Nalsh Trade actions through the authenticated Worker', async () => {
+    localStorage.setItem('merchant_token', 'merchant-token')
+    mockedFetch.mockImplementation(async () =>
+      jsonResponse({ status: 'success' })
+    )
+
+    for (const action of [
+      'trade_get_context',
+      'trade_save_supplier_profile',
+      'trade_list_marketplace',
+      'trade_list_my_offers',
+      'trade_save_offer',
+      'trade_import_offer',
+      'trade_list_imports',
+      'trade_update_import_price',
+      'trade_list_orders',
+      'trade_update_supplier_order',
+      'trade_admin_queue',
+      'trade_review_item',
+    ]) {
+      await apiRequest(action, {}, csrfToken)
+    }
+
+    expect(mockedFetch).toHaveBeenCalledTimes(12)
+    for (const [url, options] of mockedFetch.mock.calls) {
+      expect(url).toBe('/api/work/')
+      expect(options?.credentials).toBe('omit')
+    }
+  })
+
   it('keeps Worker actions behind the secure proxy when the Worker is unavailable', async () => {
     localStorage.setItem('merchant_token', 'merchant-token')
     mockedFetch.mockRejectedValue(new TypeError('Failed to fetch'))

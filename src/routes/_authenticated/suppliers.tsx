@@ -1,9 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { SupplierWorkspace } from '@/features/trade'
 
 export const Route = createFileRoute('/_authenticated/suppliers')({
-  component: RouteComponent,
+  component: SupplierWorkspace,
 })
-
-function RouteComponent() {
-  return <div>Hello "/_authenticated/suppliers"!</div>
-}
