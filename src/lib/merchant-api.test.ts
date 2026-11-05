@@ -70,57 +70,35 @@ describe('merchant API transport', () => {
     }
   })
 
-  it('routes Nalsh Trade actions through the authenticated Worker', async () => {
+  it('routes owned-product sharing actions through the authenticated Worker', async () => {
     localStorage.setItem('merchant_token', 'merchant-token')
     mockedFetch.mockImplementation(async () =>
       jsonResponse({ status: 'success' })
     )
 
-    for (const action of [
-      'trade_get_context',
-      'trade_save_supplier_profile',
-      'trade_list_marketplace',
-      'trade_list_my_offers',
-      'trade_save_offer',
-      'trade_import_offer',
-      'trade_list_imports',
-      'trade_update_import_price',
-      'trade_list_orders',
-      'trade_update_supplier_order',
-      'trade_admin_queue',
-      'trade_review_item',
-    ]) {
+    for (const action of ['set_product_sharing', 'list_my_shared_products']) {
       await apiRequest(action, {}, csrfToken)
     }
 
-    expect(mockedFetch).toHaveBeenCalledTimes(12)
+    expect(mockedFetch).toHaveBeenCalledTimes(2)
     for (const [url, options] of mockedFetch.mock.calls) {
       expect(url).toBe('/api/work/')
       expect(options?.credentials).toBe('omit')
     }
   })
 
-  it('routes shared catalog actions through the authenticated Worker', async () => {
-    localStorage.setItem('merchant_token', 'merchant-token')
-    mockedFetch.mockImplementation(async () =>
-      jsonResponse({ status: 'success' })
-    )
-
+  it('rejects catalog discovery and imports', async () => {
     for (const action of [
-      'set_product_sharing',
-      'list_my_shared_products',
       'list_shared_product_catalog',
       'list_my_shared_product_imports',
       'import_shared_product',
     ]) {
-      await apiRequest(action, {}, csrfToken)
+      await expect(apiRequest(action, {}, csrfToken)).rejects.toThrow(
+        `إجراء API غير مسموح به: ${action}`
+      )
     }
 
-    expect(mockedFetch).toHaveBeenCalledTimes(5)
-    for (const [url, options] of mockedFetch.mock.calls) {
-      expect(url).toBe('/api/work/')
-      expect(options?.credentials).toBe('omit')
-    }
+    expect(mockedFetch).not.toHaveBeenCalled()
   })
 
   it('keeps Worker actions behind the secure proxy when the Worker is unavailable', async () => {

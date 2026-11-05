@@ -2,7 +2,6 @@ import {
   Boxes,
   CirclePlus,
   Clock3,
-  Handshake,
   History,
   LayoutDashboard,
   List,
@@ -27,16 +26,6 @@ export const sidebarData: SidebarData = {
           title: 'الرئيسية',
           url: '/',
           icon: LayoutDashboard,
-        },
-        {
-          title: 'كتالوج التجار',
-          url: '/shared-catalog',
-          icon: Handshake,
-        },
-        {
-          title: 'الموردون',
-          url: '/suppliers',
-          icon: Boxes,
         },
         {
           title: 'المنتجات',

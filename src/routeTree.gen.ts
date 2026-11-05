@@ -12,11 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as StorefrontSetupRouteImport } from './routes/storefront-setup'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
-import { Route as AuthenticatedTradeRouteImport } from './routes/_authenticated/trade'
-import { Route as AuthenticatedSuppliersRouteImport } from './routes/_authenticated/suppliers'
 import { Route as AuthenticatedStorefrontRouteImport } from './routes/_authenticated/storefront'
 import { Route as AuthenticatedStoreSettingsRouteImport } from './routes/_authenticated/store-settings'
-import { Route as AuthenticatedSharedCatalogRouteImport } from './routes/_authenticated/shared-catalog'
 import { Route as AuthenticatedProductsRouteImport } from './routes/_authenticated/products'
 import { Route as AuthenticatedProductCatalogRouteImport } from './routes/_authenticated/product-catalog'
 import { Route as AuthenticatedPreviousOrdersRouteImport } from './routes/_authenticated/previous-orders'
@@ -60,16 +57,6 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedTradeRoute = AuthenticatedTradeRouteImport.update({
-  id: '/trade',
-  path: '/trade',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedSuppliersRoute = AuthenticatedSuppliersRouteImport.update({
-  id: '/suppliers',
-  path: '/suppliers',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedStorefrontRoute = AuthenticatedStorefrontRouteImport.update({
   id: '/storefront',
   path: '/storefront',
@@ -79,12 +66,6 @@ const AuthenticatedStoreSettingsRoute =
   AuthenticatedStoreSettingsRouteImport.update({
     id: '/store-settings',
     path: '/store-settings',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedSharedCatalogRoute =
-  AuthenticatedSharedCatalogRouteImport.update({
-    id: '/shared-catalog',
-    path: '/shared-catalog',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedProductsRoute = AuthenticatedProductsRouteImport.update({
@@ -256,11 +237,8 @@ export interface FileRoutesByFullPath {
   '/previous-orders': typeof AuthenticatedPreviousOrdersRoute
   '/product-catalog': typeof AuthenticatedProductCatalogRoute
   '/products': typeof AuthenticatedProductsRoute
-  '/shared-catalog': typeof AuthenticatedSharedCatalogRoute
   '/store-settings': typeof AuthenticatedStoreSettingsRoute
   '/storefront': typeof AuthenticatedStorefrontRoute
-  '/suppliers': typeof AuthenticatedSuppliersRoute
-  '/trade': typeof AuthenticatedTradeRoute
   '/dropshipping/sign-in': typeof authDropshippingSignInRoute
   '/dropshipping/sign-up': typeof authDropshippingSignUpRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
@@ -291,11 +269,8 @@ export interface FileRoutesByTo {
   '/previous-orders': typeof AuthenticatedPreviousOrdersRoute
   '/product-catalog': typeof AuthenticatedProductCatalogRoute
   '/products': typeof AuthenticatedProductsRoute
-  '/shared-catalog': typeof AuthenticatedSharedCatalogRoute
   '/store-settings': typeof AuthenticatedStoreSettingsRoute
   '/storefront': typeof AuthenticatedStorefrontRoute
-  '/suppliers': typeof AuthenticatedSuppliersRoute
-  '/trade': typeof AuthenticatedTradeRoute
   '/': typeof AuthenticatedIndexRoute
   '/dropshipping/sign-in': typeof authDropshippingSignInRoute
   '/dropshipping/sign-up': typeof authDropshippingSignUpRoute
@@ -330,11 +305,8 @@ export interface FileRoutesById {
   '/_authenticated/previous-orders': typeof AuthenticatedPreviousOrdersRoute
   '/_authenticated/product-catalog': typeof AuthenticatedProductCatalogRoute
   '/_authenticated/products': typeof AuthenticatedProductsRoute
-  '/_authenticated/shared-catalog': typeof AuthenticatedSharedCatalogRoute
   '/_authenticated/store-settings': typeof AuthenticatedStoreSettingsRoute
   '/_authenticated/storefront': typeof AuthenticatedStorefrontRoute
-  '/_authenticated/suppliers': typeof AuthenticatedSuppliersRoute
-  '/_authenticated/trade': typeof AuthenticatedTradeRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/(auth)/dropshipping/sign-in': typeof authDropshippingSignInRoute
   '/(auth)/dropshipping/sign-up': typeof authDropshippingSignUpRoute
@@ -370,11 +342,8 @@ export interface FileRouteTypes {
     | '/previous-orders'
     | '/product-catalog'
     | '/products'
-    | '/shared-catalog'
     | '/store-settings'
     | '/storefront'
-    | '/suppliers'
-    | '/trade'
     | '/dropshipping/sign-in'
     | '/dropshipping/sign-up'
     | '/errors/$error'
@@ -405,11 +374,8 @@ export interface FileRouteTypes {
     | '/previous-orders'
     | '/product-catalog'
     | '/products'
-    | '/shared-catalog'
     | '/store-settings'
     | '/storefront'
-    | '/suppliers'
-    | '/trade'
     | '/'
     | '/dropshipping/sign-in'
     | '/dropshipping/sign-up'
@@ -443,11 +409,8 @@ export interface FileRouteTypes {
     | '/_authenticated/previous-orders'
     | '/_authenticated/product-catalog'
     | '/_authenticated/products'
-    | '/_authenticated/shared-catalog'
     | '/_authenticated/store-settings'
     | '/_authenticated/storefront'
-    | '/_authenticated/suppliers'
-    | '/_authenticated/trade'
     | '/_authenticated/'
     | '/(auth)/dropshipping/sign-in'
     | '/(auth)/dropshipping/sign-up'
@@ -504,20 +467,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/trade': {
-      id: '/_authenticated/trade'
-      path: '/trade'
-      fullPath: '/trade'
-      preLoaderRoute: typeof AuthenticatedTradeRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/suppliers': {
-      id: '/_authenticated/suppliers'
-      path: '/suppliers'
-      fullPath: '/suppliers'
-      preLoaderRoute: typeof AuthenticatedSuppliersRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/storefront': {
       id: '/_authenticated/storefront'
       path: '/storefront'
@@ -530,13 +479,6 @@ declare module '@tanstack/react-router' {
       path: '/store-settings'
       fullPath: '/store-settings'
       preLoaderRoute: typeof AuthenticatedStoreSettingsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/shared-catalog': {
-      id: '/_authenticated/shared-catalog'
-      path: '/shared-catalog'
-      fullPath: '/shared-catalog'
-      preLoaderRoute: typeof AuthenticatedSharedCatalogRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/products': {
@@ -767,11 +709,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPreviousOrdersRoute: typeof AuthenticatedPreviousOrdersRoute
   AuthenticatedProductCatalogRoute: typeof AuthenticatedProductCatalogRoute
   AuthenticatedProductsRoute: typeof AuthenticatedProductsRoute
-  AuthenticatedSharedCatalogRoute: typeof AuthenticatedSharedCatalogRoute
   AuthenticatedStoreSettingsRoute: typeof AuthenticatedStoreSettingsRoute
   AuthenticatedStorefrontRoute: typeof AuthenticatedStorefrontRoute
-  AuthenticatedSuppliersRoute: typeof AuthenticatedSuppliersRoute
-  AuthenticatedTradeRoute: typeof AuthenticatedTradeRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedAppsIndexRoute: typeof AuthenticatedAppsIndexRoute
@@ -787,11 +726,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPreviousOrdersRoute: AuthenticatedPreviousOrdersRoute,
   AuthenticatedProductCatalogRoute: AuthenticatedProductCatalogRoute,
   AuthenticatedProductsRoute: AuthenticatedProductsRoute,
-  AuthenticatedSharedCatalogRoute: AuthenticatedSharedCatalogRoute,
   AuthenticatedStoreSettingsRoute: AuthenticatedStoreSettingsRoute,
   AuthenticatedStorefrontRoute: AuthenticatedStorefrontRoute,
-  AuthenticatedSuppliersRoute: AuthenticatedSuppliersRoute,
-  AuthenticatedTradeRoute: AuthenticatedTradeRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedAppsIndexRoute: AuthenticatedAppsIndexRoute,
