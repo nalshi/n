@@ -18,6 +18,7 @@ import { Route as AuthenticatedProductsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedProductCatalogRouteImport } from './routes/_authenticated/product-catalog'
 import { Route as AuthenticatedPreviousOrdersRouteImport } from './routes/_authenticated/previous-orders'
 import { Route as AuthenticatedOrdersRouteImport } from './routes/_authenticated/orders'
+import { Route as AuthenticatedAccountingRouteImport } from './routes/_authenticated/accounting'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
@@ -88,6 +89,11 @@ const AuthenticatedPreviousOrdersRoute =
 const AuthenticatedOrdersRoute = AuthenticatedOrdersRouteImport.update({
   id: '/orders',
   path: '/orders',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAccountingRoute = AuthenticatedAccountingRouteImport.update({
+  id: '/accounting',
+  path: '/accounting',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const errors503Route = errors503RouteImport.update({
@@ -233,6 +239,7 @@ export interface FileRoutesByFullPath {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/accounting': typeof AuthenticatedAccountingRoute
   '/orders': typeof AuthenticatedOrdersRoute
   '/previous-orders': typeof AuthenticatedPreviousOrdersRoute
   '/product-catalog': typeof AuthenticatedProductCatalogRoute
@@ -265,6 +272,7 @@ export interface FileRoutesByTo {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/accounting': typeof AuthenticatedAccountingRoute
   '/orders': typeof AuthenticatedOrdersRoute
   '/previous-orders': typeof AuthenticatedPreviousOrdersRoute
   '/product-catalog': typeof AuthenticatedProductCatalogRoute
@@ -301,6 +309,7 @@ export interface FileRoutesById {
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
+  '/_authenticated/accounting': typeof AuthenticatedAccountingRoute
   '/_authenticated/orders': typeof AuthenticatedOrdersRoute
   '/_authenticated/previous-orders': typeof AuthenticatedPreviousOrdersRoute
   '/_authenticated/product-catalog': typeof AuthenticatedProductCatalogRoute
@@ -338,6 +347,7 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/accounting'
     | '/orders'
     | '/previous-orders'
     | '/product-catalog'
@@ -370,6 +380,7 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/accounting'
     | '/orders'
     | '/previous-orders'
     | '/product-catalog'
@@ -405,6 +416,7 @@ export interface FileRouteTypes {
     | '/(errors)/404'
     | '/(errors)/500'
     | '/(errors)/503'
+    | '/_authenticated/accounting'
     | '/_authenticated/orders'
     | '/_authenticated/previous-orders'
     | '/_authenticated/product-catalog'
@@ -507,6 +519,13 @@ declare module '@tanstack/react-router' {
       path: '/orders'
       fullPath: '/orders'
       preLoaderRoute: typeof AuthenticatedOrdersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/accounting': {
+      id: '/_authenticated/accounting'
+      path: '/accounting'
+      fullPath: '/accounting'
+      preLoaderRoute: typeof AuthenticatedAccountingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/(errors)/503': {
@@ -705,6 +724,7 @@ const AuthenticatedSettingsRouteRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
+  AuthenticatedAccountingRoute: typeof AuthenticatedAccountingRoute
   AuthenticatedOrdersRoute: typeof AuthenticatedOrdersRoute
   AuthenticatedPreviousOrdersRoute: typeof AuthenticatedPreviousOrdersRoute
   AuthenticatedProductCatalogRoute: typeof AuthenticatedProductCatalogRoute
@@ -722,6 +742,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
+  AuthenticatedAccountingRoute: AuthenticatedAccountingRoute,
   AuthenticatedOrdersRoute: AuthenticatedOrdersRoute,
   AuthenticatedPreviousOrdersRoute: AuthenticatedPreviousOrdersRoute,
   AuthenticatedProductCatalogRoute: AuthenticatedProductCatalogRoute,

@@ -34,8 +34,20 @@ const WORKER_ACTIONS = new Set([
   'get_color_palette_admin',
   'save_color_palette_draft',
   'publish_color_palette',
-  'set_product_sharing',
-  'list_my_shared_products',
+  'get_accounting_settings',
+  'save_accounting_settings',
+  'initialize_accounting',
+  'create_fiscal_year',
+  'list_accounting_periods',
+  'close_accounting_period',
+  'list_accounts',
+  'create_account',
+  'create_journal_entry',
+  'list_journal_entries',
+  'get_journal_entry',
+  'post_journal_entry',
+  'reverse_journal_entry',
+  'list_accounting_audit_log',
 ])
 const LEGACY_API_ACTIONS = new Set([
   'check_phone',
@@ -70,8 +82,6 @@ export type ApiResult = {
   category?: unknown
   data?: unknown
   products?: unknown
-  product_id?: string
-  already_imported?: boolean
   orders?: unknown
   accounts?: {
     merchant?: { name?: string }

@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "knip": "knip",
     "test": "vitest run --browser.headless",
-    "test:worker": "node --test work-surs/src/index.node-test.js",
+    "test:worker": "pnpm --dir ../../work-surs test:worker",
     "test:watch": "vitest --browser.headless",
     "test:ui": "vitest --ui --browser.headless",
     "test:browser": "vitest",

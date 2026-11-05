@@ -1,5 +1,6 @@
 import {
   Boxes,
+  Calculator,
   CirclePlus,
   Clock3,
   History,
@@ -79,6 +80,16 @@ export const sidebarData: SidebarData = {
               icon: Store,
             },
           ],
+        },
+      ],
+    },
+    {
+      title: 'الشؤون المالية',
+      items: [
+        {
+          title: 'المحاسبة',
+          url: '/accounting',
+          icon: Calculator,
         },
       ],
     },

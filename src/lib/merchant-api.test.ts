@@ -70,15 +70,14 @@ describe('merchant API transport', () => {
     }
   })
 
-  it('routes owned-product sharing actions through the authenticated Worker', async () => {
+  it('routes accounting actions through the authenticated Worker', async () => {
     localStorage.setItem('merchant_token', 'merchant-token')
     mockedFetch.mockImplementation(async () =>
       jsonResponse({ status: 'success' })
     )
 
-    for (const action of ['set_product_sharing', 'list_my_shared_products']) {
-      await apiRequest(action, {}, csrfToken)
-    }
+    await apiRequest('get_accounting_settings', {}, csrfToken)
+    await apiRequest('list_accounts', {}, csrfToken)
 
     expect(mockedFetch).toHaveBeenCalledTimes(2)
     for (const [url, options] of mockedFetch.mock.calls) {
@@ -87,11 +86,17 @@ describe('merchant API transport', () => {
     }
   })
 
-  it('rejects catalog discovery and imports', async () => {
+  it('rejects retired product-sharing and supplier-market actions', async () => {
     for (const action of [
+      'set_product_sharing',
+      'list_my_shared_products',
       'list_shared_product_catalog',
       'list_my_shared_product_imports',
       'import_shared_product',
+      'trade_get_context',
+      'trade_save_supplier_profile',
+      'trade_list_marketplace',
+      'trade_import_offer',
     ]) {
       await expect(apiRequest(action, {}, csrfToken)).rejects.toThrow(
         `إجراء API غير مسموح به: ${action}`
