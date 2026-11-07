@@ -83,8 +83,6 @@ export function AccountingLayout({
   onTabChange?: (tab: AccountingTabId) => void
 }) {
   const merchantId = useMerchantIdentity()
-  const routerState = useRouterState()
-  const currentPath = routerState.location.pathname
 
   const settingsQuery = useQuery({
     queryKey: [...accountingQueryKeys(merchantId || ''), 'settings'],

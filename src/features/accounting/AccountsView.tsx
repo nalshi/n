@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BookOpen,
   Check,
   FolderTree,
   Lock,
@@ -14,9 +13,6 @@ import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card'
 import {
   Dialog,
@@ -340,6 +336,19 @@ export function AccountsView() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className='flex items-center gap-2 pt-1'>
+              <input
+                type='checkbox'
+                id='acc-is-postable'
+                checked={isPostable}
+                onChange={(e) => setIsPostable(e.target.checked)}
+                className='size-4 rounded accent-primary'
+              />
+              <Label htmlFor='acc-is-postable' className='cursor-pointer text-xs'>
+                حساب قابل للترحيل (يقبل تسجيل القيود مباشرة)
+              </Label>
             </div>
 
             <DialogFooter className='gap-2 sm:gap-0 pt-2'>

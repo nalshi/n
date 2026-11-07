@@ -13,6 +13,9 @@ import {
   ShoppingCart,
   TrendingDown,
   TrendingUp,
+  Truck,
+  Users,
+  Wallet,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

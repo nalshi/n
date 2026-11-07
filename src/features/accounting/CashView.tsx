@@ -5,10 +5,8 @@ import {
   ArrowRightLeft,
   ArrowUpRight,
   CheckCircle2,
-  Coins,
   LoaderCircle,
   Plus,
-  Receipt,
   Search,
   Wallet,
 } from 'lucide-react'
@@ -50,8 +48,6 @@ import {
   fetchPayments,
   formatMinorUnits,
   recordTransfer,
-  type CashDeskItem,
-  type PaymentItem,
 } from './accounting-data'
 
 export function CashView() {

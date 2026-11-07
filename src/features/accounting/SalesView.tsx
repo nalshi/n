@@ -71,6 +71,7 @@ export function SalesView() {
     (j) => j.source_type === 'sales_invoice'
   )
   const customers = contactsQuery.data || []
+  const currency = 'YER'
 
   const postMutation = useMutation({
     mutationFn: postSalesOrder,
