@@ -18,6 +18,17 @@ export type AccountingSettings = {
   policy_confirmed: boolean
 }
 
+export type AccountingOverview = {
+  policy_confirmed: boolean
+  accounts_count: number
+  open_periods: number
+  closed_periods: number
+  draft_journals: number
+  posted_journals: number
+  readiness_label: string
+  needs_attention: string | null
+}
+
 export type AccountingAccount = {
   id: string
   parent_id: string | null
@@ -78,7 +89,7 @@ export type JournalEntry = {
   period_id: string
   entry_date: string
   description: string
-  source_type: 'manual' | 'reversal'
+  source_type: string
   currency: string
   status: 'draft' | 'posted'
   created_at: number
@@ -286,11 +297,11 @@ function parseJournal(value: unknown): JournalEntry {
   const record = asRecord(value, 'القيد المحاسبي')
   const status = requiredString(record, 'status', 'حالة القيد')
   const sourceType = requiredString(record, 'source_type', 'مصدر القيد')
-  if (
-    (status !== 'draft' && status !== 'posted') ||
-    (sourceType !== 'manual' && sourceType !== 'reversal')
-  ) {
-    throw new Error('حالة القيد أو مصدره غير صالح.')
+  if (status !== 'draft' && status !== 'posted') {
+    throw new Error('حالة القيد غير صالحة.')
+  }
+  if (!sourceType.trim()) {
+    throw new Error('مصدر القيد غير صالح.')
   }
   const lines = record.lines
   return {
@@ -329,6 +340,57 @@ function parseJournal(value: unknown): JournalEntry {
           }),
         }
       : {}),
+  }
+}
+
+export function summarizeAccountingOverview({
+  settings,
+  accounts,
+  periods,
+  journals,
+}: {
+  settings?: Pick<
+    AccountingSettings,
+    'policy_confirmed' | 'functional_currency' | 'accounting_start_date'
+  > | null
+  accounts?: Array<Pick<AccountingAccount, 'id'>> | null
+  periods?: Array<Pick<AccountingPeriod, 'status'>> | null
+  journals?: Array<Pick<JournalEntry, 'status'>> | null
+}): AccountingOverview {
+  const accountCount = accounts?.length ?? 0
+  const openPeriods = periods?.filter((period) => period.status === 'open').length ?? 0
+  const closedPeriods = periods?.filter((period) => period.status === 'closed').length ?? 0
+  const draftJournals = journals?.filter((journal) => journal.status === 'draft').length ?? 0
+  const postedJournals = journals?.filter((journal) => journal.status === 'posted').length ?? 0
+  const policyConfirmed = Boolean(settings?.policy_confirmed)
+
+  let needsAttention: string | null = null
+  if (!policyConfirmed) {
+    needsAttention = 'تحتاج إلى اعتماد سياسة المحاسبة قبل ترحيل القيود.'
+  } else if (accountCount === 0) {
+    needsAttention = 'لم يتم تهيئة دليل الحسابات بعد.'
+  } else if (openPeriods === 0) {
+    needsAttention = 'لا توجد فترات مالية مفتوحة لتسجيل القيود.'
+  } else if (draftJournals > 0) {
+    needsAttention = 'هناك قيود مسودة تحتاج إلى مراجعة أو ترحيل.'
+  }
+
+  let readinessLabel = 'في انتظار التهيئة'
+  if (policyConfirmed && accountCount > 0 && openPeriods > 0) {
+    readinessLabel = 'جاهز للتشغيل المحاسبي'
+  } else if (policyConfirmed || accountCount > 0 || openPeriods > 0) {
+    readinessLabel = 'يحتاج إلى إكمال إعدادات أساسية'
+  }
+
+  return {
+    policy_confirmed: policyConfirmed,
+    accounts_count: accountCount,
+    open_periods: openPeriods,
+    closed_periods: closedPeriods,
+    draft_journals: draftJournals,
+    posted_journals: postedJournals,
+    readiness_label: readinessLabel,
+    needs_attention: needsAttention,
   }
 }
 
@@ -471,7 +533,7 @@ export function currencyFractionDigits(currency: string) {
   }
 }
 
-export function amountToMinorUnits(amount: string, currency: string) {
+export function amountToMinorUnits(amount: string, currency = 'YER') {
   const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/.exec(amount.trim())
   if (!match) throw new Error('أدخل مبلغًا موجبًا بصيغة رقمية صحيحة.')
 
@@ -491,8 +553,10 @@ export function amountToMinorUnits(amount: string, currency: string) {
   return Number(minorUnits)
 }
 
-export function formatMinorUnits(amount: number, currency: string) {
-  if (!Number.isSafeInteger(amount) || amount < 0) {
+export function formatMinorUnits(amount: number, currency = 'YER') {
+  const isNegative = amount < 0
+  const absAmount = Math.abs(amount)
+  if (!Number.isSafeInteger(absAmount)) {
     throw new Error('المبلغ المخزن غير صالح.')
   }
   const digits = currencyFractionDigits(currency)
@@ -502,10 +566,13 @@ export function formatMinorUnits(amount: number, currency: string) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })
-  const parts = formatter.formatToParts(BigInt(amount) / 10n ** BigInt(digits))
-  if (digits === 0) return parts.map((part) => part.value).join('')
+  const parts = formatter.formatToParts(BigInt(absAmount) / 10n ** BigInt(digits))
+  if (digits === 0) {
+    const res = parts.map((part) => part.value).join('')
+    return isNegative ? `(${res})` : res
+  }
 
-  const fraction = String(BigInt(amount) % 10n ** BigInt(digits)).padStart(
+  const fraction = String(BigInt(absAmount) % 10n ** BigInt(digits)).padStart(
     digits,
     '0'
   )
@@ -526,11 +593,526 @@ export function formatMinorUnits(amount: number, currency: string) {
     if (parts[index].type === 'integer') lastIntegerIndex = index
   }
   if (lastIntegerIndex < 0) throw new Error('تعذر تنسيق المبلغ.')
-  return parts
+  const formatted = parts
     .map(
       (part, index) =>
         part.value +
         (index === lastIntegerIndex ? `${decimal}${localizedFraction}` : '')
     )
     .join('')
+  return isNegative ? `(${formatted})` : formatted
 }
+
+// ==============================================================================
+// ENTERPRISE ACCOUNTING MODULES API CLIENT
+// ==============================================================================
+
+export type ContactItem = {
+  id: string
+  type: 'customer' | 'supplier' | 'both'
+  name: string
+  phone: string | null
+  email: string | null
+  tax_number: string | null
+  address: string | null
+  opening_balance_minor_units: number
+  opening_balance_type: 'debit' | 'credit'
+  live_balance_minor_units: number
+  total_debit_minor_units: number
+  total_credit_minor_units: number
+}
+
+export type PurchaseItem = {
+  id: string
+  bill_number: string
+  supplier_id: string | null
+  supplier_name: string
+  invoice_date: string
+  due_date: string | null
+  payment_type: 'cash' | 'credit' | 'bank'
+  subtotal_minor_units: number
+  tax_minor_units: number
+  discount_minor_units: number
+  total_minor_units: number
+  paid_minor_units: number
+  status: 'draft' | 'posted' | 'paid' | 'partially_paid' | 'reversed'
+  notes: string | null
+  journal_id: string | null
+  created_at: number
+}
+
+export type ExpenseItem = {
+  id: string
+  expense_number: string
+  expense_date: string
+  expense_account_id: string
+  payment_account_id: string
+  payment_method: 'cash' | 'bank' | 'accrued'
+  amount_minor_units: number
+  tax_minor_units: number
+  vendor_name: string | null
+  description: string
+  category: string
+  receipt_url: string | null
+  status: 'draft' | 'posted' | 'reversed'
+  journal_id: string | null
+  expense_account_name?: string
+  payment_account_name?: string
+}
+
+export type CashDeskItem = {
+  id: string
+  name: string
+  type: 'cash' | 'bank'
+  account_id: string
+  account_number: string | null
+  bank_name: string | null
+  currency: string
+  is_default: boolean
+  current_balance_minor_units: number
+  total_debit_minor_units: number
+  total_credit_minor_units: number
+}
+
+export type PaymentItem = {
+  id: string
+  payment_number: string
+  payment_type: 'receipt' | 'voucher' | 'transfer'
+  payment_date: string
+  source_account_id: string
+  destination_account_id: string
+  amount_minor_units: number
+  currency: string
+  beneficiary_name: string | null
+  description: string
+  status: 'draft' | 'posted' | 'reversed'
+  journal_id: string | null
+  created_at: number
+}
+
+export async function fetchContacts(type?: string, search?: string) {
+  const result = await request('list_contacts', { type, search })
+  return (asRecord(result, 'جهات الاتصال').data as ContactItem[]) || []
+}
+
+export async function createContact(payload: {
+  name: string
+  type: 'customer' | 'supplier' | 'both'
+  phone?: string
+  email?: string
+  tax_number?: string
+  address?: string
+  opening_balance_minor_units?: number
+  opening_balance_type?: 'debit' | 'credit'
+}) {
+  return request('create_contact', payload)
+}
+
+export async function fetchContactStatement(
+  contactId: string,
+  startDate?: string,
+  endDate?: string
+) {
+  const result = await request('get_contact_statement', {
+    contact_id: contactId,
+    start_date: startDate,
+    end_date: endDate,
+  })
+  return asRecord(result, 'كشف الحساب').data as Record<string, unknown>
+}
+
+export async function fetchPurchases(status?: string, page = 1, limit = 50) {
+  const result = await request('list_purchases', { status, page, limit })
+  return (
+    (asRecord(result, 'المشتريات').data as {
+      purchases: PurchaseItem[]
+      total: number
+      page: number
+      limit: number
+    }) || { purchases: [], total: 0, page: 1, limit: 50 }
+  )
+}
+
+export async function createPurchase(payload: {
+  bill_number: string
+  supplier_name: string
+  supplier_id?: string
+  invoice_date: string
+  due_date?: string
+  payment_type: 'cash' | 'credit' | 'bank'
+  subtotal_minor_units: number
+  tax_minor_units?: number
+  discount_minor_units?: number
+  notes?: string
+  post_immediately?: boolean
+}) {
+  return request('create_purchase', payload)
+}
+
+export async function postPurchase(purchaseId: string) {
+  return request('post_purchase', { purchase_id: purchaseId })
+}
+
+export async function reversePurchase(purchaseId: string, reason: string) {
+  return request('reverse_purchase', { purchase_id: purchaseId, reason })
+}
+
+export async function fetchExpenses(
+  status?: string,
+  category?: string,
+  page = 1,
+  limit = 50
+) {
+  const result = await request('list_expenses', {
+    status,
+    category,
+    page,
+    limit,
+  })
+  return (
+    (asRecord(result, 'المصروفات').data as {
+      expenses: ExpenseItem[]
+      total: number
+      page: number
+      limit: number
+    }) || { expenses: [], total: 0, page: 1, limit: 50 }
+  )
+}
+
+export async function createExpense(payload: {
+  expense_number: string
+  expense_date: string
+  category: string
+  description: string
+  amount_minor_units: number
+  tax_minor_units?: number
+  vendor_name?: string
+  payment_method?: 'cash' | 'bank' | 'accrued'
+  receipt_url?: string
+  post_immediately?: boolean
+}) {
+  return request('create_expense', payload)
+}
+
+export async function postExpense(expenseId: string) {
+  return request('post_expense', { expense_id: expenseId })
+}
+
+export async function reverseExpense(expenseId: string, reason: string) {
+  return request('reverse_expense', { expense_id: expenseId, reason })
+}
+
+export async function fetchCashDesks() {
+  const result = await request('list_cash_desks')
+  return (asRecord(result, 'الصناديق والبنوك').data as CashDeskItem[]) || []
+}
+
+export async function createCashDesk(payload: {
+  name: string
+  type: 'cash' | 'bank'
+  account_number?: string
+  bank_name?: string
+}) {
+  return request('create_cash_desk', payload)
+}
+
+export async function recordTransfer(payload: {
+  source_account_id: string
+  destination_account_id: string
+  amount_minor_units: number
+  transfer_date?: string
+  description?: string
+}) {
+  return request('record_transfer', payload)
+}
+
+export async function fetchPayments(type?: string, page = 1, limit = 50) {
+  const result = await request('list_payments', { type, page, limit })
+  return (
+    (asRecord(result, 'السندات').data as {
+      payments: PaymentItem[]
+      page: number
+      limit: number
+    }) || { payments: [], page: 1, limit: 50 }
+  )
+}
+
+export async function createPayment(payload: {
+  payment_number: string
+  payment_type: 'receipt' | 'voucher'
+  payment_date: string
+  amount_minor_units: number
+  description: string
+  beneficiary_name?: string
+  reference_id?: string
+  cash_account_id?: string
+  contact_account_id?: string
+}) {
+  return request('create_payment', payload)
+}
+
+export async function postSalesOrder(payload: {
+  order_number: string
+  customer_name?: string
+  customer_id?: string
+  order_date?: string
+  payment_method?: 'cash' | 'credit'
+  total_amount_minor_units: number
+  tax_minor_units?: number
+  cogs_amount_minor_units?: number
+}) {
+  return request('post_sales_order', payload)
+}
+
+export async function fetchInventoryValuation() {
+  const result = await request('get_inventory_valuation')
+  return asRecord(result, 'تقييم المخزون').data as {
+    total_products: number
+    total_stock_count: number
+    grand_total_valuation_minor_units: number
+    costing_method: string
+    items: Array<{
+      product_id: string
+      name: string
+      stock_quantity: number
+      unit_cost_minor_units: number
+      total_cost_minor_units: number
+      costing_method: string
+    }>
+  }
+}
+
+export async function recordInventoryAdjustment(payload: {
+  adjustment_number?: string
+  adjustment_type: 'increase' | 'decrease'
+  amount_minor_units: number
+  reason: string
+  adjustment_date?: string
+}) {
+  return request('record_inventory_adjustment', payload)
+}
+
+export async function closeFiscalYear(fiscalYearId: string) {
+  return request('close_fiscal_year', { fiscal_year_id: fiscalYearId })
+}
+
+export async function fetchGeneralLedger(
+  startDate?: string,
+  endDate?: string,
+  accountId?: string
+) {
+  const result = await request('get_general_ledger', {
+    start_date: startDate,
+    end_date: endDate,
+    account_id: accountId,
+  })
+  return asRecord(result, 'دفتر الأستاذ').data as {
+    start_date: string | null
+    end_date: string | null
+    grand_opening_debit: number
+    grand_opening_credit: number
+    grand_period_debit: number
+    grand_period_credit: number
+    grand_closing_debit: number
+    grand_closing_credit: number
+    accounts: Array<{
+      account: {
+        id: string
+        account_code: string
+        name: string
+        account_type: string
+        normal_balance: string
+        parent_id: string | null
+      }
+      opening_debit: number
+      opening_credit: number
+      opening_balance: number
+      period_debit: number
+      period_credit: number
+      closing_balance: number
+      entries_count: number
+      entries: Array<{
+        line_id: string
+        line_number: number
+        journal_id: string
+        journal_number: string
+        entry_date: string
+        description: string
+        source_type: string
+        debit_minor_units: number
+        credit_minor_units: number
+        running_balance: number
+        posted_at: number | null
+      }>
+    }>
+  }
+}
+
+export async function fetchTrialBalance(
+  asOfDate?: string,
+  fromDate?: string,
+  periodId?: string
+) {
+  const result = await request('get_trial_balance', {
+    as_of_date: asOfDate,
+    from_date: fromDate,
+    period_id: periodId,
+  })
+  return asRecord(result, 'ميزان المراجعة').data as {
+    as_of_date: string | null
+    from_date: string | null
+    period_id: string | null
+    grand_total_debit: number
+    grand_total_credit: number
+    grand_ending_debit: number
+    grand_ending_credit: number
+    is_balanced: boolean
+    accounts: Array<{
+      id: string
+      account_code: string
+      name: string
+      account_type: string
+      normal_balance: string
+      is_postable: boolean
+      parent_id: string | null
+      total_debit: number
+      total_credit: number
+      net_balance: number
+      ending_debit: number
+      ending_credit: number
+    }>
+  }
+}
+
+export async function fetchProfitLoss(startDate?: string, endDate?: string) {
+  const result = await request('get_profit_loss', {
+    start_date: startDate,
+    end_date: endDate,
+  })
+  return asRecord(result, 'قائمة الدخل').data as {
+    start_date: string | null
+    end_date: string | null
+    revenues: Array<{
+      id: string
+      account_code: string
+      name: string
+      amount_minor_units: number
+    }>
+    total_revenue: number
+    costs: Array<{
+      id: string
+      account_code: string
+      name: string
+      amount_minor_units: number
+    }>
+    total_cost: number
+    gross_profit: number
+    expenses: Array<{
+      id: string
+      account_code: string
+      name: string
+      amount_minor_units: number
+    }>
+    total_expense: number
+    net_profit: number
+    is_profitable: boolean
+  }
+}
+
+export async function fetchBalanceSheet(asOfDate?: string) {
+  const result = await request('get_balance_sheet', { as_of_date: asOfDate })
+  return asRecord(result, 'الميزانية العمومية').data as {
+    as_of_date: string | null
+    assets: Array<{
+      id: string
+      account_code: string
+      name: string
+      amount_minor_units: number
+    }>
+    total_assets: number
+    liabilities: Array<{
+      id: string
+      account_code: string
+      name: string
+      amount_minor_units: number
+    }>
+    total_liabilities: number
+    equity: Array<{
+      id: string
+      account_code: string
+      name: string
+      amount_minor_units: number
+    }>
+    current_period_net_income: number
+    total_equity: number
+    total_liabilities_and_equity: number
+    is_balanced: boolean
+    difference: number
+  }
+}
+
+export async function fetchCashFlow(startDate?: string, endDate?: string) {
+  const result = await request('get_cash_flow', {
+    start_date: startDate,
+    end_date: endDate,
+  })
+  return asRecord(result, 'قائمة التدفقات النقدية').data as {
+    start_date: string | null
+    end_date: string | null
+    opening_cash: number
+    operating_cash_in: number
+    operating_cash_out: number
+    net_operating_cash_flow: number
+    financing_cash_in: number
+    financing_cash_out: number
+    net_financing_cash_flow: number
+    net_change_in_cash: number
+    closing_cash: number
+  }
+}
+
+export async function fetchTaxReport(startDate?: string, endDate?: string) {
+  const result = await request('get_tax_report', {
+    start_date: startDate,
+    end_date: endDate,
+  })
+  return asRecord(result, 'الإقرار الضريبي').data as {
+    start_date: string | null
+    end_date: string | null
+    taxable_sales_minor_units: number
+    output_tax_minor_units: number
+    input_tax_minor_units: number
+    net_tax_payable_minor_units: number
+    status: 'payable' | 'refundable'
+  }
+}
+
+export async function fetchAgingReport(
+  type: 'customer' | 'supplier',
+  asOfDate?: string
+) {
+  const result = await request('get_aging_report', {
+    type,
+    as_of_date: asOfDate,
+  })
+  return asRecord(result, 'تقرير أعمار الديون').data as {
+    type: 'customer' | 'supplier'
+    as_of_date: string
+    total_current: number
+    total_30_days: number
+    total_60_days: number
+    total_90_plus: number
+    grand_total_debt: number
+    items: Array<{
+      contact_id: string
+      name: string
+      phone: string | null
+      total_balance: number
+      bucket_current: number
+      bucket_30: number
+      bucket_60: number
+      bucket_90_plus: number
+    }>
+  }
+}
+

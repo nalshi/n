@@ -4,6 +4,7 @@ import {
   fiscalYearDates,
   formatMinorUnits,
   parseAccountingSettings,
+  summarizeAccountingOverview,
 } from './accounting-data'
 
 describe('accounting data helpers', () => {
@@ -58,5 +59,29 @@ describe('accounting data helpers', () => {
   it('formats amounts with the currency precision', () => {
     expect(formatMinorUnits(1234, 'USD')).toContain('١٢٫٣٤')
     expect(formatMinorUnits(12, 'JPY')).toContain('١٢')
+  })
+
+  it('summarizes the accounting readiness state from actual records', () => {
+    const summary = summarizeAccountingOverview({
+      settings: {
+        policy_confirmed: true,
+        functional_currency: 'USD',
+        accounting_start_date: '2026-01-01',
+      },
+      accounts: [{ id: 'a1' }, { id: 'a2' }],
+      periods: [{ status: 'open' }, { status: 'open' }, { status: 'closed' }],
+      journals: [{ status: 'draft' }, { status: 'posted' }, { status: 'posted' }],
+    })
+
+    expect(summary).toMatchObject({
+      policy_confirmed: true,
+      accounts_count: 2,
+      open_periods: 2,
+      closed_periods: 1,
+      draft_journals: 1,
+      posted_journals: 2,
+      readiness_label: 'جاهز للتشغيل المحاسبي',
+      needs_attention: 'هناك قيود مسودة تحتاج إلى مراجعة أو ترحيل.',
+    })
   })
 })

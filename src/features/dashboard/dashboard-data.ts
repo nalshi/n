@@ -684,15 +684,103 @@ export async function deleteDashboardCategory(id: string): Promise<void> {
 }
 
 export async function fetchDashboardOrders(
-  filter: 'active' | 'archived'
-): Promise<DashboardOrder[]> {
-  const result = await authApiRequest('get_orders', { filter })
-  const orders = normalizeOrders(result)
-  return filter === 'active'
-    ? orders.filter(
-        (order) => order.status !== 'completed' && order.status !== 'cancelled'
-      )
-    : orders
+  filter: 'active' | 'archived',
+  options: {
+    page?: number
+    limit?: number
+    search?: string
+    status?: string
+    fromDate?: string
+    toDate?: string
+  } = {}
+): Promise<DashboardOrder[] & {
+  orders: DashboardOrder[]
+  total: number
+  totalPages: number
+  page: number
+  limit: number
+  hasMore: boolean
+}> {
+  const requestPayload: Record<string, unknown> = { filter }
+  if (options.page && options.page !== 1) requestPayload.page = options.page
+  if (options.limit && options.limit !== 25) requestPayload.limit = options.limit
+  if (options.search && options.search.trim()) requestPayload.search = options.search
+  if (options.status && options.status.trim()) requestPayload.status = options.status
+  if (options.fromDate && options.fromDate.trim()) requestPayload.from_date = options.fromDate
+  if (options.toDate && options.toDate.trim()) requestPayload.to_date = options.toDate
+
+  const result = await authApiRequest('get_orders', requestPayload)
+
+  const record = asRecord(result.data)
+  const rows = Array.isArray(result.data)
+    ? result.data
+    : Array.isArray(record?.orders)
+      ? record.orders
+      : []
+
+  const normalizedOrders = normalizeOrders({ ...result, data: rows })
+  const total = Number(record?.total ?? normalizedOrders.length)
+  const totalPages = Number(
+    record?.total_pages ?? Math.max(1, Math.ceil(total / (options.limit ?? 25)))
+  )
+  const page = Number(record?.page ?? options.page ?? 1)
+  const limit = Number(record?.limit ?? options.limit ?? 25)
+  const filteredOrders =
+    filter === 'active'
+      ? normalizedOrders.filter(
+          (order) => order.status !== 'completed' && order.status !== 'cancelled'
+        )
+      : normalizedOrders
+
+  const response = filteredOrders as DashboardOrder[] & {
+    orders: DashboardOrder[]
+    total: number
+    totalPages: number
+    page: number
+    limit: number
+    hasMore: boolean
+  }
+
+  Object.defineProperties(response, {
+    orders: {
+      value: filteredOrders,
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    },
+    total: {
+      value: total,
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    },
+    totalPages: {
+      value: totalPages,
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    },
+    page: {
+      value: page,
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    },
+    limit: {
+      value: limit,
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    },
+    hasMore: {
+      value: Boolean(record?.has_more ?? page * limit < total),
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    },
+  })
+
+  return response
 }
 
 export async function updateDashboardOrderStatus(

@@ -441,28 +441,20 @@ function OrdersPage({
     null
   )
   const [deliveryCode, setDeliveryCode] = useState('')
-  const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase())
+  const deferredSearch = useDeferredValue(search.trim())
   const ordersQuery = useQuery({
-    queryKey: merchantQueryKeys.orders(merchantId, filter),
-    queryFn: () => fetchDashboardOrders(filter),
-    staleTime: Number.POSITIVE_INFINITY,
+    queryKey: [...merchantQueryKeys.orders(merchantId, filter), { page, search: deferredSearch }],
+    queryFn: () =>
+      fetchDashboardOrders(filter, {
+        page,
+        limit: PAGE_SIZE,
+        search: deferredSearch,
+      }),
+    staleTime: 15_000,
   })
-  const activeQuery = useQuery({
-    queryKey: merchantQueryKeys.orders(merchantId, 'active'),
-    queryFn: () => fetchDashboardOrders('active'),
-    enabled: filter === 'archived',
-    staleTime: Number.POSITIVE_INFINITY,
-  })
-  const orders = useMemo(() => ordersQuery.data || [], [ordersQuery.data])
-  const filteredOrders = useMemo(() => {
-    if (!deferredSearch) return orders
-    return orders.filter((order) =>
-      [order.id, order.customerName, order.customerPhone, order.deliveryAddress]
-        .join(' ')
-        .toLocaleLowerCase()
-        .includes(deferredSearch)
-    )
-  }, [deferredSearch, orders])
+  const orders = useMemo(() => ordersQuery.data?.orders || [], [ordersQuery.data])
+  const totalPages = ordersQuery.data?.totalPages || 1
+  const filteredOrders = orders
 
   const statusMutation = useMutation({
     mutationFn: ({
@@ -554,14 +546,10 @@ function OrdersPage({
       ),
   })
 
-  const pageCount = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE))
-  const visibleOrders = filteredOrders.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
-  )
-  const allOrders = [...(ordersQuery.data || []), ...(activeQuery.data || [])]
+  const pageCount = totalPages
+  const visibleOrders = orders
   const selectedOrder =
-    allOrders.find((order) => order.id === selectedOrderId) || null
+    orders.find((order) => order.id === selectedOrderId) || null
   const isMutating =
     statusMutation.isPending ||
     cancelMutation.isPending ||
