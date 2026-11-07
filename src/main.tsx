@@ -51,7 +51,7 @@ if (!rootElement.innerHTML) {
         client={queryClient}
         persistOptions={queryPersistOptions}
       >
-        <PersistedApplication />
+        <PersistedApplication router={router} />
       </PersistQueryClientProvider>
     </StrictMode>
   )
