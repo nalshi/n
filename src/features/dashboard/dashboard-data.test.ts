@@ -619,6 +619,57 @@ describe('fetchDashboardData', () => {
     })
   })
 
+  it('sends order filters and sorting to the server and preserves pagination metadata', async () => {
+    authApiRequest.mockResolvedValueOnce({
+      status: 'success',
+      data: {
+        orders: [
+          {
+            id: 'ticket-2',
+            customer_name: 'سارة',
+            status: 'pending_merchant_approval',
+            created_at: '2026-10-12T10:00:00Z',
+            items: [],
+          },
+        ],
+        total: 42,
+        page: 2,
+        limit: 10,
+        total_pages: 5,
+        has_more: true,
+      },
+    })
+
+    const result = await fetchDashboardOrders('active', {
+      page: 2,
+      limit: 10,
+      search: 'سارة',
+      status: 'pending_merchant_approval',
+      sort: 'oldest',
+      fromDate: '2026-10-01',
+      toDate: '2026-10-12',
+    })
+
+    expect(authApiRequest).toHaveBeenCalledWith('get_orders', {
+      filter: 'active',
+      page: 2,
+      limit: 10,
+      search: 'سارة',
+      status: 'pending_merchant_approval',
+      sort: 'oldest',
+      from_date: '2026-10-01',
+      to_date: '2026-10-12',
+    })
+    expect(result).toMatchObject({
+      total: 42,
+      page: 2,
+      limit: 10,
+      totalPages: 5,
+      hasMore: true,
+    })
+    expect(result.orders).toHaveLength(1)
+  })
+
   it('sends supported order state and delivery actions with legacy payload fields', async () => {
     authApiRequest
       .mockResolvedValueOnce({ status: 'success' })

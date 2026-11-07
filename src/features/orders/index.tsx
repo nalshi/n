@@ -41,6 +41,13 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Main } from '@/components/layout/main'
 import {
   MerchantPageHeading,
@@ -56,6 +63,7 @@ import {
 
 type OrdersFilter = 'active' | 'archived'
 type ConfirmAction = 'out-for-delivery' | 'cancel'
+type OrdersSort = 'newest' | 'oldest'
 
 const PAGE_SIZE = 25
 
@@ -90,6 +98,10 @@ const statusDetails: Record<string, { label: string; className: string }> = {
   out_for_delivery: {
     label: 'في الطريق',
     className: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+  },
+  accepted_by_delivery: {
+    label: 'قبله مندوب التوصيل',
+    className: 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300',
   },
   completed: {
     label: 'مكتمل بنجاح',
@@ -430,6 +442,10 @@ function OrdersPage({
   const ordersPath = filter === 'archived' ? '/previous-orders' : '/orders'
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [status, setStatus] = useState('')
+  const [sort, setSort] = useState<OrdersSort>('newest')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
     orderId || null
   )
@@ -443,16 +459,26 @@ function OrdersPage({
   const [deliveryCode, setDeliveryCode] = useState('')
   const deferredSearch = useDeferredValue(search.trim())
   const ordersQuery = useQuery({
-    queryKey: [...merchantQueryKeys.orders(merchantId, filter), { page, search: deferredSearch }],
+    queryKey: [
+      ...merchantQueryKeys.orders(merchantId, filter),
+      { page, search: deferredSearch, status, sort, fromDate, toDate },
+    ],
     queryFn: () =>
       fetchDashboardOrders(filter, {
         page,
         limit: PAGE_SIZE,
         search: deferredSearch,
+        status,
+        sort,
+        fromDate,
+        toDate,
       }),
     staleTime: 15_000,
   })
-  const orders = useMemo(() => ordersQuery.data?.orders || [], [ordersQuery.data])
+  const orders = useMemo(
+    () => ordersQuery.data?.orders || [],
+    [ordersQuery.data]
+  )
   const totalPages = ordersQuery.data?.totalPages || 1
   const filteredOrders = orders
 
@@ -558,6 +584,9 @@ function OrdersPage({
   const setOrdersFilter = (nextFilter: OrdersFilter) => {
     setPage(1)
     setSearch('')
+    setStatus('')
+    setFromDate('')
+    setToDate('')
     setSelectedOrderId(null)
     void navigate({
       to: nextFilter === 'archived' ? '/previous-orders' : '/orders',
@@ -630,6 +659,97 @@ function OrdersPage({
                 aria-label='البحث في الطلبات'
                 className='ps-9'
               />
+            </div>
+            <div className='grid gap-3 sm:grid-cols-2'>
+              <div className='grid gap-2'>
+                <Label htmlFor='orders-status-filter'>حالة الطلب</Label>
+                <Select
+                  value={status || 'all'}
+                  onValueChange={(value) => {
+                    setStatus(value === 'all' ? '' : value)
+                    setPage(1)
+                  }}
+                >
+                  <SelectTrigger
+                    id='orders-status-filter'
+                    className='w-full'
+                    aria-label='تصفية الطلبات حسب الحالة'
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>جميع الحالات</SelectItem>
+                    {filter === 'active' ? (
+                      <>
+                        <SelectItem value='pending_merchant_approval'>
+                          بانتظار موافقتك
+                        </SelectItem>
+                        <SelectItem value='confirmed_by_store'>
+                          قيد التجهيز
+                        </SelectItem>
+                        <SelectItem value='accepted_by_delivery'>
+                          قبله مندوب التوصيل
+                        </SelectItem>
+                        <SelectItem value='out_for_delivery'>
+                          في الطريق
+                        </SelectItem>
+                      </>
+                    ) : (
+                      <>
+                        <SelectItem value='completed'>مكتمل بنجاح</SelectItem>
+                        <SelectItem value='cancelled'>ملغي</SelectItem>
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='orders-sort'>ترتيب الطلبات</Label>
+                <Select
+                  value={sort}
+                  onValueChange={(value) => {
+                    if (value !== 'newest' && value !== 'oldest') return
+                    setSort(value)
+                    setPage(1)
+                  }}
+                >
+                  <SelectTrigger
+                    id='orders-sort'
+                    className='w-full'
+                    aria-label='ترتيب الطلبات'
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='newest'>الأحدث أولاً</SelectItem>
+                    <SelectItem value='oldest'>الأقدم أولاً</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='orders-from-date'>من تاريخ</Label>
+                <Input
+                  id='orders-from-date'
+                  type='date'
+                  value={fromDate}
+                  onChange={(event) => {
+                    setFromDate(event.target.value)
+                    setPage(1)
+                  }}
+                />
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='orders-to-date'>إلى تاريخ</Label>
+                <Input
+                  id='orders-to-date'
+                  type='date'
+                  value={toDate}
+                  onChange={(event) => {
+                    setToDate(event.target.value)
+                    setPage(1)
+                  }}
+                />
+              </div>
             </div>
 
             {ordersQuery.isPending ? (
@@ -705,13 +825,13 @@ function OrdersPage({
                   <ShoppingBag className='size-6' />
                 </span>
                 <h2 className='font-semibold'>
-                  {deferredSearch
+                  {deferredSearch || status || fromDate || toDate
                     ? 'لا توجد نتائج مطابقة'
                     : 'لا توجد طلبات في هذا القسم'}
                 </h2>
                 <p className='mt-1 text-sm text-muted-foreground'>
-                  {deferredSearch
-                    ? 'جرّب البحث برقم الطلب أو اسم عميل مختلف.'
+                  {deferredSearch || status || fromDate || toDate
+                    ? 'غيّر البحث أو الفلاتر لعرض نتائج أخرى.'
                     : 'ستظهر طلبات متجرك هنا عند وصولها.'}
                 </p>
               </div>

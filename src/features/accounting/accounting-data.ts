@@ -690,6 +690,24 @@ export type PaymentItem = {
   created_at: number
 }
 
+export type ContactStatementEntry = {
+  entry_date: string
+  journal_number: string
+  description: string
+  debit_minor_units: number
+  credit_minor_units: number
+  running_balance_minor_units: number
+}
+
+export type ContactStatement = {
+  contact?: { name: string }
+  opening_balance_minor_units: number
+  total_debit_minor_units: number
+  total_credit_minor_units: number
+  closing_balance_minor_units: number
+  entries: ContactStatementEntry[]
+}
+
 export async function fetchContacts(type?: string, search?: string) {
   const result = await request('list_contacts', { type, search })
   return (asRecord(result, 'جهات الاتصال').data as ContactItem[]) || []
@@ -712,13 +730,76 @@ export async function fetchContactStatement(
   contactId: string,
   startDate?: string,
   endDate?: string
-) {
+): Promise<ContactStatement> {
   const result = await request('get_contact_statement', {
     contact_id: contactId,
     start_date: startDate,
     end_date: endDate,
   })
-  return asRecord(result, 'كشف الحساب').data as Record<string, unknown>
+  const statement = asRecord(asRecord(result, 'كشف الحساب').data, 'كشف الحساب')
+  const entries = statement.entries
+  if (!Array.isArray(entries)) {
+    throw new Error('صيغة حركات كشف الحساب غير متوقعة.')
+  }
+  const contact =
+    statement.contact === undefined || statement.contact === null
+      ? undefined
+      : asRecord(statement.contact, 'جهة الاتصال')
+
+  return {
+    ...(contact
+      ? {
+          contact: { name: requiredString(contact, 'name', 'اسم جهة الاتصال') },
+        }
+      : {}),
+    opening_balance_minor_units: requiredInteger(
+      statement,
+      'opening_balance_minor_units',
+      'الرصيد الافتتاحي'
+    ),
+    total_debit_minor_units: requiredInteger(
+      statement,
+      'total_debit_minor_units',
+      'إجمالي المدين'
+    ),
+    total_credit_minor_units: requiredInteger(
+      statement,
+      'total_credit_minor_units',
+      'إجمالي الدائن'
+    ),
+    closing_balance_minor_units: requiredInteger(
+      statement,
+      'closing_balance_minor_units',
+      'الرصيد الختامي'
+    ),
+    entries: entries.map((value) => {
+      const entry = asRecord(value, 'حركة كشف الحساب')
+      const description = entry.description
+      if (typeof description !== 'string') {
+        throw new Error('حقل بيان الحركة غير صالح.')
+      }
+      return {
+        entry_date: requiredString(entry, 'entry_date', 'تاريخ الحركة'),
+        journal_number: requiredString(entry, 'journal_number', 'رقم القيد'),
+        description,
+        debit_minor_units: requiredInteger(
+          entry,
+          'debit_minor_units',
+          'مدين الحركة'
+        ),
+        credit_minor_units: requiredInteger(
+          entry,
+          'credit_minor_units',
+          'دائن الحركة'
+        ),
+        running_balance_minor_units: requiredInteger(
+          entry,
+          'running_balance_minor_units',
+          'الرصيد الجاري'
+        ),
+      }
+    }),
+  }
 }
 
 export async function fetchPurchases(status?: string, page = 1, limit = 50) {
@@ -1115,4 +1196,3 @@ export async function fetchAgingReport(
     }>
   }
 }
-

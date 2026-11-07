@@ -13,6 +13,7 @@ import {
   Search,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -39,12 +40,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
+import { AccountingQueryError } from './AccountingQueryError'
 import {
   accountingQueryKeys,
   amountToMinorUnits,
   createCashDesk,
   createPayment,
+  fetchAccountingSettings,
   fetchAccounts,
   fetchCashDesks,
   fetchPayments,
@@ -61,7 +63,9 @@ export function BanksView() {
   const [isAddBankOpen, setIsAddBankOpen] = useState(false)
   const [isTransferOpen, setIsTransferOpen] = useState(false)
   const [isBankPaymentOpen, setIsBankPaymentOpen] = useState(false)
-  const [paymentType, setPaymentType] = useState<'receipt' | 'voucher'>('voucher')
+  const [paymentType, setPaymentType] = useState<'receipt' | 'voucher'>(
+    'voucher'
+  )
 
   // Form states - Add Bank
   const [bankName, setBankName] = useState('')
@@ -72,31 +76,65 @@ export function BanksView() {
   const [sourceAccountId, setSourceAccountId] = useState('')
   const [destAccountId, setDestAccountId] = useState('')
   const [transferAmount, setTransferAmount] = useState('')
-  const [transferDate, setTransferDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [transferDate, setTransferDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  )
   const [transferDesc, setTransferDesc] = useState('')
 
   // Form states - Bank Payment / Receipt
   const [payNumber, setPayNumber] = useState('')
-  const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [payDate, setPayDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  )
   const [payAmount, setPayAmount] = useState('')
   const [payDesc, setPayDesc] = useState('')
   const [payBeneficiary, setPayBeneficiary] = useState('')
   const [payBankAccountId, setPayBankAccountId] = useState('')
 
+  const settingsQuery = useQuery({
+    queryKey: [...accountingQueryKeys(merchantId || ''), 'settings'],
+    queryFn: fetchAccountingSettings,
+    enabled: Boolean(merchantId),
+  })
+  const currency = settingsQuery.data?.functional_currency
+  const formatAmount = (amount: number) =>
+    currency ? formatMinorUnits(amount, currency) : '—'
+
   // Queries
-  const { data: desks = [], isLoading: isLoadingDesks } = useQuery({
+  const {
+    data: desks = [],
+    isLoading: isLoadingDesks,
+    isError: isDesksError,
+    error: desksError,
+    refetch: refetchDesks,
+  } = useQuery({
     queryKey: [...accountingQueryKeys(merchantId || ''), 'cash-desks'],
     queryFn: fetchCashDesks,
     enabled: Boolean(merchantId),
   })
 
-  const { data: paymentsData, isLoading: isLoadingPayments } = useQuery({
-    queryKey: [...accountingQueryKeys(merchantId || ''), 'payments', 'bank-view'],
+  const {
+    data: paymentsData,
+    isLoading: isLoadingPayments,
+    isError: isPaymentsError,
+    error: paymentsError,
+    refetch: refetchPayments,
+  } = useQuery({
+    queryKey: [
+      ...accountingQueryKeys(merchantId || ''),
+      'payments',
+      'bank-view',
+    ],
     queryFn: () => fetchPayments(),
     enabled: Boolean(merchantId),
   })
 
-  const { data: accounts = [] } = useQuery({
+  const {
+    data: accounts = [],
+    isError: isAccountsError,
+    error: accountsError,
+    refetch: refetchAccounts,
+  } = useQuery({
     queryKey: [...accountingQueryKeys(merchantId || ''), 'accounts'],
     queryFn: fetchAccounts,
     enabled: Boolean(merchantId),
@@ -109,14 +147,16 @@ export function BanksView() {
   const createBankMutation = useMutation({
     mutationFn: createCashDesk,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       toast.success('تمت إضافة الحساب البنكي وربطه بشجرة الحسابات بنجاح.')
       setIsAddBankOpen(false)
       setBankName('')
       setAccountName('')
       setAccountNumber('')
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast.error(err.message || 'فشل إضافة الحساب البنكي.')
     },
   })
@@ -124,7 +164,9 @@ export function BanksView() {
   const recordTransferMutation = useMutation({
     mutationFn: recordTransfer,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       toast.success('تم تسجيل التحويل البنكي وترحيل القيد المحاسبي بنجاح.')
       setIsTransferOpen(false)
       setSourceAccountId('')
@@ -132,7 +174,7 @@ export function BanksView() {
       setTransferAmount('')
       setTransferDesc('')
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast.error(err.message || 'فشل تسجيل التحويل.')
     },
   })
@@ -140,7 +182,9 @@ export function BanksView() {
   const createPaymentMutation = useMutation({
     mutationFn: createPayment,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       toast.success('تم حفظ الحركة البنكية وترحيل قيدها المحاسبي بنجاح.')
       setIsBankPaymentOpen(false)
       setPayNumber('')
@@ -148,7 +192,7 @@ export function BanksView() {
       setPayDesc('')
       setPayBeneficiary('')
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast.error(err.message || 'فشل حفظ الحركة.')
     },
   })
@@ -177,7 +221,11 @@ export function BanksView() {
       toast.error('لا يمكن التحويل من وإلى نفس الحساب.')
       return
     }
-    const minorUnits = amountToMinorUnits(transferAmount)
+    if (!currency) {
+      toast.error('حدد العملة الوظيفية في إعدادات المحاسبة قبل تسجيل التحويل.')
+      return
+    }
+    const minorUnits = amountToMinorUnits(transferAmount, currency)
     if (minorUnits <= 0) {
       toast.error('يرجى إدخال مبلغ تحويل صالح أكبر من الصفر.')
       return
@@ -193,7 +241,11 @@ export function BanksView() {
 
   function handleBankPayment(e: FormEvent) {
     e.preventDefault()
-    const minorUnits = amountToMinorUnits(payAmount)
+    if (!currency) {
+      toast.error('حدد العملة الوظيفية في إعدادات المحاسبة قبل تسجيل الحركة.')
+      return
+    }
+    const minorUnits = amountToMinorUnits(payAmount, currency)
     if (minorUnits <= 0) {
       toast.error('يرجى إدخال مبلغ صالح أكبر من الصفر.')
       return
@@ -207,7 +259,9 @@ export function BanksView() {
       payment_type: paymentType,
       payment_date: payDate,
       amount_minor_units: minorUnits,
-      description: payDesc.trim() || (paymentType === 'receipt' ? 'إيداع بنكي' : 'سحب / تحويل بنكي صادر'),
+      description:
+        payDesc.trim() ||
+        (paymentType === 'receipt' ? 'إيداع بنكي' : 'سحب / تحويل بنكي صادر'),
       beneficiary_name: payBeneficiary.trim() || undefined,
       cash_account_id: payBankAccountId || undefined,
     })
@@ -216,13 +270,17 @@ export function BanksView() {
   return (
     <div className='space-y-6'>
       {/* رأس الصفحة */}
-      <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+      <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
         <div>
-          <h2 className='text-2xl font-bold tracking-tight'>الحسابات البنكية</h2>
-          <p className='text-muted-foreground text-sm'>
-            إدارة الحسابات البنكية، الإيداعات والسحوبات، والتحويلات المصرفية مع قيود القيد المزدوج الآلية
+          <h2 className='text-2xl font-bold tracking-tight'>
+            الحسابات البنكية
+          </h2>
+          <p className='text-sm text-muted-foreground'>
+            إدارة الحسابات البنكية، الإيداعات والسحوبات، والتحويلات المصرفية مع
+            قيود القيد المزدوج الآلية
           </p>
         </div>
+
         <div className='flex flex-wrap items-center gap-2'>
           <Button
             variant='outline'
@@ -259,26 +317,48 @@ export function BanksView() {
             <span>تحويل بين الحسابات</span>
           </Button>
 
-          <Button
-            className='gap-1.5'
-            onClick={() => setIsAddBankOpen(true)}
-          >
+          <Button className='gap-1.5' onClick={() => setIsAddBankOpen(true)}>
             <Plus className='size-4' />
             <span>إضافة حساب بنكي</span>
           </Button>
         </div>
       </div>
 
+      {settingsQuery.isError && (
+        <AccountingQueryError
+          error={settingsQuery.error}
+          onRetry={() => void settingsQuery.refetch()}
+        />
+      )}
+      {!settingsQuery.isPending && !settingsQuery.isError && !currency && (
+        <p
+          role='alert'
+          className='rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800 dark:text-amber-200'
+        >
+          حدد العملة الوظيفية من إعدادات المحاسبة لعرض المبالغ وتسجيل الحركات.
+        </p>
+      )}
+      {isAccountsError && (
+        <AccountingQueryError
+          error={accountsError}
+          onRetry={() => void refetchAccounts()}
+        />
+      )}
+
       {/* بطاقات الإحصائيات */}
       <div className='grid gap-4 md:grid-cols-3'>
         <Card>
           <CardHeader className='flex flex-row items-center justify-between pb-2'>
-            <CardTitle className='text-sm font-medium'>الحسابات البنكية المسجلة</CardTitle>
+            <CardTitle className='text-sm font-medium'>
+              الحسابات البنكية المسجلة
+            </CardTitle>
             <Landmark className='size-4 text-primary' />
           </CardHeader>
           <CardContent>
-            <div className='text-2xl font-bold'>{bankAccounts.length}</div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <div className='text-2xl font-bold'>
+              {isDesksError ? '—' : bankAccounts.length}
+            </div>
+            <p className='mt-1 text-xs text-muted-foreground'>
               حسابات مصرفية مربوطة بالدفتر تحت كود 1120
             </p>
           </CardContent>
@@ -286,14 +366,16 @@ export function BanksView() {
 
         <Card>
           <CardHeader className='flex flex-row items-center justify-between pb-2'>
-            <CardTitle className='text-sm font-medium'>الحساب الرئيسي للعمليات</CardTitle>
+            <CardTitle className='text-sm font-medium'>
+              الحساب الرئيسي للعمليات
+            </CardTitle>
             <Building2 className='size-4 text-muted-foreground' />
           </CardHeader>
           <CardContent>
-            <div className='text-lg font-bold truncate'>
+            <div className='truncate text-lg font-bold'>
               {bankAccounts[0]?.name || 'حساب البنوك العام (1120)'}
             </div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <p className='mt-1 text-xs text-muted-foreground'>
               حساب التسويات المصرفية المعتمد
             </p>
           </CardContent>
@@ -301,12 +383,16 @@ export function BanksView() {
 
         <Card>
           <CardHeader className='flex flex-row items-center justify-between pb-2'>
-            <CardTitle className='text-sm font-medium'>إجمالي الحركات البنكية</CardTitle>
+            <CardTitle className='text-sm font-medium'>
+              إجمالي الحركات البنكية
+            </CardTitle>
             <CreditCard className='size-4 text-primary' />
           </CardHeader>
           <CardContent>
-            <div className='text-2xl font-bold'>{payments.length}</div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <div className='text-2xl font-bold'>
+              {isPaymentsError ? '—' : payments.length}
+            </div>
+            <p className='mt-1 text-xs text-muted-foreground'>
               عملية مسجلة ومرحلة بالدفتر المحاسبي
             </p>
           </CardContent>
@@ -323,38 +409,47 @@ export function BanksView() {
         </CardHeader>
         <CardContent>
           {isLoadingDesks ? (
-            <div className='flex items-center justify-center py-8 text-muted-foreground gap-2'>
+            <div className='flex items-center justify-center gap-2 py-8 text-muted-foreground'>
               <LoaderCircle className='size-4 animate-spin' />
               <span>جاري تحميل الحسابات البنكية...</span>
             </div>
+          ) : isDesksError ? (
+            <AccountingQueryError
+              error={desksError}
+              onRetry={() => void refetchDesks()}
+            />
           ) : bankAccounts.length === 0 ? (
             <div className='py-8 text-center text-muted-foreground'>
-              لا توجد حسابات بنكية مضافة بعد. انقر على &quot;إضافة حساب بنكي&quot; للبدء.
+              لا توجد حسابات بنكية مضافة بعد. انقر على &quot;إضافة حساب
+              بنكي&quot; للبدء.
             </div>
           ) : (
             <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
               {bankAccounts.map((b) => (
                 <div
                   key={b.id}
-                  className='rounded-xl border p-4 bg-muted/20 flex flex-col justify-between space-y-3'
+                  className='flex flex-col justify-between space-y-3 rounded-xl border bg-muted/20 p-4'
                 >
                   <div className='flex items-start justify-between'>
                     <div className='flex items-center gap-2'>
-                      <div className='p-2 rounded-lg bg-blue-500/10 text-blue-600'>
+                      <div className='rounded-lg bg-blue-500/10 p-2 text-blue-600'>
                         <Landmark className='size-5' />
                       </div>
                       <div>
-                        <h4 className='font-semibold text-sm'>{b.name}</h4>
+                        <h4 className='text-sm font-semibold'>{b.name}</h4>
                         <span className='text-xs text-muted-foreground'>
                           {b.bank_name || 'مصرف معتمد'}
                         </span>
                       </div>
                     </div>
-                    <Badge variant='outline' className='text-xs border-blue-500/30 text-blue-700 dark:text-blue-400'>
+                    <Badge
+                      variant='outline'
+                      className='border-blue-500/30 text-xs text-blue-700 dark:text-blue-400'
+                    >
                       حساب بنكي
                     </Badge>
                   </div>
-                  <div className='border-t pt-2 space-y-1 text-xs text-muted-foreground'>
+                  <div className='space-y-1 border-t pt-2 text-xs text-muted-foreground'>
                     <div className='flex items-center justify-between'>
                       <span>رقم الحساب / IBAN:</span>
                       <span className='font-mono font-medium text-foreground'>
@@ -378,38 +473,45 @@ export function BanksView() {
       {/* الحركات الأخيرة */}
       <Card>
         <CardHeader>
-          <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+          <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
             <div>
-              <CardTitle className='text-base'>الحركات البنكية والقيود</CardTitle>
+              <CardTitle className='text-base'>
+                الحركات البنكية والقيود
+              </CardTitle>
               <CardDescription>
                 سجل العمليات المصرفية ومطابقتها مع القيود اليومية
               </CardDescription>
             </div>
             <div className='relative w-full sm:w-64'>
-              <Search className='absolute right-2.5 top-2.5 size-4 text-muted-foreground' />
+              <Search className='absolute top-2.5 right-2.5 size-4 text-muted-foreground' />
               <Input
                 placeholder='بحث في الحركات البنكية...'
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className='pr-9 h-9 text-xs'
+                className='h-9 pr-9 text-xs'
               />
             </div>
           </div>
         </CardHeader>
         <CardContent>
           {isLoadingPayments ? (
-            <div className='flex items-center justify-center py-8 text-muted-foreground gap-2'>
+            <div className='flex items-center justify-center gap-2 py-8 text-muted-foreground'>
               <LoaderCircle className='size-4 animate-spin' />
               <span>جاري التحميل...</span>
             </div>
+          ) : isPaymentsError ? (
+            <AccountingQueryError
+              error={paymentsError}
+              onRetry={() => void refetchPayments()}
+            />
           ) : payments.length === 0 ? (
             <div className='py-8 text-center text-muted-foreground'>
               لا توجد حركات مسجلة حالياً.
             </div>
           ) : (
             <div className='overflow-x-auto'>
-              <table className='w-full text-sm text-right'>
-                <thead className='bg-muted/50 text-muted-foreground text-xs'>
+              <table className='w-full text-right text-sm'>
+                <thead className='bg-muted/50 text-xs text-muted-foreground'>
                   <tr>
                     <th className='p-3'>رقم المرجع</th>
                     <th className='p-3'>نوع الحركة</th>
@@ -432,28 +534,43 @@ export function BanksView() {
                     })
                     .map((p) => (
                       <tr key={p.id} className='hover:bg-muted/30'>
-                        <td className='p-3 font-mono font-medium'>{p.payment_number}</td>
+                        <td className='p-3 font-mono font-medium'>
+                          {p.payment_number}
+                        </td>
                         <td className='p-3'>
                           <Badge
                             variant='outline'
                             className={
                               p.payment_type === 'receipt'
-                                ? 'text-emerald-600 border-emerald-500/30 text-xs'
-                                : 'text-rose-600 border-rose-500/30 text-xs'
+                                ? 'border-emerald-500/30 text-xs text-emerald-600'
+                                : 'border-rose-500/30 text-xs text-rose-600'
                             }
                           >
-                            {p.payment_type === 'receipt' ? 'إيداع بنكي' : 'حوالة / سحب'}
+                            {p.payment_type === 'receipt'
+                              ? 'إيداع بنكي'
+                              : 'حوالة / سحب'}
                           </Badge>
                         </td>
                         <td className='p-3 text-xs'>{p.payment_date}</td>
-                        <td className='p-3 text-xs'>{p.beneficiary_name || '—'}</td>
-                        <td className='p-3 text-xs max-w-xs truncate'>{p.description}</td>
-                        <td className='p-3 font-bold tabular-nums text-xs'>
-                          <span className={p.payment_type === 'receipt' ? 'text-emerald-600' : 'text-rose-600'}>
-                            {p.payment_type === 'receipt' ? '+' : '-'}{formatMinorUnits(p.amount_minor_units)}
+                        <td className='p-3 text-xs'>
+                          {p.beneficiary_name || '—'}
+                        </td>
+                        <td className='max-w-xs truncate p-3 text-xs'>
+                          {p.description}
+                        </td>
+                        <td className='p-3 text-xs font-bold tabular-nums'>
+                          <span
+                            className={
+                              p.payment_type === 'receipt'
+                                ? 'text-emerald-600'
+                                : 'text-rose-600'
+                            }
+                          >
+                            {p.payment_type === 'receipt' ? '+' : '-'}
+                            {formatAmount(p.amount_minor_units)}
                           </span>
                         </td>
-                        <td className='p-3 text-xs font-mono'>
+                        <td className='p-3 font-mono text-xs'>
                           {p.journal_id ? (
                             <span className='inline-flex items-center gap-1 text-emerald-600'>
                               <CheckCircle2 className='size-3.5' />
@@ -521,7 +638,7 @@ export function BanksView() {
               </Button>
               <Button type='submit' disabled={createBankMutation.isPending}>
                 {createBankMutation.isPending && (
-                  <LoaderCircle className='size-4 animate-spin ml-2' />
+                  <LoaderCircle className='ml-2 size-4 animate-spin' />
                 )}
                 حفظ الحساب البنكي
               </Button>
@@ -535,10 +652,13 @@ export function BanksView() {
         <DialogContent className='sm:max-w-md'>
           <DialogHeader>
             <DialogTitle>
-              {paymentType === 'receipt' ? 'تسجيل إيداع بنكي' : 'تسجيل سحب / حوالة صادرة'}
+              {paymentType === 'receipt'
+                ? 'تسجيل إيداع بنكي'
+                : 'تسجيل سحب / حوالة صادرة'}
             </DialogTitle>
             <DialogDescription>
-              إنهاء العملية وترحيل القيد المحاسبي المزدوج فوراً إلى الدفتر العام.
+              إنهاء العملية وترحيل القيد المحاسبي المزدوج فوراً إلى الدفتر
+              العام.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleBankPayment} className='space-y-4'>
@@ -566,7 +686,7 @@ export function BanksView() {
 
             <div className='grid grid-cols-2 gap-3'>
               <div className='space-y-2'>
-                <Label htmlFor='bp-amt'>المبلغ</Label>
+                <Label htmlFor='bp-amt'>المبلغ ({currency || '—'})</Label>
                 <Input
                   id='bp-amt'
                   type='number'
@@ -591,14 +711,21 @@ export function BanksView() {
 
             <div className='space-y-2'>
               <Label htmlFor='bp-bank-sel'>الحساب البنكي</Label>
-              <Select value={payBankAccountId} onValueChange={setPayBankAccountId}>
+              <Select
+                value={payBankAccountId}
+                onValueChange={setPayBankAccountId}
+              >
                 <SelectTrigger id='bp-bank-sel'>
                   <SelectValue placeholder='اختر الحساب البنكي' />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value=''>حساب البنوك العام الافتراضي (1120)</SelectItem>
+                  <SelectItem value=''>
+                    حساب البنوك العام الافتراضي (1120)
+                  </SelectItem>
                   {accounts
-                    .filter((a) => a.account_code.startsWith('112') && a.is_postable)
+                    .filter(
+                      (a) => a.account_code.startsWith('112') && a.is_postable
+                    )
                     .map((a) => (
                       <SelectItem key={a.id} value={a.id}>
                         {a.account_code} - {a.name}
@@ -627,9 +754,12 @@ export function BanksView() {
               >
                 إلغاء
               </Button>
-              <Button type='submit' disabled={createPaymentMutation.isPending}>
+              <Button
+                type='submit'
+                disabled={createPaymentMutation.isPending || !currency}
+              >
                 {createPaymentMutation.isPending && (
-                  <LoaderCircle className='size-4 animate-spin ml-2' />
+                  <LoaderCircle className='ml-2 size-4 animate-spin' />
                 )}
                 ترحيل الحركة
               </Button>
@@ -644,13 +774,17 @@ export function BanksView() {
           <DialogHeader>
             <DialogTitle>تحويل مصرفي بين الحسابات</DialogTitle>
             <DialogDescription>
-              تسجيل تحويل أموال بين الحسابات البنكية والصناديق مع ترحيل قيد متوازن.
+              تسجيل تحويل أموال بين الحسابات البنكية والصناديق مع ترحيل قيد
+              متوازن.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleTransfer} className='space-y-4'>
             <div className='space-y-2'>
               <Label htmlFor='tr-src'>من حساب (المصدر - دائن)</Label>
-              <Select value={sourceAccountId} onValueChange={setSourceAccountId}>
+              <Select
+                value={sourceAccountId}
+                onValueChange={setSourceAccountId}
+              >
                 <SelectTrigger id='tr-src'>
                   <SelectValue placeholder='اختر حساب المصدر' />
                 </SelectTrigger>
@@ -696,7 +830,7 @@ export function BanksView() {
 
             <div className='grid grid-cols-2 gap-3'>
               <div className='space-y-2'>
-                <Label htmlFor='tr-amt2'>المبلغ</Label>
+                <Label htmlFor='tr-amt2'>المبلغ ({currency || '—'})</Label>
                 <Input
                   id='tr-amt2'
                   type='number'
@@ -738,9 +872,12 @@ export function BanksView() {
               >
                 إلغاء
               </Button>
-              <Button type='submit' disabled={recordTransferMutation.isPending}>
+              <Button
+                type='submit'
+                disabled={recordTransferMutation.isPending || !currency}
+              >
                 {recordTransferMutation.isPending && (
-                  <LoaderCircle className='size-4 animate-spin ml-2' />
+                  <LoaderCircle className='ml-2 size-4 animate-spin' />
                 )}
                 تنفيذ التحويل
               </Button>

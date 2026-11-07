@@ -1,13 +1,24 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   amountToMinorUnits,
+  fetchContactStatement,
   fiscalYearDates,
   formatMinorUnits,
   parseAccountingSettings,
   summarizeAccountingOverview,
 } from './accounting-data'
 
+const { authApiRequest } = vi.hoisted(() => ({
+  authApiRequest: vi.fn(),
+}))
+
+vi.mock('@/lib/auth-api', () => ({ authApiRequest }))
+
 describe('accounting data helpers', () => {
+  beforeEach(() => {
+    authApiRequest.mockReset()
+  })
+
   it('creates a complete fiscal year across calendar years', () => {
     expect(fiscalYearDates('2025-07')).toEqual({
       start_date: '2025-07-01',
@@ -83,5 +94,51 @@ describe('accounting data helpers', () => {
       readiness_label: 'جاهز للتشغيل المحاسبي',
       needs_attention: 'هناك قيود مسودة تحتاج إلى مراجعة أو ترحيل.',
     })
+  })
+
+  it('validates and types contact statement data from the accounting API', async () => {
+    authApiRequest.mockResolvedValueOnce({
+      status: 'success',
+      data: {
+        contact: { name: 'عميل' },
+        opening_balance_minor_units: 100,
+        total_debit_minor_units: 50,
+        total_credit_minor_units: 25,
+        closing_balance_minor_units: 125,
+        entries: [
+          {
+            entry_date: '2026-01-02',
+            journal_number: 'JE-001',
+            description: 'فاتورة بيع',
+            debit_minor_units: 50,
+            credit_minor_units: 0,
+            running_balance_minor_units: 150,
+          },
+        ],
+      },
+    })
+
+    await expect(fetchContactStatement('customer-1')).resolves.toMatchObject({
+      contact: { name: 'عميل' },
+      opening_balance_minor_units: 100,
+      closing_balance_minor_units: 125,
+      entries: [{ journal_number: 'JE-001', debit_minor_units: 50 }],
+    })
+    expect(authApiRequest).toHaveBeenCalledWith('get_contact_statement', {
+      contact_id: 'customer-1',
+      start_date: undefined,
+      end_date: undefined,
+    })
+  })
+
+  it('rejects malformed contact statement data instead of returning success-shaped defaults', async () => {
+    authApiRequest.mockResolvedValueOnce({
+      status: 'success',
+      data: { entries: [] },
+    })
+
+    await expect(fetchContactStatement('customer-1')).rejects.toThrow(
+      'حقل الرصيد الافتتاحي غير صالح.'
+    )
   })
 })

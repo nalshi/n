@@ -11,6 +11,7 @@ import {
   Sliders,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -37,7 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
+import { AccountingQueryError } from './AccountingQueryError'
 import {
   accountingQueryKeys,
   amountToMinorUnits,
@@ -58,7 +59,9 @@ export function InventoryView() {
   const [adjType, setAdjType] = useState<'increase' | 'decrease'>('decrease')
   const [adjAmount, setAdjAmount] = useState('')
   const [adjReason, setAdjReason] = useState('')
-  const [adjDate, setAdjDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [adjDate, setAdjDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  )
   const [adjNumber, setAdjNumber] = useState('')
 
   // Queries
@@ -78,14 +81,16 @@ export function InventoryView() {
   const adjMutation = useMutation({
     mutationFn: recordInventoryAdjustment,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       toast.success('تم تسجيل التسوية المخزنية وترحيل القيد المحاسبي بنجاح.')
       setIsAdjOpen(false)
       setAdjAmount('')
       setAdjReason('')
       setAdjNumber('')
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast.error(err.message || 'فشل تسجيل التسوية المخزنية.')
     },
   })
@@ -102,7 +107,8 @@ export function InventoryView() {
       return
     }
     adjMutation.mutate({
-      adjustment_number: adjNumber.trim() || `ADJ-${Date.now().toString().slice(-6)}`,
+      adjustment_number:
+        adjNumber.trim() || `ADJ-${Date.now().toString().slice(-6)}`,
       adjustment_type: adjType,
       amount_minor_units: minorUnits,
       reason: adjReason.trim(),
@@ -119,11 +125,14 @@ export function InventoryView() {
   return (
     <div className='space-y-6'>
       {/* رأس الصفحة */}
-      <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+      <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
         <div>
-          <h2 className='text-2xl font-bold tracking-tight'>المخزون وتكلفة البضاعة المباعة (COGS)</h2>
-          <p className='text-muted-foreground text-sm'>
-            تقييم المخزون بطريقة المتوسط المرجح والتسويات الجردية المباشرة مع الحسابات (1140)
+          <h2 className='text-2xl font-bold tracking-tight'>
+            المخزون وتكلفة البضاعة المباعة (COGS)
+          </h2>
+          <p className='text-sm text-muted-foreground'>
+            تقييم المخزون بطريقة المتوسط المرجح والتسويات الجردية المباشرة مع
+            الحسابات (1140)
           </p>
         </div>
         <div className='flex flex-wrap items-center gap-2'>
@@ -134,7 +143,9 @@ export function InventoryView() {
             disabled={isRefetching}
             className='gap-1.5'
           >
-            <RefreshCw className={`size-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`size-4 ${isRefetching ? 'animate-spin' : ''}`}
+            />
             <span>تحديث التقييم</span>
           </Button>
 
@@ -155,14 +166,18 @@ export function InventoryView() {
       <div className='grid gap-4 md:grid-cols-4'>
         <Card>
           <CardHeader className='flex flex-row items-center justify-between pb-2'>
-            <CardTitle className='text-sm font-medium'>إجمالي قيمة المخزون</CardTitle>
+            <CardTitle className='text-sm font-medium'>
+              إجمالي قيمة المخزون
+            </CardTitle>
             <Coins className='size-4 text-primary' />
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold text-primary'>
-              {formatMinorUnits(valuation?.grand_total_valuation_minor_units ?? 0)}
+              {valuation
+                ? formatMinorUnits(valuation.grand_total_valuation_minor_units)
+                : '—'}
             </div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <p className='mt-1 text-xs text-muted-foreground'>
               القيمة الدفترية للأصول المخزنية (1140)
             </p>
           </CardContent>
@@ -170,12 +185,16 @@ export function InventoryView() {
 
         <Card>
           <CardHeader className='flex flex-row items-center justify-between pb-2'>
-            <CardTitle className='text-sm font-medium'>إجمالي المنتجات</CardTitle>
+            <CardTitle className='text-sm font-medium'>
+              إجمالي المنتجات
+            </CardTitle>
             <Layers className='size-4 text-muted-foreground' />
           </CardHeader>
           <CardContent>
-            <div className='text-2xl font-bold'>{valuation?.total_products ?? 0}</div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <div className='text-2xl font-bold'>
+              {valuation?.total_products ?? '—'}
+            </div>
+            <p className='mt-1 text-xs text-muted-foreground'>
               صنف مسجل بالنظام
             </p>
           </CardContent>
@@ -183,12 +202,16 @@ export function InventoryView() {
 
         <Card>
           <CardHeader className='flex flex-row items-center justify-between pb-2'>
-            <CardTitle className='text-sm font-medium'>إجمالي الوحدات المتوفرة</CardTitle>
+            <CardTitle className='text-sm font-medium'>
+              إجمالي الوحدات المتوفرة
+            </CardTitle>
             <Package className='size-4 text-muted-foreground' />
           </CardHeader>
           <CardContent>
-            <div className='text-2xl font-bold'>{valuation?.total_stock_count ?? 0}</div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <div className='text-2xl font-bold'>
+              {valuation?.total_stock_count ?? '—'}
+            </div>
+            <p className='mt-1 text-xs text-muted-foreground'>
               قطعة جاهزة للبيع في المستودع
             </p>
           </CardContent>
@@ -196,14 +219,16 @@ export function InventoryView() {
 
         <Card>
           <CardHeader className='flex flex-row items-center justify-between pb-2'>
-            <CardTitle className='text-sm font-medium'>طريقة احتساب التكلفة</CardTitle>
+            <CardTitle className='text-sm font-medium'>
+              طريقة احتساب التكلفة
+            </CardTitle>
             <Boxes className='size-4 text-muted-foreground' />
           </CardHeader>
           <CardContent>
-            <div className='text-sm font-semibold mt-1 text-foreground'>
+            <div className='mt-1 text-sm font-semibold text-foreground'>
               المتوسط المرجح (WAC)
             </div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <p className='mt-1 text-xs text-muted-foreground'>
               معتمدة وفق معايير المحاسبة الدولية
             </p>
           </CardContent>
@@ -213,42 +238,45 @@ export function InventoryView() {
       {/* جدول تقييم المخزون */}
       <Card>
         <CardHeader>
-          <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+          <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
             <div>
-              <CardTitle className='text-base'>جدول تقييم أصناف المخزون</CardTitle>
+              <CardTitle className='text-base'>
+                جدول تقييم أصناف المخزون
+              </CardTitle>
               <CardDescription>
                 تكلفة الوحدة المحتسبة وإجمالي التقييم المخزني لكل منتج
               </CardDescription>
             </div>
             <div className='relative w-full sm:w-64'>
-              <Search className='absolute right-2.5 top-2.5 size-4 text-muted-foreground' />
+              <Search className='absolute top-2.5 right-2.5 size-4 text-muted-foreground' />
               <Input
                 placeholder='بحث باسم المنتج...'
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className='pr-9 h-9 text-xs'
+                className='h-9 pr-9 text-xs'
               />
             </div>
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className='flex items-center justify-center py-8 text-muted-foreground gap-2'>
+            <div className='flex items-center justify-center gap-2 py-8 text-muted-foreground'>
               <LoaderCircle className='size-4 animate-spin' />
               <span>جاري تحميل تقييم المخزون...</span>
             </div>
           ) : error ? (
-            <div className='py-8 text-center text-rose-600 text-sm'>
-              فشل تحميل بيانات المخزون. تأكد من إعداد السياسة المحاسبية.
-            </div>
+            <AccountingQueryError
+              error={error}
+              onRetry={() => void refetch()}
+            />
           ) : filteredItems.length === 0 ? (
             <div className='py-8 text-center text-muted-foreground'>
               لا توجد منتجات مسجلة في المخزون حالياً.
             </div>
           ) : (
             <div className='overflow-x-auto'>
-              <table className='w-full text-sm text-right'>
-                <thead className='bg-muted/50 text-muted-foreground text-xs'>
+              <table className='w-full text-right text-sm'>
+                <thead className='bg-muted/50 text-xs text-muted-foreground'>
                   <tr>
                     <th className='p-3'>اسم المنتج</th>
                     <th className='p-3'>الكمية بالمخزن</th>
@@ -260,12 +288,16 @@ export function InventoryView() {
                 <tbody className='divide-y'>
                   {filteredItems.map((item) => (
                     <tr key={item.product_id} className='hover:bg-muted/30'>
-                      <td className='p-3 font-medium flex items-center gap-2'>
+                      <td className='flex items-center gap-2 p-3 font-medium'>
                         <Package className='size-4 text-muted-foreground' />
                         <span>{item.name}</span>
                       </td>
                       <td className='p-3 font-mono text-xs'>
-                        <Badge variant={item.stock_quantity > 0 ? 'outline' : 'destructive'}>
+                        <Badge
+                          variant={
+                            item.stock_quantity > 0 ? 'outline' : 'destructive'
+                          }
+                        >
                           {item.stock_quantity} وحدة
                         </Badge>
                       </td>
@@ -295,7 +327,8 @@ export function InventoryView() {
           <DialogHeader>
             <DialogTitle>تسجيل تسوية جردية للمخزون</DialogTitle>
             <DialogDescription>
-              تسجيل فروقات الجرد الفعلي للمخزون (عجز، تلف، أو زيادة جردية) مع ترحيل القيد المحاسبي المزدوج.
+              تسجيل فروقات الجرد الفعلي للمخزون (عجز، تلف، أو زيادة جردية) مع
+              ترحيل القيد المحاسبي المزدوج.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAdjustment} className='space-y-4'>
@@ -303,7 +336,9 @@ export function InventoryView() {
               <Label htmlFor='adj-type'>نوع التسوية الجردية</Label>
               <Select
                 value={adjType}
-                onValueChange={(val: 'increase' | 'decrease') => setAdjType(val)}
+                onValueChange={(val: 'increase' | 'decrease') =>
+                  setAdjType(val)
+                }
               >
                 <SelectTrigger id='adj-type'>
                   <SelectValue />
@@ -366,12 +401,19 @@ export function InventoryView() {
               />
             </div>
 
-            <div className='rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground space-y-1'>
-              <div className='font-semibold text-foreground'>الأثر المحاسبي للتسوية:</div>
+            <div className='space-y-1 rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground'>
+              <div className='font-semibold text-foreground'>
+                الأثر المحاسبي للتسوية:
+              </div>
               {adjType === 'decrease' ? (
-                <div>• مدين: 5100 تكلفة البضاعة المباعة / مصروف الفاقد | دائن: 1140 المخزون</div>
+                <div>
+                  • مدين: 5100 تكلفة البضاعة المباعة / مصروف الفاقد | دائن: 1140
+                  المخزون
+                </div>
               ) : (
-                <div>• مدين: 1140 المخزون | دائن: 4200 إيرادات وأرباح تسوية أخرى</div>
+                <div>
+                  • مدين: 1140 المخزون | دائن: 4200 إيرادات وأرباح تسوية أخرى
+                </div>
               )}
             </div>
 
@@ -385,7 +427,7 @@ export function InventoryView() {
               </Button>
               <Button type='submit' disabled={adjMutation.isPending}>
                 {adjMutation.isPending && (
-                  <LoaderCircle className='size-4 animate-spin ml-2' />
+                  <LoaderCircle className='ml-2 size-4 animate-spin' />
                 )}
                 ترحيل التسوية
               </Button>

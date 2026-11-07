@@ -100,7 +100,7 @@ export function SettingsView() {
       queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
       toast.success('تم حفظ إعدادات وسياسة النظام المحاسبي بنجاح.')
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast.error(err.message || 'فشل حفظ الإعدادات.')
     },
   })
@@ -111,7 +111,7 @@ export function SettingsView() {
       queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
       toast.success('تمت تهيئة دليل الحسابات القياسي للمنشأة بنجاح.')
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast.error(err.message || 'فشل تهيئة الدليل.')
     },
   })
@@ -124,7 +124,7 @@ export function SettingsView() {
       setIsAddYearOpen(false)
       setYearName('')
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast.error(err.message || 'فشل إنشاء السنة المالية.')
     },
   })
@@ -135,7 +135,7 @@ export function SettingsView() {
       queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
       toast.success('تم إقفال الفترة المالية بنجاح ومنع الترحيل فيها.')
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast.error(err.message || 'فشل إقفال الفترة.')
     },
   })

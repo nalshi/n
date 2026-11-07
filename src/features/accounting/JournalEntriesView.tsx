@@ -12,12 +12,10 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -35,11 +33,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
+import { AccountingQueryError } from './AccountingQueryError'
 import {
   accountingQueryKeys,
   amountToMinorUnits,
   createJournalEntry,
+  fetchAccountingSettings,
   fetchAccounts,
   fetchJournalEntries,
   fetchJournalEntry,
@@ -64,12 +63,16 @@ export function JournalEntriesView() {
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [selectedJournalId, setSelectedJournalId] = useState<string | null>(null)
+  const [selectedJournalId, setSelectedJournalId] = useState<string | null>(
+    null
+  )
   const [isReverseOpen, setIsReverseOpen] = useState(false)
   const [reverseReason, setReverseReason] = useState('')
 
   // Create Form State
-  const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10))
+  const [entryDate, setEntryDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  )
   const [description, setDescription] = useState('')
   const [periodId] = useState('')
   const [postImmediately] = useState(true)
@@ -77,6 +80,12 @@ export function JournalEntriesView() {
     { account_id: '', description: '', debit: '', credit: '' },
     { account_id: '', description: '', debit: '', credit: '' },
   ])
+
+  const settingsQuery = useQuery({
+    queryKey: [...accountingQueryKeys(merchantId || ''), 'settings'],
+    queryFn: fetchAccountingSettings,
+    enabled: Boolean(merchantId),
+  })
 
   const journalsQuery = useQuery({
     queryKey: [...accountingQueryKeys(merchantId || ''), 'journals'],
@@ -97,42 +106,61 @@ export function JournalEntriesView() {
   })
 
   const journalDetailsQuery = useQuery({
-    queryKey: [...accountingQueryKeys(merchantId || ''), 'journal', selectedJournalId],
+    queryKey: [
+      ...accountingQueryKeys(merchantId || ''),
+      'journal',
+      selectedJournalId,
+    ],
     queryFn: () => fetchJournalEntry(selectedJournalId!),
     enabled: Boolean(merchantId && selectedJournalId),
   })
 
   const journals = journalsQuery.data || []
-  const accounts = accountsQuery.data?.filter((a) => a.is_postable && a.is_active) || []
+  const accounts =
+    accountsQuery.data?.filter((a) => a.is_postable && a.is_active) || []
   const periods = periodsQuery.data?.filter((p) => p.status === 'open') || []
+  const currency = settingsQuery.data?.functional_currency
+  const formatAmount = (amount: number) =>
+    currency ? formatMinorUnits(amount, currency) : '—'
 
   // حساب المجاميع المباشرة للنموذج
   let totalDebitMinor = 0
   let totalCreditMinor = 0
+  let hasInvalidAmount = false
   for (const l of lines) {
     if (l.debit) {
       try {
-        totalDebitMinor += amountToMinorUnits(l.debit, 'YER')
+        totalDebitMinor += amountToMinorUnits(l.debit, currency || 'YER')
       } catch {
-        // ignore parsing error during typing
+        hasInvalidAmount = true
       }
     }
     if (l.credit) {
       try {
-        totalCreditMinor += amountToMinorUnits(l.credit, 'YER')
+        totalCreditMinor += amountToMinorUnits(l.credit, currency || 'YER')
       } catch {
-        // ignore
+        hasInvalidAmount = true
       }
     }
   }
-  const isFormBalanced = totalDebitMinor > 0 && totalDebitMinor === totalCreditMinor
+  const isFormBalanced =
+    Boolean(currency) &&
+    !hasInvalidAmount &&
+    totalDebitMinor > 0 &&
+    totalDebitMinor === totalCreditMinor
   const formDifference = Math.abs(totalDebitMinor - totalCreditMinor)
 
   const createMutation = useMutation({
     mutationFn: createJournalEntry,
     onSuccess: () => {
-      toast.success(postImmediately ? 'تم إنشاء وترحيل القيد بنجاح' : 'تم حفظ مسودة القيد بنجاح')
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      toast.success(
+        postImmediately
+          ? 'تم إنشاء وترحيل القيد بنجاح'
+          : 'تم حفظ مسودة القيد بنجاح'
+      )
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       setIsCreateOpen(false)
       setDescription('')
       setLines([
@@ -149,7 +177,9 @@ export function JournalEntriesView() {
     mutationFn: postJournalEntry,
     onSuccess: () => {
       toast.success('تم ترحيل القيد بنجاح إلى دفتر الأستاذ')
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       setSelectedJournalId(null)
     },
     onError: (error) => {
@@ -161,7 +191,9 @@ export function JournalEntriesView() {
     mutationFn: reverseJournalEntry,
     onSuccess: () => {
       toast.success('تم إنشاء القيد العكسي وإلغاء أثر القيد الأصلي بنجاح')
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       setIsReverseOpen(false)
       setSelectedJournalId(null)
       setReverseReason('')
@@ -172,7 +204,10 @@ export function JournalEntriesView() {
   })
 
   const handleAddLine = () => {
-    setLines([...lines, { account_id: '', description: '', debit: '', credit: '' }])
+    setLines([
+      ...lines,
+      { account_id: '', description: '', debit: '', credit: '' },
+    ])
   }
 
   const handleRemoveLine = (index: number) => {
@@ -183,7 +218,11 @@ export function JournalEntriesView() {
     setLines(lines.filter((_, i) => i !== index))
   }
 
-  const handleLineChange = (index: number, field: keyof LineFormItem, value: string) => {
+  const handleLineChange = (
+    index: number,
+    field: keyof LineFormItem,
+    value: string
+  ) => {
     const updated = [...lines]
     updated[index][field] = value
     // إذا أدخل مدين، يتم مسح الدائن والعكس
@@ -194,6 +233,18 @@ export function JournalEntriesView() {
 
   const handleCreateSubmit = (e: FormEvent) => {
     e.preventDefault()
+    if (!currency) {
+      toast.error('حدد العملة الوظيفية في إعدادات المحاسبة قبل إنشاء القيد.')
+      return
+    }
+    if (periods.length === 0) {
+      toast.error('أنشئ فترة محاسبية مفتوحة قبل إنشاء القيد.')
+      return
+    }
+    if (accounts.length < 2) {
+      toast.error('يلزم حسابان نشطان قابلان للترحيل على الأقل.')
+      return
+    }
     if (!description.trim()) {
       toast.error('البيان والوصف مطلوب.')
       return
@@ -215,8 +266,8 @@ export function JournalEntriesView() {
         toast.error('يرجى تحديد الحساب لجميع سطور القيد.')
         return
       }
-      const debitMinor = l.debit ? amountToMinorUnits(l.debit, 'YER') : 0
-      const creditMinor = l.credit ? amountToMinorUnits(l.credit, 'YER') : 0
+      const debitMinor = l.debit ? amountToMinorUnits(l.debit, currency) : 0
+      const creditMinor = l.credit ? amountToMinorUnits(l.credit, currency) : 0
       payloadLines.push({
         account_id: l.account_id,
         description: l.description.trim() || undefined,
@@ -229,7 +280,7 @@ export function JournalEntriesView() {
       period_id: periodId || periods[0]?.id || '',
       entry_date: entryDate,
       description: description.trim(),
-      currency: 'YER',
+      currency,
       idempotency_key: `manual:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`,
       lines: payloadLines,
     })
@@ -245,24 +296,85 @@ export function JournalEntriesView() {
 
   return (
     <div className='space-y-6'>
-      <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+      <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
         <div>
-          <h2 className='text-lg font-bold'>قيود اليومية العامة (Journal Entries)</h2>
+          <h2 className='text-lg font-bold'>
+            قيود اليومية العامة (Journal Entries)
+          </h2>
           <p className='text-sm text-muted-foreground'>
             سجل العمليات والقيود المحاسبية بنظام القيد المزدوج مع سجل التدقيق
           </p>
         </div>
 
-        <Button onClick={() => setIsCreateOpen(true)} className='gap-2'>
+        <Button
+          onClick={() => setIsCreateOpen(true)}
+          disabled={
+            !currency ||
+            settingsQuery.isPending ||
+            settingsQuery.isError ||
+            periodsQuery.isPending ||
+            periodsQuery.isError ||
+            periods.length === 0 ||
+            accounts.length < 2
+          }
+          className='gap-2'
+        >
           <Plus className='size-4' />
           <span>إنشاء قيد يدوي</span>
         </Button>
       </div>
 
+      {settingsQuery.isError && (
+        <AccountingQueryError
+          error={settingsQuery.error}
+          onRetry={() => void settingsQuery.refetch()}
+        />
+      )}
+      {!settingsQuery.isPending && !settingsQuery.isError && !currency && (
+        <p
+          role='alert'
+          className='rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800 dark:text-amber-200'
+        >
+          حدد العملة الوظيفية من إعدادات المحاسبة قبل إنشاء القيود.
+        </p>
+      )}
+      {accountsQuery.isError && (
+        <AccountingQueryError
+          error={accountsQuery.error}
+          onRetry={() => void accountsQuery.refetch()}
+        />
+      )}
+      {periodsQuery.isError && (
+        <AccountingQueryError
+          error={periodsQuery.error}
+          onRetry={() => void periodsQuery.refetch()}
+        />
+      )}
+      {!periodsQuery.isPending &&
+        !periodsQuery.isError &&
+        periods.length === 0 && (
+          <p
+            role='alert'
+            className='rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800 dark:text-amber-200'
+          >
+            لا توجد فترة محاسبية مفتوحة؛ أنشئ فترة وافتحها قبل تسجيل القيود.
+          </p>
+        )}
+      {!accountsQuery.isPending &&
+        !accountsQuery.isError &&
+        accounts.length < 2 && (
+          <p
+            role='alert'
+            className='rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800 dark:text-amber-200'
+          >
+            يلزم حسابان نشطان قابلان للترحيل على الأقل لإنشاء قيد يدوي.
+          </p>
+        )}
+
       {/* شريط البحث والتصفية */}
-      <div className='flex flex-col sm:flex-row gap-3'>
+      <div className='flex flex-col gap-3 sm:flex-row'>
         <div className='relative flex-1'>
-          <Search className='absolute right-3 top-2.5 size-4 text-muted-foreground' />
+          <Search className='absolute top-2.5 right-3 size-4 text-muted-foreground' />
           <Input
             placeholder='البحث برقم القيد أو البيان...'
             value={search}
@@ -287,43 +399,70 @@ export function JournalEntriesView() {
       <Card className='shadow-xs'>
         <CardContent className='p-0'>
           <div className='overflow-x-auto'>
-            <table className='w-full text-sm text-right'>
-              <thead className='bg-muted/50 text-xs text-muted-foreground border-b'>
+            <table className='w-full text-right text-sm'>
+              <thead className='border-b bg-muted/50 text-xs text-muted-foreground'>
                 <tr>
-                  <th className='py-3 px-4'>رقم القيد</th>
-                  <th className='py-3 px-4'>التاريخ</th>
-                  <th className='py-3 px-4'>البيان والوصف</th>
-                  <th className='py-3 px-4'>المصدر</th>
-                  <th className='py-3 px-4'>الحالة</th>
-                  <th className='py-3 px-4 text-center'>الإجراءات</th>
+                  <th className='px-4 py-3'>رقم القيد</th>
+                  <th className='px-4 py-3'>التاريخ</th>
+                  <th className='px-4 py-3'>البيان والوصف</th>
+                  <th className='px-4 py-3'>المصدر</th>
+                  <th className='px-4 py-3'>الحالة</th>
+                  <th className='px-4 py-3 text-center'>الإجراءات</th>
                 </tr>
               </thead>
               <tbody className='divide-y divide-border/60'>
-                {filteredJournals.length === 0 ? (
+                {journalsQuery.isLoading ? (
                   <tr>
-                    <td colSpan={6} className='py-8 text-center text-muted-foreground'>
+                    <td
+                      colSpan={6}
+                      className='py-8 text-center text-muted-foreground'
+                    >
+                      جاري تحميل القيود...
+                    </td>
+                  </tr>
+                ) : journalsQuery.isError ? (
+                  <tr>
+                    <td colSpan={6} className='py-4'>
+                      <AccountingQueryError
+                        error={journalsQuery.error}
+                        onRetry={() => void journalsQuery.refetch()}
+                      />
+                    </td>
+                  </tr>
+                ) : filteredJournals.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className='py-8 text-center text-muted-foreground'
+                    >
                       لا توجد قيود يومية مسجلة.
                     </td>
                   </tr>
                 ) : (
                   filteredJournals.map((j) => (
                     <tr key={j.id} className='hover:bg-muted/30'>
-                      <td className='py-3 px-4 font-mono font-semibold text-primary'>
+                      <td className='px-4 py-3 font-mono font-semibold text-primary'>
                         {j.journal_number}
                       </td>
-                      <td className='py-3 px-4 text-muted-foreground font-mono text-xs'>
+                      <td className='px-4 py-3 font-mono text-xs text-muted-foreground'>
                         {j.entry_date}
                       </td>
-                      <td className='py-3 px-4 font-medium max-w-md truncate'>
+                      <td className='max-w-md truncate px-4 py-3 font-medium'>
                         {j.description}
                       </td>
-                      <td className='py-3 px-4 text-xs font-mono text-muted-foreground'>
+                      <td className='px-4 py-3 font-mono text-xs text-muted-foreground'>
                         {j.source_type}
                       </td>
-                      <td className='py-3 px-4'>
+                      <td className='px-4 py-3'>
                         <Badge
-                          variant={j.status === 'posted' ? 'default' : 'secondary'}
-                          className={j.status === 'posted' ? 'bg-emerald-600 gap-1' : 'gap-1'}
+                          variant={
+                            j.status === 'posted' ? 'default' : 'secondary'
+                          }
+                          className={
+                            j.status === 'posted'
+                              ? 'gap-1 bg-emerald-600'
+                              : 'gap-1'
+                          }
                         >
                           {j.status === 'posted' ? (
                             <>
@@ -336,7 +475,7 @@ export function JournalEntriesView() {
                           )}
                         </Badge>
                       </td>
-                      <td className='py-3 px-4 text-center'>
+                      <td className='px-4 py-3 text-center'>
                         <Button
                           variant='ghost'
                           size='sm'
@@ -358,16 +497,19 @@ export function JournalEntriesView() {
 
       {/* نافذة إنشاء قيد يومية يدوي */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className='sm:max-w-3xl max-h-[90vh] overflow-y-auto'>
+        <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-3xl'>
           <DialogHeader>
-            <DialogTitle>إنشاء قيد يومية يدوي (Double-Entry Journal)</DialogTitle>
+            <DialogTitle>
+              إنشاء قيد يومية يدوي (Double-Entry Journal)
+            </DialogTitle>
             <DialogDescription>
-              أدخل سطور القيد المحاسبي. يشترط النظام توازن مجموع المدين مع مجموع الدائن تماماً.
+              أدخل سطور القيد المحاسبي. يشترط النظام توازن مجموع المدين مع مجموع
+              الدائن تماماً.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleCreateSubmit} className='space-y-4'>
-            <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
+            <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
               <div className='space-y-1.5'>
                 <Label>تاريخ القيد</Label>
                 <Input
@@ -390,21 +532,34 @@ export function JournalEntriesView() {
             </div>
 
             {/* جدول سطور القيد */}
-            <div className='border rounded-lg p-3 space-y-3 bg-muted/20'>
+            <div className='space-y-3 rounded-lg border bg-muted/20 p-3'>
               <div className='flex items-center justify-between'>
-                <h4 className='font-semibold text-sm'>سطور الحسابات (مدينة ودائنة)</h4>
-                <Button type='button' variant='outline' size='sm' onClick={handleAddLine} className='gap-1'>
+                <h4 className='text-sm font-semibold'>
+                  سطور الحسابات (مدينة ودائنة)
+                </h4>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  onClick={handleAddLine}
+                  className='gap-1'
+                >
                   <Plus className='size-3.5' /> إضافة سطر
                 </Button>
               </div>
 
               <div className='space-y-2'>
                 {lines.map((line, idx) => (
-                  <div key={idx} className='grid grid-cols-12 gap-2 items-center bg-card p-2 rounded-md border'>
+                  <div
+                    key={idx}
+                    className='grid grid-cols-12 items-center gap-2 rounded-md border bg-card p-2'
+                  >
                     <div className='col-span-4'>
                       <Select
                         value={line.account_id}
-                        onValueChange={(val) => handleLineChange(idx, 'account_id', val)}
+                        onValueChange={(val) =>
+                          handleLineChange(idx, 'account_id', val)
+                        }
                       >
                         <SelectTrigger className='text-xs'>
                           <SelectValue placeholder='اختر الحساب' />
@@ -423,7 +578,9 @@ export function JournalEntriesView() {
                       <Input
                         placeholder='شرح السطر'
                         value={line.description}
-                        onChange={(e) => handleLineChange(idx, 'description', e.target.value)}
+                        onChange={(e) =>
+                          handleLineChange(idx, 'description', e.target.value)
+                        }
                         className='text-xs'
                       />
                     </div>
@@ -434,8 +591,10 @@ export function JournalEntriesView() {
                         type='number'
                         step='any'
                         value={line.debit}
-                        onChange={(e) => handleLineChange(idx, 'debit', e.target.value)}
-                        className='text-xs font-mono font-bold text-blue-600'
+                        onChange={(e) =>
+                          handleLineChange(idx, 'debit', e.target.value)
+                        }
+                        className='font-mono text-xs font-bold text-blue-600'
                       />
                     </div>
 
@@ -445,8 +604,10 @@ export function JournalEntriesView() {
                         type='number'
                         step='any'
                         value={line.credit}
-                        onChange={(e) => handleLineChange(idx, 'credit', e.target.value)}
-                        className='text-xs font-mono font-bold text-purple-600'
+                        onChange={(e) =>
+                          handleLineChange(idx, 'credit', e.target.value)
+                        }
+                        className='font-mono text-xs font-bold text-purple-600'
                       />
                     </div>
 
@@ -466,40 +627,67 @@ export function JournalEntriesView() {
               </div>
 
               {/* شريط التحقق من توازن القيد */}
-              <div className='flex flex-wrap items-center justify-between p-3 rounded-lg border bg-card'>
-                <div className='flex items-center gap-4 text-sm font-mono'>
+              <div className='flex flex-wrap items-center justify-between rounded-lg border bg-card p-3'>
+                <div className='flex items-center gap-4 font-mono text-sm'>
                   <div>
-                    <span className='text-muted-foreground ml-1'>إجمالي المدين:</span>
-                    <span className='font-bold text-blue-600'>{formatMinorUnits(totalDebitMinor, 'YER')}</span>
+                    <span className='ml-1 text-muted-foreground'>
+                      إجمالي المدين:
+                    </span>
+                    <span className='font-bold text-blue-600'>
+                      {formatAmount(totalDebitMinor)}
+                    </span>
                   </div>
                   <div>
-                    <span className='text-muted-foreground ml-1'>إجمالي الدائن:</span>
-                    <span className='font-bold text-purple-600'>{formatMinorUnits(totalCreditMinor, 'YER')}</span>
+                    <span className='ml-1 text-muted-foreground'>
+                      إجمالي الدائن:
+                    </span>
+                    <span className='font-bold text-purple-600'>
+                      {formatAmount(totalCreditMinor)}
+                    </span>
                   </div>
                 </div>
 
                 <div>
                   {isFormBalanced ? (
-                    <Badge variant='default' className='bg-emerald-600 gap-1.5 py-1 px-3'>
+                    <Badge
+                      variant='default'
+                      className='gap-1.5 bg-emerald-600 px-3 py-1'
+                    >
                       <CheckCircle2 className='size-4' />
                       <span>القيد متوازن وجاهز للترحيل</span>
                     </Badge>
                   ) : (
-                    <Badge variant='destructive' className='gap-1.5 py-1 px-3'>
+                    <Badge variant='destructive' className='gap-1.5 px-3 py-1'>
                       <AlertTriangle className='size-4' />
-                      <span>غير متوازن (الفارق: {formatMinorUnits(formDifference, 'YER')})</span>
+                      <span>
+                        غير متوازن (الفارق: {formatAmount(formDifference)})
+                      </span>
                     </Badge>
                   )}
                 </div>
               </div>
             </div>
 
-            <DialogFooter className='gap-2 sm:gap-0 pt-2'>
-              <Button type='button' variant='outline' onClick={() => setIsCreateOpen(false)}>
+            <DialogFooter className='gap-2 pt-2 sm:gap-0'>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => setIsCreateOpen(false)}
+              >
                 إلغاء
               </Button>
-              <Button type='submit' disabled={!isFormBalanced || createMutation.isPending}>
-                {createMutation.isPending ? 'جاري الحفظ...' : 'حفظ القيد المحاسبي'}
+              <Button
+                type='submit'
+                disabled={
+                  !isFormBalanced ||
+                  createMutation.isPending ||
+                  periods.length === 0 ||
+                  accounts.length < 2
+                }
+              >
+                {createMutation.isPending
+                  ? 'جاري الحفظ...'
+                  : 'حفظ القيد المحاسبي'}
               </Button>
             </DialogFooter>
           </form>
@@ -516,62 +704,109 @@ export function JournalEntriesView() {
             <DialogTitle className='flex items-center justify-between'>
               <span>تفاصيل القيد المحاسبي</span>
               {journalDetailsQuery.data && (
-                <Badge variant={journalDetailsQuery.data.status === 'posted' ? 'default' : 'secondary'} className={journalDetailsQuery.data.status === 'posted' ? 'bg-emerald-600' : ''}>
-                  {journalDetailsQuery.data.status === 'posted' ? 'مرحّل' : 'مسودة'}
+                <Badge
+                  variant={
+                    journalDetailsQuery.data.status === 'posted'
+                      ? 'default'
+                      : 'secondary'
+                  }
+                  className={
+                    journalDetailsQuery.data.status === 'posted'
+                      ? 'bg-emerald-600'
+                      : ''
+                  }
+                >
+                  {journalDetailsQuery.data.status === 'posted'
+                    ? 'مرحّل'
+                    : 'مسودة'}
                 </Badge>
               )}
             </DialogTitle>
             <DialogDescription>
-              {journalDetailsQuery.data?.journal_number} - {journalDetailsQuery.data?.description}
+              {journalDetailsQuery.data?.journal_number} -{' '}
+              {journalDetailsQuery.data?.description}
             </DialogDescription>
           </DialogHeader>
 
           {journalDetailsQuery.isLoading ? (
-            <div className='py-8 text-center text-muted-foreground'>جاري تحميل السطور...</div>
+            <div className='py-8 text-center text-muted-foreground'>
+              جاري تحميل السطور...
+            </div>
+          ) : journalDetailsQuery.isError ? (
+            <AccountingQueryError
+              error={journalDetailsQuery.error}
+              onRetry={() => void journalDetailsQuery.refetch()}
+            />
           ) : journalDetailsQuery.data ? (
             <div className='space-y-4'>
-              <div className='grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-muted/30 rounded-lg text-xs'>
+              <div className='grid grid-cols-2 gap-3 rounded-lg bg-muted/30 p-3 text-xs sm:grid-cols-4'>
                 <div>
-                  <span className='text-muted-foreground block'>تاريخ القيد:</span>
-                  <span className='font-mono font-semibold'>{journalDetailsQuery.data.entry_date}</span>
+                  <span className='block text-muted-foreground'>
+                    تاريخ القيد:
+                  </span>
+                  <span className='font-mono font-semibold'>
+                    {journalDetailsQuery.data.entry_date}
+                  </span>
                 </div>
                 <div>
-                  <span className='text-muted-foreground block'>نوع المصدر:</span>
-                  <span className='font-mono font-semibold'>{journalDetailsQuery.data.source_type}</span>
+                  <span className='block text-muted-foreground'>
+                    نوع المصدر:
+                  </span>
+                  <span className='font-mono font-semibold'>
+                    {journalDetailsQuery.data.source_type}
+                  </span>
                 </div>
                 <div>
-                  <span className='text-muted-foreground block'>العملة:</span>
-                  <span className='font-mono font-semibold'>{journalDetailsQuery.data.currency}</span>
+                  <span className='block text-muted-foreground'>العملة:</span>
+                  <span className='font-mono font-semibold'>
+                    {journalDetailsQuery.data.currency}
+                  </span>
                 </div>
                 <div>
-                  <span className='text-muted-foreground block'>حالة القيد:</span>
-                  <span className='font-semibold'>{journalDetailsQuery.data.status === 'posted' ? 'مرحّل ونهائي' : 'مسودة'}</span>
+                  <span className='block text-muted-foreground'>
+                    حالة القيد:
+                  </span>
+                  <span className='font-semibold'>
+                    {journalDetailsQuery.data.status === 'posted'
+                      ? 'مرحّل ونهائي'
+                      : 'مسودة'}
+                  </span>
                 </div>
               </div>
 
               {/* جدول السطور */}
-              <div className='border rounded-lg overflow-hidden'>
-                <table className='w-full text-sm text-right'>
-                  <thead className='bg-muted/50 text-xs text-muted-foreground border-b'>
+              <div className='overflow-hidden rounded-lg border'>
+                <table className='w-full text-right text-sm'>
+                  <thead className='border-b bg-muted/50 text-xs text-muted-foreground'>
                     <tr>
-                      <th className='py-2 px-3'>#</th>
-                      <th className='py-2 px-3'>الحساب</th>
-                      <th className='py-2 px-3'>البيان</th>
-                      <th className='py-2 px-3 text-left'>مدين</th>
-                      <th className='py-2 px-3 text-left'>دائن</th>
+                      <th className='px-3 py-2'>#</th>
+                      <th className='px-3 py-2'>الحساب</th>
+                      <th className='px-3 py-2'>البيان</th>
+                      <th className='px-3 py-2 text-left'>مدين</th>
+                      <th className='px-3 py-2 text-left'>دائن</th>
                     </tr>
                   </thead>
                   <tbody className='divide-y divide-border/60'>
                     {journalDetailsQuery.data.lines?.map((line, idx) => (
                       <tr key={idx} className='hover:bg-muted/20'>
-                        <td className='py-2 px-3 font-mono text-xs text-muted-foreground'>{idx + 1}</td>
-                        <td className='py-2 px-3 font-medium font-mono text-xs'>{line.account_id}</td>
-                        <td className='py-2 px-3 text-muted-foreground text-xs'>{line.description || '-'}</td>
-                        <td className='py-2 px-3 text-left font-mono font-semibold text-blue-600'>
-                          {line.debit_minor_units > 0 ? formatMinorUnits(line.debit_minor_units, 'YER') : '-'}
+                        <td className='px-3 py-2 font-mono text-xs text-muted-foreground'>
+                          {idx + 1}
                         </td>
-                        <td className='py-2 px-3 text-left font-mono font-semibold text-purple-600'>
-                          {line.credit_minor_units > 0 ? formatMinorUnits(line.credit_minor_units, 'YER') : '-'}
+                        <td className='px-3 py-2 font-mono text-xs font-medium'>
+                          {line.account_id}
+                        </td>
+                        <td className='px-3 py-2 text-xs text-muted-foreground'>
+                          {line.description || '-'}
+                        </td>
+                        <td className='px-3 py-2 text-left font-mono font-semibold text-blue-600'>
+                          {line.debit_minor_units > 0
+                            ? formatAmount(line.debit_minor_units)
+                            : '-'}
+                        </td>
+                        <td className='px-3 py-2 text-left font-mono font-semibold text-purple-600'>
+                          {line.credit_minor_units > 0
+                            ? formatAmount(line.credit_minor_units)
+                            : '-'}
                         </td>
                       </tr>
                     ))}
@@ -579,12 +814,14 @@ export function JournalEntriesView() {
                 </table>
               </div>
 
-              <DialogFooter className='gap-2 sm:gap-0 pt-2'>
+              <DialogFooter className='gap-2 pt-2 sm:gap-0'>
                 {journalDetailsQuery.data.status === 'draft' && (
                   <Button
-                    onClick={() => postMutation.mutate(journalDetailsQuery.data!.id)}
+                    onClick={() =>
+                      postMutation.mutate(journalDetailsQuery.data!.id)
+                    }
                     disabled={postMutation.isPending}
-                    className='bg-emerald-600 hover:bg-emerald-700 gap-1.5'
+                    className='gap-1.5 bg-emerald-600 hover:bg-emerald-700'
                   >
                     <Check className='size-4' />
                     <span>ترحيل القيد الآن</span>
@@ -602,7 +839,10 @@ export function JournalEntriesView() {
                   </Button>
                 )}
 
-                <Button variant='outline' onClick={() => setSelectedJournalId(null)}>
+                <Button
+                  variant='outline'
+                  onClick={() => setSelectedJournalId(null)}
+                >
                   إغلاق
                 </Button>
               </DialogFooter>
@@ -617,7 +857,8 @@ export function JournalEntriesView() {
           <DialogHeader>
             <DialogTitle>عكس القيد المحاسبي (Reversal Entry)</DialogTitle>
             <DialogDescription>
-              وفقاً لقواعد المحاسبة، لا يتم حذف القيد المرحّل بل يُنشأ قيد عكسي متوازن يلغي أثره المالي.
+              وفقاً لقواعد المحاسبة، لا يتم حذف القيد المرحّل بل يُنشأ قيد عكسي
+              متوازن يلغي أثره المالي.
             </DialogDescription>
           </DialogHeader>
 
@@ -650,7 +891,9 @@ export function JournalEntriesView() {
                 }
               }}
             >
-              {reverseMutation.isPending ? 'جاري العكس...' : 'تأكيد إنشاء القيد العكسي'}
+              {reverseMutation.isPending
+                ? 'جاري العكس...'
+                : 'تأكيد إنشاء القيد العكسي'}
             </Button>
           </DialogFooter>
         </DialogContent>

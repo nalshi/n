@@ -11,6 +11,7 @@ import {
   Search,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -37,7 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
+import { AccountingQueryError } from './AccountingQueryError'
 import {
   accountingQueryKeys,
   amountToMinorUnits,
@@ -66,24 +67,41 @@ export function ExpensesView() {
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [selectedExpense, setSelectedExpense] = useState<ExpenseItem | null>(null)
+  const [selectedExpense, setSelectedExpense] = useState<ExpenseItem | null>(
+    null
+  )
   const [isReverseOpen, setIsReverseOpen] = useState(false)
   const [reverseReason, setReverseReason] = useState('')
 
   // Form states - Create Expense
   const [expenseNumber, setExpenseNumber] = useState('')
-  const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [expenseDate, setExpenseDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  )
   const [category, setCategory] = useState('operational')
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [taxAmount, setTaxAmount] = useState('')
   const [vendorName, setVendorName] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank' | 'accrued'>('cash')
+  const [paymentMethod, setPaymentMethod] = useState<
+    'cash' | 'bank' | 'accrued'
+  >('cash')
   const [postImmediately, setPostImmediately] = useState(true)
 
   // Queries
-  const { data: expensesData, isLoading } = useQuery({
-    queryKey: [...accountingQueryKeys(merchantId || ''), 'expenses', statusFilter, categoryFilter],
+  const {
+    data: expensesData,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: [
+      ...accountingQueryKeys(merchantId || ''),
+      'expenses',
+      statusFilter,
+      categoryFilter,
+    ],
     queryFn: () =>
       fetchExpenses(
         statusFilter === 'all' ? undefined : statusFilter,
@@ -98,12 +116,14 @@ export function ExpensesView() {
   const createMutation = useMutation({
     mutationFn: createExpense,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       toast.success('تم تسجيل المصروف بنجاح وترحيله بالدفتر المحاسبي.')
       setIsCreateOpen(false)
       resetForm()
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast.error(err.message || 'فشل تسجيل المصروف.')
     },
   })
@@ -111,26 +131,35 @@ export function ExpensesView() {
   const postMutation = useMutation({
     mutationFn: postExpense,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       toast.success('تم ترحيل المصروف وإنشاء القيد المحاسبي بنجاح.')
       setSelectedExpense(null)
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast.error(err.message || 'فشل ترحيل المصروف.')
     },
   })
 
   const reverseMutation = useMutation({
-    mutationFn: ({ expenseId, reason }: { expenseId: string; reason: string }) =>
-      reverseExpense(expenseId, reason),
+    mutationFn: ({
+      expenseId,
+      reason,
+    }: {
+      expenseId: string
+      reason: string
+    }) => reverseExpense(expenseId, reason),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       toast.success('تم إلغاء المصروف وإنشاء القيد العكسي المتوازن بنجاح.')
       setIsReverseOpen(false)
       setSelectedExpense(null)
       setReverseReason('')
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast.error(err.message || 'فشل عكس المصروف.')
     },
   })
@@ -156,7 +185,8 @@ export function ExpensesView() {
     }
     const taxMinorUnits = taxAmount ? amountToMinorUnits(taxAmount) : 0
     createMutation.mutate({
-      expense_number: expenseNumber.trim() || `EXP-${Date.now().toString().slice(-6)}`,
+      expense_number:
+        expenseNumber.trim() || `EXP-${Date.now().toString().slice(-6)}`,
       expense_date: expenseDate,
       category,
       description: description.trim(),
@@ -185,11 +215,14 @@ export function ExpensesView() {
   return (
     <div className='space-y-6'>
       {/* رأس الصفحة وأزرار الإجراء */}
-      <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+      <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
         <div>
-          <h2 className='text-2xl font-bold tracking-tight'>إدارة المصروفات التشغيلية</h2>
-          <p className='text-muted-foreground text-sm'>
-            تسجيل وتصنيف المصروفات، سدادها نقداً أو عبر البنك أو استحقاقاً، مع قيود محاسبية تلقائية
+          <h2 className='text-2xl font-bold tracking-tight'>
+            إدارة المصروفات التشغيلية
+          </h2>
+          <p className='text-sm text-muted-foreground'>
+            تسجيل وتصنيف المصروفات، سدادها نقداً أو عبر البنك أو استحقاقاً، مع
+            قيود محاسبية تلقائية
           </p>
         </div>
         <Button
@@ -208,14 +241,16 @@ export function ExpensesView() {
       <div className='grid gap-4 md:grid-cols-3'>
         <Card>
           <CardHeader className='flex flex-row items-center justify-between pb-2'>
-            <CardTitle className='text-sm font-medium'>إجمالي المصروفات المرحّلة</CardTitle>
+            <CardTitle className='text-sm font-medium'>
+              إجمالي المصروفات المرحّلة
+            </CardTitle>
             <Receipt className='size-4 text-primary' />
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold text-rose-600'>
-              {formatMinorUnits(totalPostedAmount)}
+              {isError ? '—' : formatMinorUnits(totalPostedAmount)}
             </div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <p className='mt-1 text-xs text-muted-foreground'>
               محملة على حسابات الأرباح والخسائر (المصروفات 6000)
             </p>
           </CardContent>
@@ -223,14 +258,16 @@ export function ExpensesView() {
 
         <Card>
           <CardHeader className='flex flex-row items-center justify-between pb-2'>
-            <CardTitle className='text-sm font-medium'>المصروفات المرحّلة</CardTitle>
+            <CardTitle className='text-sm font-medium'>
+              المصروفات المرحّلة
+            </CardTitle>
             <CheckCircle2 className='size-4 text-emerald-600' />
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>
               {expenses.filter((e) => e.status === 'posted').length}
             </div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <p className='mt-1 text-xs text-muted-foreground'>
               بند مصروف معتمد ومرحل
             </p>
           </CardContent>
@@ -238,14 +275,16 @@ export function ExpensesView() {
 
         <Card>
           <CardHeader className='flex flex-row items-center justify-between pb-2'>
-            <CardTitle className='text-sm font-medium'>المسودات المعلقة</CardTitle>
+            <CardTitle className='text-sm font-medium'>
+              المسودات المعلقة
+            </CardTitle>
             <Clock className='size-4 text-amber-500' />
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold text-amber-600'>
               {expenses.filter((e) => e.status === 'draft').length}
             </div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <p className='mt-1 text-xs text-muted-foreground'>
               بانتظار المراجعة والترحيل النهائي
             </p>
           </CardContent>
@@ -255,26 +294,26 @@ export function ExpensesView() {
       {/* جدول المصروفات */}
       <Card>
         <CardHeader>
-          <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+          <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
             <div>
               <CardTitle className='text-base'>سجل المصروفات</CardTitle>
               <CardDescription>
                 كافة سندات وفواتير الصرف التشغيلية وبيانات ترحيلها
               </CardDescription>
             </div>
-            <div className='flex flex-wrap items-center gap-2 w-full sm:w-auto'>
+            <div className='flex w-full flex-wrap items-center gap-2 sm:w-auto'>
               <div className='relative flex-1 sm:w-60'>
-                <Search className='absolute right-2.5 top-2.5 size-4 text-muted-foreground' />
+                <Search className='absolute top-2.5 right-2.5 size-4 text-muted-foreground' />
                 <Input
                   placeholder='بحث برقم المصروف أو البيان...'
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className='pr-9 h-9 text-xs'
+                  className='h-9 pr-9 text-xs'
                 />
               </div>
 
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className='w-36 h-9 text-xs'>
+                <SelectTrigger className='h-9 w-36 text-xs'>
                   <SelectValue placeholder='التصنيف' />
                 </SelectTrigger>
                 <SelectContent>
@@ -288,7 +327,7 @@ export function ExpensesView() {
               </Select>
 
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className='w-28 h-9 text-xs'>
+                <SelectTrigger className='h-9 w-28 text-xs'>
                   <SelectValue placeholder='الحالة' />
                 </SelectTrigger>
                 <SelectContent>
@@ -303,18 +342,23 @@ export function ExpensesView() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className='flex items-center justify-center py-8 text-muted-foreground gap-2'>
+            <div className='flex items-center justify-center gap-2 py-8 text-muted-foreground'>
               <LoaderCircle className='size-4 animate-spin' />
               <span>جاري تحميل المصروفات...</span>
             </div>
+          ) : isError ? (
+            <AccountingQueryError
+              error={error}
+              onRetry={() => void refetch()}
+            />
           ) : filteredExpenses.length === 0 ? (
             <div className='py-8 text-center text-muted-foreground'>
               لا توجد مصروفات مسجلة تطابق الفلتر الحالي.
             </div>
           ) : (
             <div className='overflow-x-auto'>
-              <table className='w-full text-sm text-right'>
-                <thead className='bg-muted/50 text-muted-foreground text-xs'>
+              <table className='w-full text-right text-sm'>
+                <thead className='bg-muted/50 text-xs text-muted-foreground'>
                   <tr>
                     <th className='p-3'>رقم المصروف</th>
                     <th className='p-3'>التاريخ</th>
@@ -330,14 +374,20 @@ export function ExpensesView() {
                 <tbody className='divide-y'>
                   {filteredExpenses.map((exp) => (
                     <tr key={exp.id} className='hover:bg-muted/30'>
-                      <td className='p-3 font-mono font-medium'>{exp.expense_number}</td>
+                      <td className='p-3 font-mono font-medium'>
+                        {exp.expense_number}
+                      </td>
                       <td className='p-3 text-xs'>{exp.expense_date}</td>
                       <td className='p-3 text-xs'>
                         <Badge variant='outline' className='text-xs'>
-                          {EXPENSE_CATEGORIES.find((c) => c.id === exp.category)?.label || exp.category}
+                          {EXPENSE_CATEGORIES.find((c) => c.id === exp.category)
+                            ?.label || exp.category}
                         </Badge>
                       </td>
-                      <td className='p-3 text-xs max-w-xs truncate' title={exp.description}>
+                      <td
+                        className='max-w-xs truncate p-3 text-xs'
+                        title={exp.description}
+                      >
                         {exp.description}
                       </td>
                       <td className='p-3 text-xs'>{exp.vendor_name || '—'}</td>
@@ -348,17 +398,20 @@ export function ExpensesView() {
                             ? 'بنكي'
                             : 'مستحق'}
                       </td>
-                      <td className='p-3 font-bold tabular-nums text-rose-600 text-xs'>
+                      <td className='p-3 text-xs font-bold text-rose-600 tabular-nums'>
                         {formatMinorUnits(exp.amount_minor_units)}
                       </td>
                       <td className='p-3 text-xs'>
                         {exp.status === 'posted' ? (
-                          <Badge className='bg-emerald-600 text-xs gap-1'>
+                          <Badge className='gap-1 bg-emerald-600 text-xs'>
                             <CheckCircle2 className='size-3' />
                             <span>مرحل</span>
                           </Badge>
                         ) : exp.status === 'reversed' ? (
-                          <Badge variant='outline' className='text-rose-600 border-rose-500/30 text-xs'>
+                          <Badge
+                            variant='outline'
+                            className='border-rose-500/30 text-xs text-rose-600'
+                          >
                             ملغى بقيد عكسي
                           </Badge>
                         ) : (
@@ -373,7 +426,7 @@ export function ExpensesView() {
                             <Button
                               size='sm'
                               variant='outline'
-                              className='h-7 text-xs gap-1 text-emerald-600'
+                              className='h-7 gap-1 text-xs text-emerald-600'
                               onClick={() => postMutation.mutate(exp.id)}
                               disabled={postMutation.isPending}
                             >
@@ -385,7 +438,7 @@ export function ExpensesView() {
                             <Button
                               size='sm'
                               variant='ghost'
-                              className='h-7 text-xs gap-1 text-rose-600 hover:text-rose-700'
+                              className='h-7 gap-1 text-xs text-rose-600 hover:text-rose-700'
                               onClick={() => {
                                 setSelectedExpense(exp)
                                 setIsReverseOpen(true)
@@ -412,7 +465,8 @@ export function ExpensesView() {
           <DialogHeader>
             <DialogTitle>تسجيل مصروف جديد</DialogTitle>
             <DialogDescription>
-              تسجيل فاتورة أو سند مصروف مع إنشاء القيد المحاسبي المزدوج تلقائياً.
+              تسجيل فاتورة أو سند مصروف مع إنشاء القيد المحاسبي المزدوج
+              تلقائياً.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className='space-y-4'>
@@ -459,15 +513,21 @@ export function ExpensesView() {
                 <Label htmlFor='exp-pay'>طريقة السداد</Label>
                 <Select
                   value={paymentMethod}
-                  onValueChange={(v: 'cash' | 'bank' | 'accrued') => setPaymentMethod(v)}
+                  onValueChange={(v: 'cash' | 'bank' | 'accrued') =>
+                    setPaymentMethod(v)
+                  }
                 >
                   <SelectTrigger id='exp-pay'>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='cash'>نقداً من الصندوق (1110)</SelectItem>
+                    <SelectItem value='cash'>
+                      نقداً من الصندوق (1110)
+                    </SelectItem>
                     <SelectItem value='bank'>تحويل من البنك (1120)</SelectItem>
-                    <SelectItem value='accrued'>أجل / التزام مستحق (2300)</SelectItem>
+                    <SelectItem value='accrued'>
+                      أجل / التزام مستحق (2300)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -532,7 +592,7 @@ export function ExpensesView() {
               </Button>
               <Button type='submit' disabled={createMutation.isPending}>
                 {createMutation.isPending && (
-                  <LoaderCircle className='size-4 animate-spin ml-2' />
+                  <LoaderCircle className='ml-2 size-4 animate-spin' />
                 )}
                 حفظ المصروف
               </Button>
@@ -547,7 +607,8 @@ export function ExpensesView() {
           <DialogHeader>
             <DialogTitle>إلغاء وعكس قيد المصروف</DialogTitle>
             <DialogDescription>
-              وفقاً لقواعد المحاسبة المالية، لا يتم حذف السجلات المرحّلة، بل يتم إنشاء قيد عكسي متوازن يصحح الحسابات.
+              وفقاً لقواعد المحاسبة المالية، لا يتم حذف السجلات المرحّلة، بل يتم
+              إنشاء قيد عكسي متوازن يصحح الحسابات.
             </DialogDescription>
           </DialogHeader>
           <div className='space-y-4'>
@@ -592,7 +653,7 @@ export function ExpensesView() {
                 disabled={reverseMutation.isPending}
               >
                 {reverseMutation.isPending && (
-                  <LoaderCircle className='size-4 animate-spin ml-2' />
+                  <LoaderCircle className='ml-2 size-4 animate-spin' />
                 )}
                 تأكيد الإلغاء والقيد العكسي
               </Button>

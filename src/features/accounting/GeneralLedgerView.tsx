@@ -1,18 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  BookText,
-  Download,
-  Printer,
-} from 'lucide-react'
+import { BookText, Download, Printer } from 'lucide-react'
+import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -22,9 +14,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
+import { AccountingQueryError } from './AccountingQueryError'
 import {
   accountingQueryKeys,
+  fetchAccountingSettings,
   fetchAccounts,
   fetchGeneralLedger,
   formatMinorUnits,
@@ -32,9 +25,19 @@ import {
 
 export function GeneralLedgerView() {
   const merchantId = useMerchantIdentity()
-  const [startDate, setStartDate] = useState('2026-01-01')
+  const [startDate, setStartDate] = useState(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-01-01`
+  })
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10))
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all')
+  const hasValidDateRange = startDate <= endDate
+
+  const settingsQuery = useQuery({
+    queryKey: [...accountingQueryKeys(merchantId || ''), 'settings'],
+    queryFn: fetchAccountingSettings,
+    enabled: Boolean(merchantId),
+  })
 
   const accountsQuery = useQuery({
     queryKey: [...accountingQueryKeys(merchantId || ''), 'accounts'],
@@ -56,12 +59,14 @@ export function GeneralLedgerView() {
         endDate || undefined,
         selectedAccountId !== 'all' ? selectedAccountId : undefined
       ),
-    enabled: Boolean(merchantId),
+    enabled: Boolean(merchantId) && hasValidDateRange,
   })
 
   const accounts = accountsQuery.data || []
   const ledgerData = ledgerQuery.data
-  const currency = 'YER'
+  const currency = settingsQuery.data?.functional_currency
+  const formatAmount = (amount: number) =>
+    currency ? formatMinorUnits(amount, currency) : '—'
 
   const handlePrint = () => {
     window.print()
@@ -70,10 +75,28 @@ export function GeneralLedgerView() {
   const handleExportCsv = () => {
     if (!ledgerData) return
     const rows = [
-      ['رمز الحساب', 'اسم الحساب', 'التاريخ', 'رقم القيد', 'البيان', 'مدين', 'دائن', 'الرصيد التراكمي'],
+      [
+        'رمز الحساب',
+        'اسم الحساب',
+        'التاريخ',
+        'رقم القيد',
+        'البيان',
+        'مدين',
+        'دائن',
+        'الرصيد التراكمي',
+      ],
     ]
     for (const acc of ledgerData.accounts) {
-      rows.push([acc.account.account_code, acc.account.name, 'رصيد افتتاحي', '-', '-', '-', '-', String(acc.opening_balance)])
+      rows.push([
+        acc.account.account_code,
+        acc.account.name,
+        'رصيد افتتاحي',
+        '-',
+        '-',
+        '-',
+        '-',
+        String(acc.opening_balance),
+      ])
       for (const ent of acc.entries) {
         rows.push([
           acc.account.account_code,
@@ -86,9 +109,20 @@ export function GeneralLedgerView() {
           String(ent.running_balance),
         ])
       }
-      rows.push([acc.account.account_code, acc.account.name, 'رصيد ختامي', '-', '-', String(acc.period_debit), String(acc.period_credit), String(acc.closing_balance)])
+      rows.push([
+        acc.account.account_code,
+        acc.account.name,
+        'رصيد ختامي',
+        '-',
+        '-',
+        String(acc.period_debit),
+        String(acc.period_credit),
+        String(acc.closing_balance),
+      ])
     }
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + rows.map((e) => e.join(',')).join('\n')
+    const csvContent =
+      'data:text/csv;charset=utf-8,\uFEFF' +
+      rows.map((e) => e.join(',')).join('\n')
     const encodedUri = encodeURI(csvContent)
     const link = document.createElement('a')
     link.setAttribute('href', encodedUri)
@@ -100,20 +134,32 @@ export function GeneralLedgerView() {
 
   return (
     <div className='space-y-6'>
-      <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+      <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
         <div>
-          <h2 className='text-lg font-bold'>دفتر الأستاذ العام (General Ledger)</h2>
+          <h2 className='text-lg font-bold'>
+            دفتر الأستاذ العام (General Ledger)
+          </h2>
           <p className='text-sm text-muted-foreground'>
             كشف حركة الحسابات المالية والأرصدة الافتتاحية والختامية خلال الفترة
           </p>
         </div>
 
         <div className='flex items-center gap-2'>
-          <Button variant='outline' size='sm' onClick={handlePrint} className='gap-1.5'>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={handlePrint}
+            className='gap-1.5'
+          >
             <Printer className='size-4' />
             <span>طباعة</span>
           </Button>
-          <Button variant='outline' size='sm' onClick={handleExportCsv} className='gap-1.5'>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={handleExportCsv}
+            className='gap-1.5'
+          >
             <Download className='size-4' />
             <span>تصدير CSV</span>
           </Button>
@@ -123,12 +169,13 @@ export function GeneralLedgerView() {
       {/* شريط الفلاتر */}
       <Card className='shadow-xs'>
         <CardContent className='p-4'>
-          <div className='grid grid-cols-1 sm:grid-cols-3 gap-3 items-end'>
+          <div className='grid grid-cols-1 items-end gap-3 sm:grid-cols-3'>
             <div className='space-y-1.5'>
               <Label>تاريخ البداية</Label>
               <Input
                 type='date'
                 value={startDate}
+                max={endDate}
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </div>
@@ -138,13 +185,17 @@ export function GeneralLedgerView() {
               <Input
                 type='date'
                 value={endDate}
+                min={startDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>
 
             <div className='space-y-1.5'>
               <Label>تصفية بحساب معين</Label>
-              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+              <Select
+                value={selectedAccountId}
+                onValueChange={setSelectedAccountId}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder='كافة الحسابات' />
                 </SelectTrigger>
@@ -162,26 +213,53 @@ export function GeneralLedgerView() {
         </CardContent>
       </Card>
 
+      {settingsQuery.isError && (
+        <AccountingQueryError
+          error={settingsQuery.error}
+          onRetry={() => void settingsQuery.refetch()}
+        />
+      )}
+      {!settingsQuery.isPending && !settingsQuery.isError && !currency && (
+        <p
+          role='alert'
+          className='rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800 dark:text-amber-200'
+        >
+          حدد العملة الوظيفية من إعدادات المحاسبة لعرض المبالغ.
+        </p>
+      )}
+      {accountsQuery.isError && (
+        <AccountingQueryError
+          error={accountsQuery.error}
+          onRetry={() => void accountsQuery.refetch()}
+        />
+      )}
+
       {/* بطاقات الملخص الإجمالي لدفتر الأستاذ */}
       {ledgerData && (
-        <div className='grid grid-cols-1 sm:grid-cols-3 gap-4'>
-          <div className='p-3.5 rounded-xl border bg-card'>
-            <div className='text-xs text-muted-foreground font-medium'>إجمالي حركات المدين في الفترة</div>
-            <div className='text-xl font-bold font-mono text-blue-600 mt-1'>
-              {formatMinorUnits(ledgerData.grand_period_debit, currency)}
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
+          <div className='rounded-xl border bg-card p-3.5'>
+            <div className='text-xs font-medium text-muted-foreground'>
+              إجمالي حركات المدين في الفترة
+            </div>
+            <div className='mt-1 font-mono text-xl font-bold text-blue-600'>
+              {formatAmount(ledgerData.grand_period_debit)}
             </div>
           </div>
 
-          <div className='p-3.5 rounded-xl border bg-card'>
-            <div className='text-xs text-muted-foreground font-medium'>إجمالي حركات الدائن في الفترة</div>
-            <div className='text-xl font-bold font-mono text-purple-600 mt-1'>
-              {formatMinorUnits(ledgerData.grand_period_credit, currency)}
+          <div className='rounded-xl border bg-card p-3.5'>
+            <div className='text-xs font-medium text-muted-foreground'>
+              إجمالي حركات الدائن في الفترة
+            </div>
+            <div className='mt-1 font-mono text-xl font-bold text-purple-600'>
+              {formatAmount(ledgerData.grand_period_credit)}
             </div>
           </div>
 
-          <div className='p-3.5 rounded-xl border bg-card'>
-            <div className='text-xs text-muted-foreground font-medium'>عدد الحسابات المشمولة في الكشف</div>
-            <div className='text-xl font-bold font-mono text-foreground mt-1'>
+          <div className='rounded-xl border bg-card p-3.5'>
+            <div className='text-xs font-medium text-muted-foreground'>
+              عدد الحسابات المشمولة في الكشف
+            </div>
+            <div className='mt-1 font-mono text-xl font-bold text-foreground'>
               {ledgerData.accounts.length} حساب
             </div>
           </div>
@@ -189,88 +267,132 @@ export function GeneralLedgerView() {
       )}
 
       {/* حسابات دفتر الأستاذ وسطورها */}
-      {ledgerQuery.isLoading ? (
-        <div className='py-12 text-center text-muted-foreground'>جاري تحميل دفتر الأستاذ...</div>
+      {!hasValidDateRange ? (
+        <p
+          role='alert'
+          className='rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive'
+        >
+          تاريخ البداية يجب ألا يتجاوز تاريخ النهاية.
+        </p>
+      ) : ledgerQuery.isLoading ? (
+        <div className='py-12 text-center text-muted-foreground'>
+          جاري تحميل دفتر الأستاذ...
+        </div>
+      ) : ledgerQuery.isError ? (
+        <AccountingQueryError
+          error={ledgerQuery.error}
+          onRetry={() => void ledgerQuery.refetch()}
+        />
       ) : !ledgerData || ledgerData.accounts.length === 0 ? (
         <Card>
           <CardContent className='py-12 text-center text-muted-foreground'>
-            <BookText className='size-8 mx-auto mb-2 opacity-40' />
+            <BookText className='mx-auto mb-2 size-8 opacity-40' />
             <p>لا توجد حركات مسجلة للحسابات المحددة في هذا النطاق الزمني.</p>
           </CardContent>
         </Card>
       ) : (
         <div className='space-y-6'>
           {ledgerData.accounts.map((accItem) => (
-            <Card key={accItem.account.id} className='shadow-xs overflow-hidden'>
-              <CardHeader className='bg-muted/30 pb-3 flex flex-row items-center justify-between'>
+            <Card
+              key={accItem.account.id}
+              className='overflow-hidden shadow-xs'
+            >
+              <CardHeader className='flex flex-row items-center justify-between bg-muted/30 pb-3'>
                 <div className='flex items-center gap-2'>
-                  <span className='font-mono font-bold text-primary px-2 py-0.5 rounded bg-primary/10 text-sm'>
+                  <span className='rounded bg-primary/10 px-2 py-0.5 font-mono text-sm font-bold text-primary'>
                     {accItem.account.account_code}
                   </span>
-                  <CardTitle className='text-base'>{accItem.account.name}</CardTitle>
+                  <CardTitle className='text-base'>
+                    {accItem.account.name}
+                  </CardTitle>
                   <Badge variant='outline' className='text-xs'>
-                    {accItem.account.normal_balance === 'debit' ? 'طبيعة مدينة' : 'طبيعة دائنة'}
+                    {accItem.account.normal_balance === 'debit'
+                      ? 'طبيعة مدينة'
+                      : 'طبيعة دائنة'}
                   </Badge>
                 </div>
 
-                <div className='text-xs font-mono font-medium'>
-                  <span className='text-muted-foreground ml-1'>الرصيد الافتتاحي:</span>
-                  <span className='font-bold'>{formatMinorUnits(Math.abs(accItem.opening_balance), currency)}</span>
+                <div className='font-mono text-xs font-medium'>
+                  <span className='ml-1 text-muted-foreground'>
+                    الرصيد الافتتاحي:
+                  </span>
+                  <span className='font-bold'>
+                    {' '}
+                    {formatAmount(Math.abs(accItem.opening_balance))}
+                  </span>
                 </div>
               </CardHeader>
 
               <CardContent className='p-0'>
                 <div className='overflow-x-auto'>
-                  <table className='w-full text-sm text-right'>
-                    <thead className='bg-muted/40 text-xs text-muted-foreground border-b'>
+                  <table className='w-full text-right text-sm'>
+                    <thead className='border-b bg-muted/40 text-xs text-muted-foreground'>
                       <tr>
-                        <th className='py-2 px-3'>التاريخ</th>
-                        <th className='py-2 px-3'>رقم القيد</th>
-                        <th className='py-2 px-3'>البيان</th>
-                        <th className='py-2 px-3 text-left'>مدين</th>
-                        <th className='py-2 px-3 text-left'>دائن</th>
-                        <th className='py-2 px-3 text-left'>الرصيد بعد الحركة</th>
+                        <th className='px-3 py-2'>التاريخ</th>
+                        <th className='px-3 py-2'>رقم القيد</th>
+                        <th className='px-3 py-2'>البيان</th>
+                        <th className='px-3 py-2 text-left'>مدين</th>
+                        <th className='px-3 py-2 text-left'>دائن</th>
+                        <th className='px-3 py-2 text-left'>
+                          الرصيد بعد الحركة
+                        </th>
                       </tr>
                     </thead>
                     <tbody className='divide-y divide-border/60'>
                       {accItem.entries.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className='py-4 text-center text-xs text-muted-foreground'>
+                          <td
+                            colSpan={6}
+                            className='py-4 text-center text-xs text-muted-foreground'
+                          >
                             لا توجد حركات خلال الفترة المحددة.
                           </td>
                         </tr>
                       ) : (
                         accItem.entries.map((entry) => (
-                          <tr key={entry.line_id} className='hover:bg-muted/20 text-xs'>
-                            <td className='py-2 px-3 font-mono text-muted-foreground'>{entry.entry_date}</td>
-                            <td className='py-2 px-3 font-mono font-medium text-primary'>{entry.journal_number}</td>
-                            <td className='py-2 px-3 max-w-sm truncate'>{entry.description}</td>
-                            <td className='py-2 px-3 text-left font-mono font-semibold text-blue-600'>
-                              {entry.debit_minor_units > 0 ? formatMinorUnits(entry.debit_minor_units, currency) : '-'}
+                          <tr
+                            key={entry.line_id}
+                            className='text-xs hover:bg-muted/20'
+                          >
+                            <td className='px-3 py-2 font-mono text-muted-foreground'>
+                              {entry.entry_date}
                             </td>
-                            <td className='py-2 px-3 text-left font-mono font-semibold text-purple-600'>
-                              {entry.credit_minor_units > 0 ? formatMinorUnits(entry.credit_minor_units, currency) : '-'}
+                            <td className='px-3 py-2 font-mono font-medium text-primary'>
+                              {entry.journal_number}
                             </td>
-                            <td className='py-2 px-3 text-left font-mono font-bold'>
-                              {formatMinorUnits(Math.abs(entry.running_balance), currency)}
+                            <td className='max-w-sm truncate px-3 py-2'>
+                              {entry.description}
+                            </td>
+                            <td className='px-3 py-2 text-left font-mono font-semibold text-blue-600'>
+                              {entry.debit_minor_units > 0
+                                ? formatAmount(entry.debit_minor_units)
+                                : '-'}
+                            </td>
+                            <td className='px-3 py-2 text-left font-mono font-semibold text-purple-600'>
+                              {entry.credit_minor_units > 0
+                                ? formatAmount(entry.credit_minor_units)
+                                : '-'}
+                            </td>
+                            <td className='px-3 py-2 text-left font-mono font-bold'>
+                              {formatAmount(Math.abs(entry.running_balance))}
                             </td>
                           </tr>
                         ))
                       )}
                     </tbody>
-                    <tfoot className='bg-muted/30 text-xs font-bold border-t'>
+                    <tfoot className='border-t bg-muted/30 text-xs font-bold'>
                       <tr>
-                        <td colSpan={3} className='py-2.5 px-3 text-right'>
+                        <td colSpan={3} className='px-3 py-2.5 text-right'>
                           إجمالي حركة الفترة والرصيد الختامي:
                         </td>
-                        <td className='py-2.5 px-3 text-left font-mono text-blue-600'>
-                          {formatMinorUnits(accItem.period_debit, currency)}
+                        <td className='px-3 py-2.5 text-left font-mono text-blue-600'>
+                          {formatAmount(accItem.period_debit)}
                         </td>
-                        <td className='py-2.5 px-3 text-left font-mono text-purple-600'>
-                          {formatMinorUnits(accItem.period_credit, currency)}
+                        <td className='px-3 py-2.5 text-left font-mono text-purple-600'>
+                          {formatAmount(accItem.period_credit)}
                         </td>
-                        <td className='py-2.5 px-3 text-left font-mono text-foreground'>
-                          {formatMinorUnits(Math.abs(accItem.closing_balance), currency)}
+                        <td className='px-3 py-2.5 text-left font-mono text-foreground'>
+                          {formatAmount(Math.abs(accItem.closing_balance))}
                         </td>
                       </tr>
                     </tfoot>

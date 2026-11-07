@@ -1,8 +1,7 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useState } from 'react'
-import {
-  AccountingLayout,
-  type AccountingTabId,
-} from './AccountingLayout'
+import { AccountingLayout } from './AccountingLayout'
+import { type AccountingTabId } from './accounting-tabs'
 import { DashboardView } from './DashboardView'
 import { AccountsView } from './AccountsView'
 import { JournalEntriesView } from './JournalEntriesView'
@@ -115,22 +114,22 @@ export function Accounting() {
   )
 }
 
-// Re-exports
-export * from './accounting-data'
-export * from './AccountingLayout'
-export * from './DashboardView'
-export * from './AccountsView'
-export * from './JournalEntriesView'
-export * from './GeneralLedgerView'
-export * from './TrialBalanceView'
-export * from './SalesView'
-export * from './PurchasesView'
-export * from './CustomersView'
-export * from './SuppliersView'
-export * from './CashView'
-export * from './BanksView'
-export * from './InventoryView'
-export * from './ExpensesView'
-export * from './ReportsView'
-export * from './SettingsView'
+export { AccountingLayout } from './AccountingLayout'
+export { ACCOUNTING_NAV_TABS, type AccountingTabId } from './accounting-tabs'
+export { DashboardView } from './DashboardView'
+export { AccountsView } from './AccountsView'
+export { JournalEntriesView } from './JournalEntriesView'
+export { GeneralLedgerView } from './GeneralLedgerView'
+export { TrialBalanceView } from './TrialBalanceView'
+export { SalesView } from './SalesView'
+export { PurchasesView } from './PurchasesView'
+export { CustomersView } from './CustomersView'
+export { SuppliersView } from './SuppliersView'
+export { CashView } from './CashView'
+export { BanksView } from './BanksView'
+export { InventoryView } from './InventoryView'
+export { ExpensesView } from './ExpensesView'
+export { ReportsView } from './ReportsView'
+export { SettingsView } from './SettingsView'
+export { accountingQueryKeys } from './accounting-data'
 export default Accounting

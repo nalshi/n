@@ -15,6 +15,7 @@ import {
   Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -33,63 +34,121 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
+import { AccountingQueryError } from './AccountingQueryError'
 import {
   accountingQueryKeys,
+  fetchAccountingSettings,
   fetchAgingReport,
   fetchBalanceSheet,
   fetchCashFlow,
   fetchProfitLoss,
   fetchTaxReport,
-  formatMinorUnits,
+  formatMinorUnits as formatAmountInMinorUnits,
 } from './accounting-data'
 
-type ReportType = 'profit_loss' | 'balance_sheet' | 'cash_flow' | 'tax' | 'aging'
+type ReportType =
+  | 'profit_loss'
+  | 'balance_sheet'
+  | 'cash_flow'
+  | 'tax'
+  | 'aging'
 
 export function ReportsView() {
   const merchantId = useMerchantIdentity()
   const [activeReport, setActiveReport] = useState<ReportType>('profit_loss')
+  const settingsQuery = useQuery({
+    queryKey: [...accountingQueryKeys(merchantId || ''), 'settings'],
+    queryFn: fetchAccountingSettings,
+    enabled: Boolean(merchantId),
+  })
+  const currency = settingsQuery.data?.functional_currency
+  const hasFunctionalCurrency = Boolean(currency)
+  const formatMinorUnits = (amount: number) =>
+    currency ? formatAmountInMinorUnits(amount, currency) : '—'
 
   // Date filters
   const [startDate, setStartDate] = useState(() => {
     const d = new Date()
     return `${d.getFullYear()}-01-01`
   })
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [endDate, setEndDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  )
+  const [asOfDate, setAsOfDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  )
 
   // Aging sub-type
-  const [agingType, setAgingType] = useState<'customer' | 'supplier'>('customer')
+  const [agingType, setAgingType] = useState<'customer' | 'supplier'>(
+    'customer'
+  )
+  const hasValidDateRange = startDate <= endDate
 
   // Queries
   const plQuery = useQuery({
-    queryKey: [...accountingQueryKeys(merchantId || ''), 'pl-report', startDate, endDate],
+    queryKey: [
+      ...accountingQueryKeys(merchantId || ''),
+      'pl-report',
+      startDate,
+      endDate,
+    ],
     queryFn: () => fetchProfitLoss(startDate, endDate),
-    enabled: Boolean(merchantId) && activeReport === 'profit_loss',
+    enabled:
+      Boolean(merchantId) &&
+      activeReport === 'profit_loss' &&
+      hasFunctionalCurrency &&
+      hasValidDateRange,
   })
 
   const bsQuery = useQuery({
     queryKey: [...accountingQueryKeys(merchantId || ''), 'bs-report', asOfDate],
     queryFn: () => fetchBalanceSheet(asOfDate),
-    enabled: Boolean(merchantId) && activeReport === 'balance_sheet',
+    enabled:
+      Boolean(merchantId) &&
+      activeReport === 'balance_sheet' &&
+      hasFunctionalCurrency,
   })
 
   const cfQuery = useQuery({
-    queryKey: [...accountingQueryKeys(merchantId || ''), 'cf-report', startDate, endDate],
+    queryKey: [
+      ...accountingQueryKeys(merchantId || ''),
+      'cf-report',
+      startDate,
+      endDate,
+    ],
     queryFn: () => fetchCashFlow(startDate, endDate),
-    enabled: Boolean(merchantId) && activeReport === 'cash_flow',
+    enabled:
+      Boolean(merchantId) &&
+      activeReport === 'cash_flow' &&
+      hasFunctionalCurrency &&
+      hasValidDateRange,
   })
 
   const taxQuery = useQuery({
-    queryKey: [...accountingQueryKeys(merchantId || ''), 'tax-report', startDate, endDate],
+    queryKey: [
+      ...accountingQueryKeys(merchantId || ''),
+      'tax-report',
+      startDate,
+      endDate,
+    ],
     queryFn: () => fetchTaxReport(startDate, endDate),
-    enabled: Boolean(merchantId) && activeReport === 'tax',
+    enabled:
+      Boolean(merchantId) &&
+      activeReport === 'tax' &&
+      hasFunctionalCurrency &&
+      hasValidDateRange,
   })
 
   const agingQuery = useQuery({
-    queryKey: [...accountingQueryKeys(merchantId || ''), 'aging-report', agingType, asOfDate],
+    queryKey: [
+      ...accountingQueryKeys(merchantId || ''),
+      'aging-report',
+      agingType,
+      asOfDate,
+    ],
     queryFn: () => fetchAgingReport(agingType, asOfDate),
-    enabled: Boolean(merchantId) && activeReport === 'aging',
+    enabled:
+      Boolean(merchantId) && activeReport === 'aging' && hasFunctionalCurrency,
   })
 
   function handlePrint() {
@@ -99,8 +158,12 @@ export function ReportsView() {
   function exportCSV(filename: string, rows: (string | number)[][]) {
     const csvContent =
       'data:text/csv;charset=utf-8,\uFEFF' +
-      rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const encodedUri = encodeURI(csvContent)
+      rows
+        .map((r) =>
+          r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')
+        )
+        .join('\n')
+    const encodedUri = encodeURIComponent(csvContent)
     const link = document.createElement('a')
     link.setAttribute('href', encodedUri)
     link.setAttribute('download', `${filename}.csv`)
@@ -113,15 +176,23 @@ export function ReportsView() {
   return (
     <div className='space-y-6'>
       {/* رأس الصفحة وأزرار التصدير والطباعة */}
-      <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+      <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
         <div>
-          <h2 className='text-2xl font-bold tracking-tight'>التقارير والقوائم المالية</h2>
-          <p className='text-muted-foreground text-sm'>
-            قائمة الدخل، الميزانية العمومية، التدفقات النقدية، الإقرار الضريبي، وأعمار الديون
+          <h2 className='text-2xl font-bold tracking-tight'>
+            التقارير والقوائم المالية
+          </h2>
+          <p className='text-sm text-muted-foreground'>
+            قائمة الدخل، الميزانية العمومية، التدفقات النقدية، الإقرار الضريبي،
+            وأعمار الديون
           </p>
         </div>
         <div className='flex items-center gap-2'>
-          <Button variant='outline' size='sm' onClick={handlePrint} className='gap-1.5'>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={handlePrint}
+            className='gap-1.5'
+          >
             <Printer className='size-4' />
             <span>طباعة التقرير</span>
           </Button>
@@ -129,10 +200,15 @@ export function ReportsView() {
       </div>
 
       {/* تبويبات التقارير الخمسة */}
-      <div className='flex flex-wrap gap-2 border-b pb-3'>
+      <div
+        role='group'
+        className='flex flex-wrap gap-2 border-b pb-3'
+        aria-label='نوع التقرير'
+      >
         <Button
           variant={activeReport === 'profit_loss' ? 'default' : 'outline'}
           size='sm'
+          aria-pressed={activeReport === 'profit_loss'}
           onClick={() => setActiveReport('profit_loss')}
           className='gap-1.5'
         >
@@ -143,6 +219,7 @@ export function ReportsView() {
         <Button
           variant={activeReport === 'balance_sheet' ? 'default' : 'outline'}
           size='sm'
+          aria-pressed={activeReport === 'balance_sheet'}
           onClick={() => setActiveReport('balance_sheet')}
           className='gap-1.5'
         >
@@ -153,6 +230,7 @@ export function ReportsView() {
         <Button
           variant={activeReport === 'cash_flow' ? 'default' : 'outline'}
           size='sm'
+          aria-pressed={activeReport === 'cash_flow'}
           onClick={() => setActiveReport('cash_flow')}
           className='gap-1.5'
         >
@@ -163,6 +241,7 @@ export function ReportsView() {
         <Button
           variant={activeReport === 'tax' ? 'default' : 'outline'}
           size='sm'
+          aria-pressed={activeReport === 'tax'}
           onClick={() => setActiveReport('tax')}
           className='gap-1.5'
         >
@@ -173,6 +252,7 @@ export function ReportsView() {
         <Button
           variant={activeReport === 'aging' ? 'default' : 'outline'}
           size='sm'
+          aria-pressed={activeReport === 'aging'}
           onClick={() => setActiveReport('aging')}
           className='gap-1.5'
         >
@@ -195,25 +275,37 @@ export function ReportsView() {
                   type='date'
                   value={asOfDate}
                   onChange={(e) => setAsOfDate(e.target.value)}
-                  className='w-40 h-8 text-xs'
+                  className='h-8 w-40 text-xs'
                 />
               </div>
             ) : activeReport === 'aging' ? (
               <>
                 <div className='flex items-center gap-2'>
-                  <Label htmlFor='aging-type-sel' className='text-xs font-medium'>
+                  <Label
+                    htmlFor='aging-type-sel'
+                    className='text-xs font-medium'
+                  >
                     الجهة:
                   </Label>
                   <Select
                     value={agingType}
-                    onValueChange={(val: 'customer' | 'supplier') => setAgingType(val)}
+                    onValueChange={(val: 'customer' | 'supplier') =>
+                      setAgingType(val)
+                    }
                   >
-                    <SelectTrigger id='aging-type-sel' className='w-36 h-8 text-xs'>
+                    <SelectTrigger
+                      id='aging-type-sel'
+                      className='h-8 w-36 text-xs'
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value='customer'>ديون العملاء (AR)</SelectItem>
-                      <SelectItem value='supplier'>مستحقات الموردين (AP)</SelectItem>
+                      <SelectItem value='customer'>
+                        ديون العملاء (AR)
+                      </SelectItem>
+                      <SelectItem value='supplier'>
+                        مستحقات الموردين (AP)
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -226,7 +318,7 @@ export function ReportsView() {
                     type='date'
                     value={asOfDate}
                     onChange={(e) => setAsOfDate(e.target.value)}
-                    className='w-40 h-8 text-xs'
+                    className='h-8 w-40 text-xs'
                   />
                 </div>
               </>
@@ -240,8 +332,9 @@ export function ReportsView() {
                     id='start-date'
                     type='date'
                     value={startDate}
+                    max={endDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className='w-40 h-8 text-xs'
+                    className='h-8 w-40 text-xs'
                   />
                 </div>
                 <div className='flex items-center gap-2'>
@@ -252,8 +345,9 @@ export function ReportsView() {
                     id='end-date'
                     type='date'
                     value={endDate}
+                    min={startDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className='w-40 h-8 text-xs'
+                    className='h-8 w-40 text-xs'
                   />
                 </div>
               </>
@@ -262,20 +356,59 @@ export function ReportsView() {
         </CardContent>
       </Card>
 
+      {settingsQuery.isError ? (
+        <AccountingQueryError
+          error={settingsQuery.error}
+          onRetry={() => void settingsQuery.refetch()}
+        />
+      ) : settingsQuery.isPending && merchantId ? (
+        <div
+          role='status'
+          className='flex justify-center gap-2 py-8 text-muted-foreground'
+        >
+          <LoaderCircle className='size-5 animate-spin' />
+          <span>جاري تحميل إعدادات العملة...</span>
+        </div>
+      ) : !settingsQuery.isPending && !hasFunctionalCurrency ? (
+        <p
+          role='alert'
+          className='rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800 dark:text-amber-200'
+        >
+          حدد العملة الوظيفية من إعدادات المحاسبة قبل عرض المبالغ المالية.
+        </p>
+      ) : null}
+
+      {['profit_loss', 'cash_flow', 'tax'].includes(activeReport) &&
+        !hasValidDateRange && (
+          <p
+            role='alert'
+            className='rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive'
+          >
+            تاريخ البداية يجب ألا يتجاوز تاريخ النهاية.
+          </p>
+        )}
+
       {/* 1. تقرير قائمة الدخل */}
       {activeReport === 'profit_loss' && (
         <div className='space-y-4'>
           {plQuery.isLoading ? (
-            <div className='flex justify-center py-12 gap-2 text-muted-foreground'>
+            <div className='flex justify-center gap-2 py-12 text-muted-foreground'>
               <LoaderCircle className='size-5 animate-spin' />
               <span>جاري استخراج قائمة الدخل...</span>
             </div>
+          ) : plQuery.isError ? (
+            <AccountingQueryError
+              error={plQuery.error}
+              onRetry={() => void plQuery.refetch()}
+            />
           ) : plQuery.data ? (
             <>
               <div className='grid gap-4 md:grid-cols-4'>
                 <Card>
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs text-muted-foreground'>إجمالي الإيرادات</CardTitle>
+                    <CardTitle className='text-xs text-muted-foreground'>
+                      إجمالي الإيرادات
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className='text-2xl font-bold text-emerald-600'>
@@ -286,7 +419,9 @@ export function ReportsView() {
 
                 <Card>
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs text-muted-foreground'>تكلفة المبيعات (COGS)</CardTitle>
+                    <CardTitle className='text-xs text-muted-foreground'>
+                      تكلفة المبيعات (COGS)
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className='text-2xl font-bold text-muted-foreground'>
@@ -297,7 +432,9 @@ export function ReportsView() {
 
                 <Card>
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs text-muted-foreground'>إجمالي المصروفات</CardTitle>
+                    <CardTitle className='text-xs text-muted-foreground'>
+                      إجمالي المصروفات
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className='text-2xl font-bold text-rose-600'>
@@ -306,10 +443,18 @@ export function ReportsView() {
                   </CardContent>
                 </Card>
 
-                <Card className={plQuery.data.is_profitable ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-rose-500/40 bg-rose-500/5'}>
+                <Card
+                  className={
+                    plQuery.data.is_profitable
+                      ? 'border-emerald-500/40 bg-emerald-500/5'
+                      : 'border-rose-500/40 bg-rose-500/5'
+                  }
+                >
                   <CardHeader className='pb-2'>
                     <div className='flex items-center justify-between'>
-                      <CardTitle className='text-xs font-bold'>صافي الربح / الخسارة</CardTitle>
+                      <CardTitle className='text-xs font-bold'>
+                        صافي الربح / الخسارة
+                      </CardTitle>
                       {plQuery.data.is_profitable ? (
                         <TrendingUp className='size-4 text-emerald-600' />
                       ) : (
@@ -318,11 +463,15 @@ export function ReportsView() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className={`text-2xl font-black ${plQuery.data.is_profitable ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
+                    <div
+                      className={`text-2xl font-black ${plQuery.data.is_profitable ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}
+                    >
                       {formatMinorUnits(plQuery.data.net_profit)}
                     </div>
                     <Badge variant='outline' className='mt-1 text-xs'>
-                      {plQuery.data.is_profitable ? 'صافي ربح الفترة' : 'صافي خسارة الفترة'}
+                      {plQuery.data.is_profitable
+                        ? 'صافي ربح الفترة'
+                        : 'صافي خسارة الفترة'}
                     </Badge>
                   </CardContent>
                 </Card>
@@ -332,7 +481,9 @@ export function ReportsView() {
               <Card>
                 <CardHeader className='flex flex-row items-center justify-between pb-3'>
                   <div>
-                    <CardTitle className='text-base'>قائمة الدخل المفصلة</CardTitle>
+                    <CardTitle className='text-base'>
+                      قائمة الدخل المفصلة
+                    </CardTitle>
                     <CardDescription>
                       للفترة من {startDate} إلى {endDate}
                     </CardDescription>
@@ -345,14 +496,38 @@ export function ReportsView() {
                       const rows = [
                         ['البند', 'رقم الحساب', 'المبلغ'],
                         ['--- الإيرادات ---', '', ''],
-                        ...plQuery.data!.revenues.map((r) => [r.name, r.account_code, formatMinorUnits(r.amount_minor_units)]),
-                        ['إجمالي الإيرادات', '', formatMinorUnits(plQuery.data!.total_revenue)],
+                        ...plQuery.data!.revenues.map((r) => [
+                          r.name,
+                          r.account_code,
+                          formatMinorUnits(r.amount_minor_units),
+                        ]),
+                        [
+                          'إجمالي الإيرادات',
+                          '',
+                          formatMinorUnits(plQuery.data!.total_revenue),
+                        ],
                         ['--- تكلفة المبيعات ---', '', ''],
-                        ...plQuery.data!.costs.map((c) => [c.name, c.account_code, formatMinorUnits(c.amount_minor_units)]),
-                        ['مجمل الربح', '', formatMinorUnits(plQuery.data!.gross_profit)],
+                        ...plQuery.data!.costs.map((c) => [
+                          c.name,
+                          c.account_code,
+                          formatMinorUnits(c.amount_minor_units),
+                        ]),
+                        [
+                          'مجمل الربح',
+                          '',
+                          formatMinorUnits(plQuery.data!.gross_profit),
+                        ],
                         ['--- المصروفات التشغيلية ---', '', ''],
-                        ...plQuery.data!.expenses.map((e) => [e.name, e.account_code, formatMinorUnits(e.amount_minor_units)]),
-                        ['صافي الربح / الخسارة', '', formatMinorUnits(plQuery.data!.net_profit)],
+                        ...plQuery.data!.expenses.map((e) => [
+                          e.name,
+                          e.account_code,
+                          formatMinorUnits(e.amount_minor_units),
+                        ]),
+                        [
+                          'صافي الربح / الخسارة',
+                          '',
+                          formatMinorUnits(plQuery.data!.net_profit),
+                        ],
                       ]
                       exportCSV('Income_Statement', rows)
                     }}
@@ -362,53 +537,85 @@ export function ReportsView() {
                   </Button>
                 </CardHeader>
                 <CardContent className='space-y-4'>
-                  <div className='border rounded-lg overflow-hidden'>
-                    <table className='w-full text-sm text-right'>
+                  <div className='overflow-hidden rounded-lg border'>
+                    <table className='w-full text-right text-sm'>
                       <tbody>
                         <tr className='bg-muted/70 font-bold'>
-                          <td className='p-3' colSpan={2}>الإيرادات (4000)</td>
-                          <td className='p-3 text-left font-mono'>{formatMinorUnits(plQuery.data.total_revenue)}</td>
+                          <td className='p-3' colSpan={2}>
+                            الإيرادات (4000)
+                          </td>
+                          <td className='p-3 text-left font-mono'>
+                            {formatMinorUnits(plQuery.data.total_revenue)}
+                          </td>
                         </tr>
                         {plQuery.data.revenues.map((r) => (
                           <tr key={r.id} className='border-t hover:bg-muted/20'>
-                            <td className='p-2 pr-6 font-mono text-xs text-muted-foreground'>{r.account_code}</td>
+                            <td className='p-2 pr-6 font-mono text-xs text-muted-foreground'>
+                              {r.account_code}
+                            </td>
                             <td className='p-2 text-xs'>{r.name}</td>
-                            <td className='p-2 text-left font-mono text-xs'>{formatMinorUnits(r.amount_minor_units)}</td>
+                            <td className='p-2 text-left font-mono text-xs'>
+                              {formatMinorUnits(r.amount_minor_units)}
+                            </td>
                           </tr>
                         ))}
 
-                        <tr className='bg-muted/50 font-bold border-t'>
-                          <td className='p-3' colSpan={2}>تكلفة البضاعة المباعة (5000)</td>
-                          <td className='p-3 text-left font-mono text-rose-600'>({formatMinorUnits(plQuery.data.total_cost)})</td>
+                        <tr className='border-t bg-muted/50 font-bold'>
+                          <td className='p-3' colSpan={2}>
+                            تكلفة البضاعة المباعة (5000)
+                          </td>
+                          <td className='p-3 text-left font-mono text-rose-600'>
+                            ({formatMinorUnits(plQuery.data.total_cost)})
+                          </td>
                         </tr>
                         {plQuery.data.costs.map((c) => (
                           <tr key={c.id} className='border-t hover:bg-muted/20'>
-                            <td className='p-2 pr-6 font-mono text-xs text-muted-foreground'>{c.account_code}</td>
+                            <td className='p-2 pr-6 font-mono text-xs text-muted-foreground'>
+                              {c.account_code}
+                            </td>
                             <td className='p-2 text-xs'>{c.name}</td>
-                            <td className='p-2 text-left font-mono text-xs text-rose-600'>({formatMinorUnits(c.amount_minor_units)})</td>
+                            <td className='p-2 text-left font-mono text-xs text-rose-600'>
+                              ({formatMinorUnits(c.amount_minor_units)})
+                            </td>
                           </tr>
                         ))}
 
-                        <tr className='bg-primary/5 font-black border-t text-primary'>
-                          <td className='p-3' colSpan={2}>مجمل الربح (Gross Profit)</td>
-                          <td className='p-3 text-left font-mono'>{formatMinorUnits(plQuery.data.gross_profit)}</td>
+                        <tr className='border-t bg-primary/5 font-black text-primary'>
+                          <td className='p-3' colSpan={2}>
+                            مجمل الربح (Gross Profit)
+                          </td>
+                          <td className='p-3 text-left font-mono'>
+                            {formatMinorUnits(plQuery.data.gross_profit)}
+                          </td>
                         </tr>
 
-                        <tr className='bg-muted/50 font-bold border-t'>
-                          <td className='p-3' colSpan={2}>المصروفات التشغيلية (6000)</td>
-                          <td className='p-3 text-left font-mono text-rose-600'>({formatMinorUnits(plQuery.data.total_expense)})</td>
+                        <tr className='border-t bg-muted/50 font-bold'>
+                          <td className='p-3' colSpan={2}>
+                            المصروفات التشغيلية (6000)
+                          </td>
+                          <td className='p-3 text-left font-mono text-rose-600'>
+                            ({formatMinorUnits(plQuery.data.total_expense)})
+                          </td>
                         </tr>
                         {plQuery.data.expenses.map((e) => (
                           <tr key={e.id} className='border-t hover:bg-muted/20'>
-                            <td className='p-2 pr-6 font-mono text-xs text-muted-foreground'>{e.account_code}</td>
+                            <td className='p-2 pr-6 font-mono text-xs text-muted-foreground'>
+                              {e.account_code}
+                            </td>
                             <td className='p-2 text-xs'>{e.name}</td>
-                            <td className='p-2 text-left font-mono text-xs text-rose-600'>({formatMinorUnits(e.amount_minor_units)})</td>
+                            <td className='p-2 text-left font-mono text-xs text-rose-600'>
+                              ({formatMinorUnits(e.amount_minor_units)})
+                            </td>
                           </tr>
                         ))}
 
-                        <tr className='bg-emerald-500/10 dark:bg-emerald-950/40 font-black border-t-2 text-base'>
-                          <td className='p-4' colSpan={2}>صافي الدخل / الربح للفترة</td>
-                          <td className={`p-4 text-left font-mono ${plQuery.data.is_profitable ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700'}`}>
+                        <tr className='border-t-2 bg-emerald-500/10 text-base font-black dark:bg-emerald-950/40'>
+                          <td className='p-4' colSpan={2}>
+                            صافي الدخل / الربح للفترة
+                          </td>
+                          <td
+                            className={`p-4 text-left font-mono ${plQuery.data.is_profitable ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700'}`}
+                          >
                             {formatMinorUnits(plQuery.data.net_profit)}
                           </td>
                         </tr>
@@ -426,18 +633,23 @@ export function ReportsView() {
       {activeReport === 'balance_sheet' && (
         <div className='space-y-4'>
           {bsQuery.isLoading ? (
-            <div className='flex justify-center py-12 gap-2 text-muted-foreground'>
+            <div className='flex justify-center gap-2 py-12 text-muted-foreground'>
               <LoaderCircle className='size-5 animate-spin' />
               <span>جاري استخراج الميزانية العمومية والتحقق من التوازن...</span>
             </div>
+          ) : bsQuery.isError ? (
+            <AccountingQueryError
+              error={bsQuery.error}
+              onRetry={() => void bsQuery.refetch()}
+            />
           ) : bsQuery.data ? (
             <>
               {/* شريط التحقق من معادلة الميزانية: الأصول = الالتزامات + حقوق الملكية */}
               <div
-                className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                className={`flex flex-col items-start justify-between gap-3 rounded-xl border p-4 sm:flex-row sm:items-center ${
                   bsQuery.data.is_balanced
-                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
-                    : 'bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-300'
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300'
+                    : 'border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-300'
                 }`}
               >
                 <div className='flex items-center gap-2'>
@@ -449,15 +661,92 @@ export function ReportsView() {
                   <span className='font-bold'>
                     {bsQuery.data.is_balanced
                       ? 'الميزانية العمومية متوازنة تماماً: الأصول = الالتزامات + حقوق الملكية'
-                      : 'تحذير: الميزانية غير متوازنة! الفارق: ' + formatMinorUnits(bsQuery.data.difference)}
+                      : 'تحذير: الميزانية غير متوازنة! الفارق: ' +
+                        formatMinorUnits(bsQuery.data.difference)}
                   </span>
                 </div>
-                <div className='flex items-center gap-4 text-xs font-mono font-semibold'>
-                  <span>الأصول: {formatMinorUnits(bsQuery.data.total_assets)}</span>
+                <div className='flex items-center gap-4 font-mono text-xs font-semibold'>
+                  <span>
+                    الأصول: {formatMinorUnits(bsQuery.data.total_assets)}
+                  </span>
                   <span>=</span>
-                  <span>الخصوم والملكية: {formatMinorUnits(bsQuery.data.total_liabilities_and_equity)}</span>
+                  <span>
+                    الخصوم والملكية:{' '}
+                    {formatMinorUnits(
+                      bsQuery.data.total_liabilities_and_equity
+                    )}
+                  </span>
                 </div>
               </div>
+              <Button
+                variant='outline'
+                size='sm'
+                className='gap-1.5'
+                onClick={() =>
+                  exportCSV('Balance_Sheet', [
+                    ['القسم', 'الحساب', 'رمز الحساب', 'المبلغ'],
+                    ...bsQuery.data!.assets.map((account) => [
+                      'الأصول',
+                      account.name,
+                      account.account_code,
+                      formatMinorUnits(account.amount_minor_units),
+                    ]),
+                    [
+                      'إجمالي الأصول',
+                      '',
+                      '',
+                      formatMinorUnits(bsQuery.data!.total_assets),
+                    ],
+                    ...bsQuery.data!.liabilities.map((account) => [
+                      'الالتزامات',
+                      account.name,
+                      account.account_code,
+                      formatMinorUnits(account.amount_minor_units),
+                    ]),
+                    [
+                      'إجمالي الالتزامات',
+                      '',
+                      '',
+                      formatMinorUnits(bsQuery.data!.total_liabilities),
+                    ],
+                    ...bsQuery.data!.equity.map((account) => [
+                      'حقوق الملكية',
+                      account.name,
+                      account.account_code,
+                      formatMinorUnits(account.amount_minor_units),
+                    ]),
+                    [
+                      'صافي دخل الفترة الحالية',
+                      '',
+                      '',
+                      formatMinorUnits(bsQuery.data!.current_period_net_income),
+                    ],
+                    [
+                      'إجمالي حقوق الملكية',
+                      '',
+                      '',
+                      formatMinorUnits(bsQuery.data!.total_equity),
+                    ],
+                    [
+                      'إجمالي الالتزامات وحقوق الملكية',
+                      '',
+                      '',
+                      formatMinorUnits(
+                        bsQuery.data!.total_liabilities_and_equity
+                      ),
+                    ],
+                    [
+                      'الفارق',
+                      '',
+                      '',
+                      formatMinorUnits(bsQuery.data!.difference),
+                    ],
+                  ])
+                }
+              >
+                <Download className='size-3.5' />
+                <span>تصدير CSV</span>
+              </Button>
 
               {/* تفاصيل الميزانية بجانبين */}
               <div className='grid gap-6 md:grid-cols-2'>
@@ -465,20 +754,29 @@ export function ReportsView() {
                 <Card>
                   <CardHeader className='pb-3'>
                     <div className='flex items-center justify-between'>
-                      <CardTitle className='text-base text-primary'>الأصول (Assets - 1000)</CardTitle>
-                      <Badge variant='outline' className='font-mono font-bold text-primary'>
+                      <CardTitle className='text-base text-primary'>
+                        الأصول (Assets - 1000)
+                      </CardTitle>
+                      <Badge
+                        variant='outline'
+                        className='font-mono font-bold text-primary'
+                      >
                         {formatMinorUnits(bsQuery.data.total_assets)}
                       </Badge>
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <table className='w-full text-xs text-right'>
+                    <table className='w-full text-right text-xs'>
                       <tbody className='divide-y'>
                         {bsQuery.data.assets.map((a) => (
                           <tr key={a.id} className='hover:bg-muted/20'>
-                            <td className='py-2 font-mono text-muted-foreground'>{a.account_code}</td>
+                            <td className='py-2 font-mono text-muted-foreground'>
+                              {a.account_code}
+                            </td>
                             <td className='py-2 font-medium'>{a.name}</td>
-                            <td className='py-2 text-left font-mono font-semibold'>{formatMinorUnits(a.amount_minor_units)}</td>
+                            <td className='py-2 text-left font-mono font-semibold'>
+                              {formatMinorUnits(a.amount_minor_units)}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -491,20 +789,29 @@ export function ReportsView() {
                   <Card>
                     <CardHeader className='pb-3'>
                       <div className='flex items-center justify-between'>
-                        <CardTitle className='text-base text-rose-600'>الالتزامات (Liabilities - 2000)</CardTitle>
-                        <Badge variant='outline' className='font-mono font-bold text-rose-600'>
+                        <CardTitle className='text-base text-rose-600'>
+                          الالتزامات (Liabilities - 2000)
+                        </CardTitle>
+                        <Badge
+                          variant='outline'
+                          className='font-mono font-bold text-rose-600'
+                        >
                           {formatMinorUnits(bsQuery.data.total_liabilities)}
                         </Badge>
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <table className='w-full text-xs text-right'>
+                      <table className='w-full text-right text-xs'>
                         <tbody className='divide-y'>
                           {bsQuery.data.liabilities.map((l) => (
                             <tr key={l.id} className='hover:bg-muted/20'>
-                              <td className='py-2 font-mono text-muted-foreground'>{l.account_code}</td>
+                              <td className='py-2 font-mono text-muted-foreground'>
+                                {l.account_code}
+                              </td>
                               <td className='py-2 font-medium'>{l.name}</td>
-                              <td className='py-2 text-left font-mono font-semibold'>{formatMinorUnits(l.amount_minor_units)}</td>
+                              <td className='py-2 text-left font-mono font-semibold'>
+                                {formatMinorUnits(l.amount_minor_units)}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -515,26 +822,43 @@ export function ReportsView() {
                   <Card>
                     <CardHeader className='pb-3'>
                       <div className='flex items-center justify-between'>
-                        <CardTitle className='text-base text-blue-600'>حقوق الملكية (Equity - 3000)</CardTitle>
-                        <Badge variant='outline' className='font-mono font-bold text-blue-600'>
+                        <CardTitle className='text-base text-blue-600'>
+                          حقوق الملكية (Equity - 3000)
+                        </CardTitle>
+                        <Badge
+                          variant='outline'
+                          className='font-mono font-bold text-blue-600'
+                        >
                           {formatMinorUnits(bsQuery.data.total_equity)}
                         </Badge>
                       </div>
                     </CardHeader>
                     <CardContent className='space-y-3'>
-                      <table className='w-full text-xs text-right'>
+                      <table className='w-full text-right text-xs'>
                         <tbody className='divide-y'>
                           {bsQuery.data.equity.map((eq) => (
                             <tr key={eq.id} className='hover:bg-muted/20'>
-                              <td className='py-2 font-mono text-muted-foreground'>{eq.account_code}</td>
+                              <td className='py-2 font-mono text-muted-foreground'>
+                                {eq.account_code}
+                              </td>
                               <td className='py-2 font-medium'>{eq.name}</td>
-                              <td className='py-2 text-left font-mono font-semibold'>{formatMinorUnits(eq.amount_minor_units)}</td>
+                              <td className='py-2 text-left font-mono font-semibold'>
+                                {formatMinorUnits(eq.amount_minor_units)}
+                              </td>
                             </tr>
                           ))}
                           <tr className='bg-muted/30 font-bold'>
-                            <td className='py-2 font-mono text-muted-foreground'>—</td>
-                            <td className='py-2 text-primary'>أرباح / (خسائر) الفترة الحالية</td>
-                            <td className='py-2 text-left font-mono'>{formatMinorUnits(bsQuery.data.current_period_net_income)}</td>
+                            <td className='py-2 font-mono text-muted-foreground'>
+                              —
+                            </td>
+                            <td className='py-2 text-primary'>
+                              أرباح / (خسائر) الفترة الحالية
+                            </td>
+                            <td className='py-2 text-left font-mono'>
+                              {formatMinorUnits(
+                                bsQuery.data.current_period_net_income
+                              )}
+                            </td>
                           </tr>
                         </tbody>
                       </table>
@@ -551,17 +875,25 @@ export function ReportsView() {
       {activeReport === 'cash_flow' && (
         <div className='space-y-4'>
           {cfQuery.isLoading ? (
-            <div className='flex justify-center py-12 gap-2 text-muted-foreground'>
+            <div className='flex justify-center gap-2 py-12 text-muted-foreground'>
               <LoaderCircle className='size-5 animate-spin' />
               <span>جاري استخراج قائمة التدفقات النقدية...</span>
             </div>
+          ) : cfQuery.isError ? (
+            <AccountingQueryError
+              error={cfQuery.error}
+              onRetry={() => void cfQuery.refetch()}
+            />
           ) : cfQuery.data ? (
             <Card>
               <CardHeader className='flex flex-row items-center justify-between pb-3'>
                 <div>
-                  <CardTitle className='text-base'>قائمة التدفقات النقدية</CardTitle>
+                  <CardTitle className='text-base'>
+                    قائمة التدفقات النقدية
+                  </CardTitle>
                   <CardDescription>
-                    حركة النقدية من الأنشطة التشغيلية والتمويلية من {startDate} إلى {endDate}
+                    حركة النقدية من الأنشطة التشغيلية والتمويلية من {startDate}{' '}
+                    إلى {endDate}
                   </CardDescription>
                 </div>
                 <Button
@@ -570,13 +902,34 @@ export function ReportsView() {
                   onClick={() => {
                     const rows = [
                       ['البند', 'المبلغ'],
-                      ['رصيد النقدية أول المدة', formatMinorUnits(cfQuery.data!.opening_cash)],
-                      ['التدفقات الداخلة من العمليات', formatMinorUnits(cfQuery.data!.operating_cash_in)],
-                      ['التدفقات الخارجة للعمليات والمصروفات', formatMinorUnits(cfQuery.data!.operating_cash_out)],
-                      ['صافي التدفق النقدي التشغيلي', formatMinorUnits(cfQuery.data!.net_operating_cash_flow)],
-                      ['صافي التدفق النقدي التمويلي', formatMinorUnits(cfQuery.data!.net_financing_cash_flow)],
-                      ['صافي التغير في النقدية', formatMinorUnits(cfQuery.data!.net_change_in_cash)],
-                      ['رصيد النقدية نهاية المدة', formatMinorUnits(cfQuery.data!.closing_cash)],
+                      [
+                        'رصيد النقدية أول المدة',
+                        formatMinorUnits(cfQuery.data!.opening_cash),
+                      ],
+                      [
+                        'التدفقات الداخلة من العمليات',
+                        formatMinorUnits(cfQuery.data!.operating_cash_in),
+                      ],
+                      [
+                        'التدفقات الخارجة للعمليات والمصروفات',
+                        formatMinorUnits(cfQuery.data!.operating_cash_out),
+                      ],
+                      [
+                        'صافي التدفق النقدي التشغيلي',
+                        formatMinorUnits(cfQuery.data!.net_operating_cash_flow),
+                      ],
+                      [
+                        'صافي التدفق النقدي التمويلي',
+                        formatMinorUnits(cfQuery.data!.net_financing_cash_flow),
+                      ],
+                      [
+                        'صافي التغير في النقدية',
+                        formatMinorUnits(cfQuery.data!.net_change_in_cash),
+                      ],
+                      [
+                        'رصيد النقدية نهاية المدة',
+                        formatMinorUnits(cfQuery.data!.closing_cash),
+                      ],
                     ]
                     exportCSV('Cash_Flow_Statement', rows)
                   }}
@@ -587,36 +940,68 @@ export function ReportsView() {
                 </Button>
               </CardHeader>
               <CardContent>
-                <div className='border rounded-lg overflow-hidden'>
-                  <table className='w-full text-sm text-right'>
+                <div className='overflow-hidden rounded-lg border'>
+                  <table className='w-full text-right text-sm'>
                     <tbody className='divide-y'>
                       <tr className='bg-muted/40 font-bold'>
-                        <td className='p-3'>رصيد النقدية وما في حكمها في بداية المدة</td>
-                        <td className='p-3 text-left font-mono'>{formatMinorUnits(cfQuery.data.opening_cash)}</td>
+                        <td className='p-3'>
+                          رصيد النقدية وما في حكمها في بداية المدة
+                        </td>
+                        <td className='p-3 text-left font-mono'>
+                          {formatMinorUnits(cfQuery.data.opening_cash)}
+                        </td>
                       </tr>
                       <tr>
-                        <td className='p-3 pr-6 text-xs text-muted-foreground'>المقبوضات النقدية من المبيعات والعملاء</td>
-                        <td className='p-3 text-left font-mono text-xs text-emerald-600'>+{formatMinorUnits(cfQuery.data.operating_cash_in)}</td>
+                        <td className='p-3 pr-6 text-xs text-muted-foreground'>
+                          المقبوضات النقدية من المبيعات والعملاء
+                        </td>
+                        <td className='p-3 text-left font-mono text-xs text-emerald-600'>
+                          +{formatMinorUnits(cfQuery.data.operating_cash_in)}
+                        </td>
                       </tr>
                       <tr>
-                        <td className='p-3 pr-6 text-xs text-muted-foreground'>المدفوعات النقدية للمشتريات والموردين والمصروفات</td>
-                        <td className='p-3 text-left font-mono text-xs text-rose-600'>-{formatMinorUnits(cfQuery.data.operating_cash_out)}</td>
+                        <td className='p-3 pr-6 text-xs text-muted-foreground'>
+                          المدفوعات النقدية للمشتريات والموردين والمصروفات
+                        </td>
+                        <td className='p-3 text-left font-mono text-xs text-rose-600'>
+                          -{formatMinorUnits(cfQuery.data.operating_cash_out)}
+                        </td>
                       </tr>
                       <tr className='bg-muted/20 font-semibold'>
-                        <td className='p-3'>صافي التدفقات النقدية من الأنشطة التشغيلية</td>
-                        <td className='p-3 text-left font-mono'>{formatMinorUnits(cfQuery.data.net_operating_cash_flow)}</td>
+                        <td className='p-3'>
+                          صافي التدفقات النقدية من الأنشطة التشغيلية
+                        </td>
+                        <td className='p-3 text-left font-mono'>
+                          {formatMinorUnits(
+                            cfQuery.data.net_operating_cash_flow
+                          )}
+                        </td>
                       </tr>
                       <tr className='bg-muted/20 font-semibold'>
-                        <td className='p-3'>صافي التدفقات النقدية من الأنشطة التمويلية والرأسمالية</td>
-                        <td className='p-3 text-left font-mono'>{formatMinorUnits(cfQuery.data.net_financing_cash_flow)}</td>
+                        <td className='p-3'>
+                          صافي التدفقات النقدية من الأنشطة التمويلية والرأسمالية
+                        </td>
+                        <td className='p-3 text-left font-mono'>
+                          {formatMinorUnits(
+                            cfQuery.data.net_financing_cash_flow
+                          )}
+                        </td>
                       </tr>
                       <tr className='bg-primary/10 font-bold'>
-                        <td className='p-3'>صافي الزيادة / (الانخفاض) في النقدية خلال المدة</td>
-                        <td className='p-3 text-left font-mono text-primary'>{formatMinorUnits(cfQuery.data.net_change_in_cash)}</td>
+                        <td className='p-3'>
+                          صافي الزيادة / (الانخفاض) في النقدية خلال المدة
+                        </td>
+                        <td className='p-3 text-left font-mono text-primary'>
+                          {formatMinorUnits(cfQuery.data.net_change_in_cash)}
+                        </td>
                       </tr>
-                      <tr className='bg-muted/70 font-black text-base'>
-                        <td className='p-4'>رصيد النقدية وما في حكمها في نهاية المدة</td>
-                        <td className='p-4 text-left font-mono'>{formatMinorUnits(cfQuery.data.closing_cash)}</td>
+                      <tr className='bg-muted/70 text-base font-black'>
+                        <td className='p-4'>
+                          رصيد النقدية وما في حكمها في نهاية المدة
+                        </td>
+                        <td className='p-4 text-left font-mono'>
+                          {formatMinorUnits(cfQuery.data.closing_cash)}
+                        </td>
                       </tr>
                     </tbody>
                   </table>
@@ -631,30 +1016,41 @@ export function ReportsView() {
       {activeReport === 'tax' && (
         <div className='space-y-4'>
           {taxQuery.isLoading ? (
-            <div className='flex justify-center py-12 gap-2 text-muted-foreground'>
+            <div className='flex justify-center gap-2 py-12 text-muted-foreground'>
               <LoaderCircle className='size-5 animate-spin' />
               <span>جاري استخراج بيانات الإقرار الضريبي...</span>
             </div>
+          ) : taxQuery.isError ? (
+            <AccountingQueryError
+              error={taxQuery.error}
+              onRetry={() => void taxQuery.refetch()}
+            />
           ) : taxQuery.data ? (
             <>
               <div className='grid gap-4 md:grid-cols-4'>
                 <Card>
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs text-muted-foreground'>المبيعات الخاضعة للضريبة</CardTitle>
+                    <CardTitle className='text-xs text-muted-foreground'>
+                      المبيعات الخاضعة للضريبة
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className='text-2xl font-bold font-mono'>
-                      {formatMinorUnits(taxQuery.data.taxable_sales_minor_units)}
+                    <div className='font-mono text-2xl font-bold'>
+                      {formatMinorUnits(
+                        taxQuery.data.taxable_sales_minor_units
+                      )}
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs text-muted-foreground'>ضريبة المخرجات (المحصلة من البيع)</CardTitle>
+                    <CardTitle className='text-xs text-muted-foreground'>
+                      ضريبة المخرجات (المحصلة من البيع)
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className='text-2xl font-bold font-mono text-emerald-600'>
+                    <div className='font-mono text-2xl font-bold text-emerald-600'>
                       {formatMinorUnits(taxQuery.data.output_tax_minor_units)}
                     </div>
                   </CardContent>
@@ -662,25 +1058,41 @@ export function ReportsView() {
 
                 <Card>
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs text-muted-foreground'>ضريبة المدخلات (المدفوعة على الشراء)</CardTitle>
+                    <CardTitle className='text-xs text-muted-foreground'>
+                      ضريبة المدخلات (المدفوعة على الشراء)
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className='text-2xl font-bold font-mono text-rose-600'>
+                    <div className='font-mono text-2xl font-bold text-rose-600'>
                       {formatMinorUnits(taxQuery.data.input_tax_minor_units)}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className={taxQuery.data.status === 'payable' ? 'border-rose-500/40 bg-rose-500/5' : 'border-emerald-500/40 bg-emerald-500/5'}>
+                <Card
+                  className={
+                    taxQuery.data.status === 'payable'
+                      ? 'border-rose-500/40 bg-rose-500/5'
+                      : 'border-emerald-500/40 bg-emerald-500/5'
+                  }
+                >
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs font-bold'>صافي الضريبة المستحقة</CardTitle>
+                    <CardTitle className='text-xs font-bold'>
+                      صافي الضريبة المستحقة
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className={`text-2xl font-black font-mono ${taxQuery.data.status === 'payable' ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
-                      {formatMinorUnits(taxQuery.data.net_tax_payable_minor_units)}
+                    <div
+                      className={`font-mono text-2xl font-black ${taxQuery.data.status === 'payable' ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}
+                    >
+                      {formatMinorUnits(
+                        taxQuery.data.net_tax_payable_minor_units
+                      )}
                     </div>
                     <Badge variant='outline' className='mt-1 text-xs'>
-                      {taxQuery.data.status === 'payable' ? 'مستحقة للسداد للهيئة' : 'مستحقة للاسترداد'}
+                      {taxQuery.data.status === 'payable'
+                        ? 'مستحقة للسداد للهيئة'
+                        : 'مستحقة للاسترداد'}
                     </Badge>
                   </CardContent>
                 </Card>
@@ -688,29 +1100,104 @@ export function ReportsView() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className='text-base'>ملخص الإقرار الضريبي للقيمة المضافة</CardTitle>
-                  <CardDescription>
-                    وفقاً لحسابات الضرائب المستحقة (2200) بالدفتر العام
-                  </CardDescription>
+                  <div className='flex flex-wrap items-center justify-between gap-3'>
+                    <div className='space-y-1.5'>
+                      <CardTitle className='text-base'>
+                        ملخص الإقرار الضريبي للقيمة المضافة
+                      </CardTitle>
+                      <CardDescription>
+                        وفقاً لحسابات الضرائب المستحقة (2200) بالدفتر العام
+                      </CardDescription>
+                    </div>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      className='gap-1.5'
+                      onClick={() =>
+                        exportCSV('Tax_Report', [
+                          ['البند', 'المبلغ'],
+                          [
+                            'المبيعات الخاضعة للضريبة',
+                            formatMinorUnits(
+                              taxQuery.data!.taxable_sales_minor_units
+                            ),
+                          ],
+                          [
+                            'ضريبة المخرجات',
+                            formatMinorUnits(
+                              taxQuery.data!.output_tax_minor_units
+                            ),
+                          ],
+                          [
+                            'ضريبة المدخلات',
+                            formatMinorUnits(
+                              taxQuery.data!.input_tax_minor_units
+                            ),
+                          ],
+                          [
+                            'صافي الضريبة',
+                            formatMinorUnits(
+                              taxQuery.data!.net_tax_payable_minor_units
+                            ),
+                          ],
+                          [
+                            'الحالة',
+                            taxQuery.data!.status === 'payable'
+                              ? 'مستحقة للسداد'
+                              : 'مستحقة للاسترداد',
+                          ],
+                        ])
+                      }
+                    >
+                      <Download className='size-3.5' />
+                      <span>تصدير CSV</span>
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <table className='w-full text-sm text-right border rounded-lg overflow-hidden'>
+                  <table className='w-full overflow-hidden rounded-lg border text-right text-sm'>
                     <tbody className='divide-y'>
                       <tr>
-                        <td className='p-3 font-medium'>إجمالي المبيعات والخدمات الخاضعة لضريبة القيمة المضافة</td>
-                        <td className='p-3 text-left font-mono'>{formatMinorUnits(taxQuery.data.taxable_sales_minor_units)}</td>
+                        <td className='p-3 font-medium'>
+                          إجمالي المبيعات والخدمات الخاضعة لضريبة القيمة المضافة
+                        </td>
+                        <td className='p-3 text-left font-mono'>
+                          {formatMinorUnits(
+                            taxQuery.data.taxable_sales_minor_units
+                          )}
+                        </td>
                       </tr>
                       <tr>
-                        <td className='p-3 font-medium'>ضريبة المبيعات المستحقة (ضريبة المخرجات)</td>
-                        <td className='p-3 text-left font-mono text-emerald-600 font-bold'>{formatMinorUnits(taxQuery.data.output_tax_minor_units)}</td>
+                        <td className='p-3 font-medium'>
+                          ضريبة المبيعات المستحقة (ضريبة المخرجات)
+                        </td>
+                        <td className='p-3 text-left font-mono font-bold text-emerald-600'>
+                          {formatMinorUnits(
+                            taxQuery.data.output_tax_minor_units
+                          )}
+                        </td>
                       </tr>
                       <tr>
-                        <td className='p-3 font-medium'>ضريبة المشتريات القابلة للخصم (ضريبة المدخلات)</td>
-                        <td className='p-3 text-left font-mono text-rose-600 font-bold'>({formatMinorUnits(taxQuery.data.input_tax_minor_units)})</td>
+                        <td className='p-3 font-medium'>
+                          ضريبة المشتريات القابلة للخصم (ضريبة المدخلات)
+                        </td>
+                        <td className='p-3 text-left font-mono font-bold text-rose-600'>
+                          (
+                          {formatMinorUnits(
+                            taxQuery.data.input_tax_minor_units
+                          )}
+                          )
+                        </td>
                       </tr>
-                      <tr className='bg-muted/70 font-black text-base'>
-                        <td className='p-4'>صافي الضريبة الواجبة السداد / (الاسترداد)</td>
-                        <td className='p-4 text-left font-mono'>{formatMinorUnits(taxQuery.data.net_tax_payable_minor_units)}</td>
+                      <tr className='bg-muted/70 text-base font-black'>
+                        <td className='p-4'>
+                          صافي الضريبة الواجبة السداد / (الاسترداد)
+                        </td>
+                        <td className='p-4 text-left font-mono'>
+                          {formatMinorUnits(
+                            taxQuery.data.net_tax_payable_minor_units
+                          )}
+                        </td>
                       </tr>
                     </tbody>
                   </table>
@@ -725,19 +1212,26 @@ export function ReportsView() {
       {activeReport === 'aging' && (
         <div className='space-y-4'>
           {agingQuery.isLoading ? (
-            <div className='flex justify-center py-12 gap-2 text-muted-foreground'>
+            <div className='flex justify-center gap-2 py-12 text-muted-foreground'>
               <LoaderCircle className='size-5 animate-spin' />
               <span>جاري استخراج تقرير أعمار الديون...</span>
             </div>
+          ) : agingQuery.isError ? (
+            <AccountingQueryError
+              error={agingQuery.error}
+              onRetry={() => void agingQuery.refetch()}
+            />
           ) : agingQuery.data ? (
             <>
               <div className='grid gap-4 md:grid-cols-5'>
                 <Card>
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs text-muted-foreground'>إجمالي المديونية</CardTitle>
+                    <CardTitle className='text-xs text-muted-foreground'>
+                      إجمالي المديونية
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className='text-xl font-bold font-mono text-primary'>
+                    <div className='font-mono text-xl font-bold text-primary'>
                       {formatMinorUnits(agingQuery.data.grand_total_debt)}
                     </div>
                   </CardContent>
@@ -745,10 +1239,12 @@ export function ReportsView() {
 
                 <Card>
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs text-muted-foreground'>جاري (أقل من 30 يوم)</CardTitle>
+                    <CardTitle className='text-xs text-muted-foreground'>
+                      جاري (أقل من 30 يوم)
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className='text-xl font-bold font-mono text-emerald-600'>
+                    <div className='font-mono text-xl font-bold text-emerald-600'>
                       {formatMinorUnits(agingQuery.data.total_current)}
                     </div>
                   </CardContent>
@@ -756,10 +1252,12 @@ export function ReportsView() {
 
                 <Card>
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs text-muted-foreground'>31 - 60 يوم</CardTitle>
+                    <CardTitle className='text-xs text-muted-foreground'>
+                      31 - 60 يوم
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className='text-xl font-bold font-mono text-blue-600'>
+                    <div className='font-mono text-xl font-bold text-blue-600'>
                       {formatMinorUnits(agingQuery.data.total_30_days)}
                     </div>
                   </CardContent>
@@ -767,10 +1265,12 @@ export function ReportsView() {
 
                 <Card>
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs text-muted-foreground'>61 - 90 يوم</CardTitle>
+                    <CardTitle className='text-xs text-muted-foreground'>
+                      61 - 90 يوم
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className='text-xl font-bold font-mono text-amber-600'>
+                    <div className='font-mono text-xl font-bold text-amber-600'>
                       {formatMinorUnits(agingQuery.data.total_60_days)}
                     </div>
                   </CardContent>
@@ -778,10 +1278,12 @@ export function ReportsView() {
 
                 <Card>
                   <CardHeader className='pb-2'>
-                    <CardTitle className='text-xs text-muted-foreground'>أكثر من 90 يوم</CardTitle>
+                    <CardTitle className='text-xs text-muted-foreground'>
+                      أكثر من 90 يوم
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className='text-xl font-bold font-mono text-rose-600'>
+                    <div className='font-mono text-xl font-bold text-rose-600'>
                       {formatMinorUnits(agingQuery.data.total_90_plus)}
                     </div>
                   </CardContent>
@@ -792,7 +1294,8 @@ export function ReportsView() {
                 <CardHeader className='flex flex-row items-center justify-between pb-3'>
                   <div>
                     <CardTitle className='text-base'>
-                      جدول أعمار ديون {agingType === 'customer' ? 'العملاء' : 'الموردين'}
+                      جدول أعمار ديون{' '}
+                      {agingType === 'customer' ? 'العملاء' : 'الموردين'}
                     </CardTitle>
                     <CardDescription>
                       توزيع المديونية حسب فترات الاستحقاق والتأخير
@@ -803,7 +1306,15 @@ export function ReportsView() {
                     size='sm'
                     onClick={() => {
                       const rows = [
-                        ['الاسم', 'الهاتف', 'إجمالي الرصيد', 'جاري', '31-60 يوم', '61-90 يوم', '+90 يوم'],
+                        [
+                          'الاسم',
+                          'الهاتف',
+                          'إجمالي الرصيد',
+                          'جاري',
+                          '31-60 يوم',
+                          '61-90 يوم',
+                          '+90 يوم',
+                        ],
                         ...agingQuery.data!.items.map((i) => [
                           i.name,
                           i.phone || '',
@@ -829,7 +1340,7 @@ export function ReportsView() {
                     </div>
                   ) : (
                     <div className='overflow-x-auto'>
-                      <table className='w-full text-xs text-right'>
+                      <table className='w-full text-right text-xs'>
                         <thead className='bg-muted/50 text-muted-foreground'>
                           <tr>
                             <th className='p-3'>الاسم</th>
@@ -843,14 +1354,29 @@ export function ReportsView() {
                         </thead>
                         <tbody className='divide-y'>
                           {agingQuery.data.items.map((item) => (
-                            <tr key={item.contact_id} className='hover:bg-muted/20'>
+                            <tr
+                              key={item.contact_id}
+                              className='hover:bg-muted/20'
+                            >
                               <td className='p-3 font-semibold'>{item.name}</td>
-                              <td className='p-3 text-muted-foreground font-mono'>{item.phone || '—'}</td>
-                              <td className='p-3 font-mono font-bold text-primary'>{formatMinorUnits(item.total_balance)}</td>
-                              <td className='p-3 font-mono text-emerald-600'>{formatMinorUnits(item.bucket_current)}</td>
-                              <td className='p-3 font-mono text-blue-600'>{formatMinorUnits(item.bucket_30)}</td>
-                              <td className='p-3 font-mono text-amber-600'>{formatMinorUnits(item.bucket_60)}</td>
-                              <td className='p-3 font-mono text-rose-600 font-bold'>{formatMinorUnits(item.bucket_90_plus)}</td>
+                              <td className='p-3 font-mono text-muted-foreground'>
+                                {item.phone || '—'}
+                              </td>
+                              <td className='p-3 font-mono font-bold text-primary'>
+                                {formatMinorUnits(item.total_balance)}
+                              </td>
+                              <td className='p-3 font-mono text-emerald-600'>
+                                {formatMinorUnits(item.bucket_current)}
+                              </td>
+                              <td className='p-3 font-mono text-blue-600'>
+                                {formatMinorUnits(item.bucket_30)}
+                              </td>
+                              <td className='p-3 font-mono text-amber-600'>
+                                {formatMinorUnits(item.bucket_60)}
+                              </td>
+                              <td className='p-3 font-mono font-bold text-rose-600'>
+                                {formatMinorUnits(item.bucket_90_plus)}
+                              </td>
                             </tr>
                           ))}
                         </tbody>

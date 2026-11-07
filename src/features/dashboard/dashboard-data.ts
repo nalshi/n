@@ -690,24 +690,34 @@ export async function fetchDashboardOrders(
     limit?: number
     search?: string
     status?: string
+    sort?: 'newest' | 'oldest'
     fromDate?: string
     toDate?: string
   } = {}
-): Promise<DashboardOrder[] & {
-  orders: DashboardOrder[]
-  total: number
-  totalPages: number
-  page: number
-  limit: number
-  hasMore: boolean
-}> {
+): Promise<
+  DashboardOrder[] & {
+    orders: DashboardOrder[]
+    total: number
+    totalPages: number
+    page: number
+    limit: number
+    hasMore: boolean
+  }
+> {
   const requestPayload: Record<string, unknown> = { filter }
   if (options.page && options.page !== 1) requestPayload.page = options.page
-  if (options.limit && options.limit !== 25) requestPayload.limit = options.limit
-  if (options.search && options.search.trim()) requestPayload.search = options.search
-  if (options.status && options.status.trim()) requestPayload.status = options.status
-  if (options.fromDate && options.fromDate.trim()) requestPayload.from_date = options.fromDate
-  if (options.toDate && options.toDate.trim()) requestPayload.to_date = options.toDate
+  if (options.limit && options.limit !== 25)
+    requestPayload.limit = options.limit
+  if (options.search && options.search.trim())
+    requestPayload.search = options.search
+  if (options.status && options.status.trim())
+    requestPayload.status = options.status
+  if (options.sort && options.sort !== 'newest')
+    requestPayload.sort = options.sort
+  if (options.fromDate && options.fromDate.trim())
+    requestPayload.from_date = options.fromDate
+  if (options.toDate && options.toDate.trim())
+    requestPayload.to_date = options.toDate
 
   const result = await authApiRequest('get_orders', requestPayload)
 
@@ -728,7 +738,8 @@ export async function fetchDashboardOrders(
   const filteredOrders =
     filter === 'active'
       ? normalizedOrders.filter(
-          (order) => order.status !== 'completed' && order.status !== 'cancelled'
+          (order) =>
+            order.status !== 'completed' && order.status !== 'cancelled'
         )
       : normalizedOrders
 

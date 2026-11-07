@@ -1,16 +1,13 @@
 import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
-import { useIsRestoring } from '@tanstack/react-query'
-import { RouterProvider, createRouter } from '@tanstack/react-router'
+import { createRouter } from '@tanstack/react-router'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { useAuthStore } from '@/stores/auth-store'
 import {
   getActiveMerchantToken,
   removeSavedMerchantAccount,
 } from '@/lib/merchant-accounts'
-import { DirectionProvider } from './context/direction-provider'
-import { FontProvider } from './context/font-provider'
-import { ThemeProvider } from './context/theme-provider'
+import { PersistedApplication } from './app/persisted-application'
 import { createQueryClient, queryPersistOptions } from './queryClient'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
@@ -30,7 +27,7 @@ const queryClient = createQueryClient({
 })
 
 // Create a new router instance
-const router = createRouter({
+export const router = createRouter({
   routeTree,
   context: { queryClient },
   defaultPreload: 'intent',
@@ -42,21 +39,6 @@ declare module '@tanstack/react-router' {
   interface Register {
     router: typeof router
   }
-}
-
-function PersistedApplication() {
-  const isRestoring = useIsRestoring()
-  if (isRestoring) return null
-
-  return (
-    <ThemeProvider>
-      <FontProvider>
-        <DirectionProvider>
-          <RouterProvider router={router} />
-        </DirectionProvider>
-      </FontProvider>
-    </ThemeProvider>
-  )
 }
 
 // Render the app
@@ -81,12 +63,14 @@ if ('serviceWorker' in navigator && typeof window !== 'undefined') {
     navigator.serviceWorker
       .register('/sw.js')
       .then((reg) => {
+        // eslint-disable-next-line no-console
         console.log(
           '✅ ساعي البريد الصامت في الخلفية جاهز (Service Worker Registered)',
           reg.scope
         )
       })
       .catch((err) => {
+        // eslint-disable-next-line no-console
         console.warn('تعذر تسجيل Service Worker:', err)
       })
   })

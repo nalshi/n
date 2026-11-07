@@ -72,7 +72,7 @@ export function SuppliersView() {
   })
 
   const suppliers = suppliersQuery.data || []
-  const statement = statementQuery.data as any
+  const statement = statementQuery.data
   const aging = agingQuery.data
   const currency = 'YER'
 
@@ -363,7 +363,7 @@ export function SuppliersView() {
                         </td>
                       </tr>
                     ) : (
-                      statement.entries?.map((ent: any, i: number) => (
+                      statement.entries?.map((ent, i: number) => (
                         <tr key={i} className='hover:bg-muted/20'>
                           <td className='py-2 px-3 font-mono text-muted-foreground'>{ent.entry_date}</td>
                           <td className='py-2 px-3 font-mono text-primary font-medium'>{ent.journal_number}</td>

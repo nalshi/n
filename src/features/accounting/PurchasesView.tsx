@@ -3,18 +3,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Check,
   Clock,
+  LoaderCircle,
   Plus,
   RotateCcw,
   Search,
   ShoppingCart,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -32,11 +31,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useMerchantIdentity } from '@/hooks/useMerchantRealtime'
+import { AccountingQueryError } from './AccountingQueryError'
 import {
   accountingQueryKeys,
   amountToMinorUnits,
   createPurchase,
+  fetchAccountingSettings,
   fetchContacts,
   fetchPurchases,
   formatMinorUnits,
@@ -53,44 +53,73 @@ export function PurchasesView() {
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [selectedPurchase, setSelectedPurchase] = useState<PurchaseItem | null>(null)
+  const [selectedPurchase, setSelectedPurchase] = useState<PurchaseItem | null>(
+    null
+  )
   const [isReverseOpen, setIsReverseOpen] = useState(false)
   const [reverseReason, setReverseReason] = useState('')
 
   // Form State
-  const [billNumber, setBillNumber] = useState(`BILL-${Date.now().toString().slice(-6)}`)
+  const [billNumber, setBillNumber] = useState(
+    () => `BILL-${Date.now().toString().slice(-6)}`
+  )
   const [supplierName, setSupplierName] = useState('')
   const [supplierId, setSupplierId] = useState('')
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10))
+  const [invoiceDate, setInvoiceDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  )
   const [dueDate, setDueDate] = useState('')
-  const [paymentType, setPaymentType] = useState<'cash' | 'credit' | 'bank'>('credit')
+  const [paymentType, setPaymentType] = useState<'cash' | 'credit' | 'bank'>(
+    'credit'
+  )
   const [subtotal, setSubtotal] = useState('')
   const [tax, setTax] = useState('0')
   const [discount, setDiscount] = useState('0')
   const [notes, setNotes] = useState('')
   const [postImmediately] = useState(true)
 
+  const settingsQuery = useQuery({
+    queryKey: [...accountingQueryKeys(merchantId || ''), 'settings'],
+    queryFn: fetchAccountingSettings,
+    enabled: Boolean(merchantId),
+  })
+
   const purchasesQuery = useQuery({
-    queryKey: [...accountingQueryKeys(merchantId || ''), 'purchases', statusFilter],
-    queryFn: () => fetchPurchases(statusFilter !== 'all' ? statusFilter : undefined),
+    queryKey: [
+      ...accountingQueryKeys(merchantId || ''),
+      'purchases',
+      statusFilter,
+    ],
+    queryFn: () =>
+      fetchPurchases(statusFilter !== 'all' ? statusFilter : undefined),
     enabled: Boolean(merchantId),
   })
 
   const suppliersQuery = useQuery({
-    queryKey: [...accountingQueryKeys(merchantId || ''), 'contacts', 'supplier'],
+    queryKey: [
+      ...accountingQueryKeys(merchantId || ''),
+      'contacts',
+      'supplier',
+    ],
     queryFn: () => fetchContacts('supplier'),
     enabled: Boolean(merchantId),
   })
 
   const purchases = purchasesQuery.data?.purchases || []
   const suppliers = suppliersQuery.data || []
-  const currency = 'YER'
+  const currency = settingsQuery.data?.functional_currency
 
   const createMutation = useMutation({
     mutationFn: createPurchase,
     onSuccess: () => {
-      toast.success(postImmediately ? 'تم تسجيل وترحيل فاتورة الشراء بنجاح' : 'تم حفظ مسودة فاتورة الشراء')
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      toast.success(
+        postImmediately
+          ? 'تم تسجيل وترحيل فاتورة الشراء بنجاح'
+          : 'تم حفظ مسودة فاتورة الشراء'
+      )
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       setIsCreateOpen(false)
       setBillNumber(`BILL-${Date.now().toString().slice(-6)}`)
       setSupplierName('')
@@ -100,7 +129,9 @@ export function PurchasesView() {
       setNotes('')
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'فشل تسجيل فاتورة الشراء.')
+      toast.error(
+        error instanceof Error ? error.message : 'فشل تسجيل فاتورة الشراء.'
+      )
     },
   })
 
@@ -108,18 +139,25 @@ export function PurchasesView() {
     mutationFn: postPurchase,
     onSuccess: () => {
       toast.success('تم ترحيل فاتورة المشتريات وإثبات المخزون والذمم')
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'فشل ترحيل الفاتورة.')
+      toast.error(
+        error instanceof Error ? error.message : 'فشل ترحيل الفاتورة.'
+      )
     },
   })
 
   const reverseMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) => reversePurchase(id, reason),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      reversePurchase(id, reason),
     onSuccess: () => {
       toast.success('تم إلغاء وعكس فاتورة الشراء بنجاح')
-      queryClient.invalidateQueries({ queryKey: accountingQueryKeys(merchantId || '') })
+      queryClient.invalidateQueries({
+        queryKey: accountingQueryKeys(merchantId || ''),
+      })
       setIsReverseOpen(false)
       setSelectedPurchase(null)
       setReverseReason('')
@@ -131,6 +169,10 @@ export function PurchasesView() {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
+    if (!currency) {
+      toast.error('حدد العملة الوظيفية في إعدادات المحاسبة قبل تسجيل الفاتورة.')
+      return
+    }
     if (!billNumber.trim() || !subtotal.trim()) {
       toast.error('رقم الفاتورة والمبلغ حقول مطلوبة.')
       return
@@ -139,7 +181,9 @@ export function PurchasesView() {
     try {
       const subtotalMinor = amountToMinorUnits(subtotal, currency)
       const taxMinor = tax ? amountToMinorUnits(tax, currency) : 0
-      const discountMinor = discount ? amountToMinorUnits(discount, currency) : 0
+      const discountMinor = discount
+        ? amountToMinorUnits(discount, currency)
+        : 0
 
       createMutation.mutate({
         bill_number: billNumber.trim(),
@@ -167,24 +211,53 @@ export function PurchasesView() {
 
   return (
     <div className='space-y-6'>
-      <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+      <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
         <div>
-          <h2 className='text-lg font-bold'>فواتير المشتريات والموردين (Purchases & Bills)</h2>
+          <h2 className='text-lg font-bold'>
+            فواتير المشتريات والموردين (Purchases & Bills)
+          </h2>
           <p className='text-sm text-muted-foreground'>
             تسجيل مشتريات البضائع، فواتير الموردين، وإثبات قيود المخزون والضريبة
           </p>
         </div>
 
-        <Button onClick={() => setIsCreateOpen(true)} className='gap-2 bg-blue-600 hover:bg-blue-700'>
+        <Button
+          onClick={() => setIsCreateOpen(true)}
+          disabled={
+            !currency || settingsQuery.isPending || settingsQuery.isError
+          }
+          className='gap-2 bg-blue-600 hover:bg-blue-700'
+        >
           <Plus className='size-4' />
           <span>تسجيل فاتورة شراء جديدة</span>
         </Button>
       </div>
 
+      {settingsQuery.isError && (
+        <AccountingQueryError
+          error={settingsQuery.error}
+          onRetry={() => void settingsQuery.refetch()}
+        />
+      )}
+      {!settingsQuery.isPending && !settingsQuery.isError && !currency && (
+        <p
+          role='alert'
+          className='rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800 dark:text-amber-200'
+        >
+          حدد العملة الوظيفية من إعدادات المحاسبة قبل تسجيل الفواتير.
+        </p>
+      )}
+      {suppliersQuery.isError && (
+        <AccountingQueryError
+          error={suppliersQuery.error}
+          onRetry={() => void suppliersQuery.refetch()}
+        />
+      )}
+
       {/* شريط البحث والتصفية */}
-      <div className='flex flex-col sm:flex-row gap-3'>
+      <div className='flex flex-col gap-3 sm:flex-row'>
         <div className='relative flex-1'>
-          <Search className='absolute right-3 top-2.5 size-4 text-muted-foreground' />
+          <Search className='absolute top-2.5 right-3 size-4 text-muted-foreground' />
           <Input
             placeholder='البحث برقم الفاتورة أو اسم المورد...'
             value={search}
@@ -209,97 +282,130 @@ export function PurchasesView() {
       {/* جدول فواتير المشتريات */}
       <Card className='shadow-xs'>
         <CardContent className='p-0'>
-          <div className='overflow-x-auto'>
-            <table className='w-full text-sm text-right'>
-              <thead className='bg-muted/50 text-xs text-muted-foreground border-b'>
-                <tr>
-                  <th className='py-3 px-4'>رقم الفاتورة</th>
-                  <th className='py-3 px-4'>اسم المورد</th>
-                  <th className='py-3 px-4'>تاريخ الفاتورة</th>
-                  <th className='py-3 px-4'>طريقة السداد</th>
-                  <th className='py-3 px-4 text-left'>إجمالي المبلغ</th>
-                  <th className='py-3 px-4'>الحالة</th>
-                  <th className='py-3 px-4 text-center'>الإجراءات</th>
-                </tr>
-              </thead>
-              <tbody className='divide-y divide-border/60'>
-                {filtered.length === 0 ? (
+          {purchasesQuery.isLoading ? (
+            <div className='flex justify-center gap-2 py-8 text-muted-foreground'>
+              <LoaderCircle className='size-4 animate-spin' />
+              جاري تحميل فواتير المشتريات...
+            </div>
+          ) : purchasesQuery.isError ? (
+            <AccountingQueryError
+              error={purchasesQuery.error}
+              onRetry={() => void purchasesQuery.refetch()}
+            />
+          ) : (
+            <div className='overflow-x-auto'>
+              <table className='w-full text-right text-sm'>
+                <thead className='border-b bg-muted/50 text-xs text-muted-foreground'>
                   <tr>
-                    <td colSpan={7} className='py-12 text-center text-muted-foreground'>
-                      <ShoppingCart className='size-8 mx-auto mb-2 opacity-40' />
-                      <p>لا توجد فواتير مشتريات مسجلة.</p>
-                    </td>
+                    <th className='px-4 py-3'>رقم الفاتورة</th>
+                    <th className='px-4 py-3'>اسم المورد</th>
+                    <th className='px-4 py-3'>تاريخ الفاتورة</th>
+                    <th className='px-4 py-3'>طريقة السداد</th>
+                    <th className='px-4 py-3 text-left'>إجمالي المبلغ</th>
+                    <th className='px-4 py-3'>الحالة</th>
+                    <th className='px-4 py-3 text-center'>الإجراءات</th>
                   </tr>
-                ) : (
-                  filtered.map((item) => (
-                    <tr key={item.id} className='hover:bg-muted/30'>
-                      <td className='py-3 px-4 font-mono font-bold text-primary'>
-                        {item.bill_number}
-                      </td>
-                      <td className='py-3 px-4 font-medium'>{item.supplier_name}</td>
-                      <td className='py-3 px-4 font-mono text-xs text-muted-foreground'>
-                        {item.invoice_date}
-                      </td>
-                      <td className='py-3 px-4 text-xs'>
-                        {item.payment_type === 'cash' ? 'نقدي' : item.payment_type === 'bank' ? 'بنكي' : 'آجل (ذمم)'}
-                      </td>
-                      <td className='py-3 px-4 text-left font-mono font-bold text-foreground'>
-                        {formatMinorUnits(item.total_minor_units, currency)}
-                      </td>
-                      <td className='py-3 px-4'>
-                        <Badge
-                          variant={item.status === 'posted' ? 'default' : item.status === 'reversed' ? 'destructive' : 'secondary'}
-                          className={item.status === 'posted' ? 'bg-emerald-600 gap-1' : 'gap-1'}
-                        >
-                          {item.status === 'posted' ? (
-                            <>
-                              <Check className='size-3' /> مرحّلة
-                            </>
-                          ) : item.status === 'reversed' ? (
-                            <>
-                              <RotateCcw className='size-3' /> ملغاة
-                            </>
-                          ) : (
-                            <>
-                              <Clock className='size-3' /> مسودة
-                            </>
-                          )}
-                        </Badge>
-                      </td>
-                      <td className='py-3 px-4 text-center'>
-                        <div className='flex items-center justify-center gap-1.5'>
-                          {item.status === 'draft' && (
-                            <Button
-                              variant='outline'
-                              size='sm'
-                              onClick={() => postMutation.mutate(item.id)}
-                              disabled={postMutation.isPending}
-                              className='text-emerald-600 gap-1 text-xs'
-                            >
-                              <Check className='size-3.5' /> ترحيل
-                            </Button>
-                          )}
-                          {item.status === 'posted' && (
-                            <Button
-                              variant='ghost'
-                              size='sm'
-                              onClick={() => {
-                                setSelectedPurchase(item)
-                                setIsReverseOpen(true)
-                              }}
-                              className='text-destructive hover:bg-destructive/10 gap-1 text-xs'
-                            >
-                              <RotateCcw className='size-3.5' /> إلغاء
-                            </Button>
-                          )}
-                        </div>
+                </thead>
+                <tbody className='divide-y divide-border/60'>
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className='py-12 text-center text-muted-foreground'
+                      >
+                        <ShoppingCart className='mx-auto mb-2 size-8 opacity-40' />
+                        <p>لا توجد فواتير مشتريات مسجلة.</p>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    filtered.map((item) => (
+                      <tr key={item.id} className='hover:bg-muted/30'>
+                        <td className='px-4 py-3 font-mono font-bold text-primary'>
+                          {item.bill_number}
+                        </td>
+                        <td className='px-4 py-3 font-medium'>
+                          {item.supplier_name}
+                        </td>
+                        <td className='px-4 py-3 font-mono text-xs text-muted-foreground'>
+                          {item.invoice_date}
+                        </td>
+                        <td className='px-4 py-3 text-xs'>
+                          {item.payment_type === 'cash'
+                            ? 'نقدي'
+                            : item.payment_type === 'bank'
+                              ? 'بنكي'
+                              : 'آجل (ذمم)'}
+                        </td>
+                        <td className='px-4 py-3 text-left font-mono font-bold text-foreground'>
+                          {currency
+                            ? formatMinorUnits(item.total_minor_units, currency)
+                            : '—'}
+                        </td>
+                        <td className='px-4 py-3'>
+                          <Badge
+                            variant={
+                              item.status === 'posted'
+                                ? 'default'
+                                : item.status === 'reversed'
+                                  ? 'destructive'
+                                  : 'secondary'
+                            }
+                            className={
+                              item.status === 'posted'
+                                ? 'gap-1 bg-emerald-600'
+                                : 'gap-1'
+                            }
+                          >
+                            {item.status === 'posted' ? (
+                              <>
+                                <Check className='size-3' /> مرحّلة
+                              </>
+                            ) : item.status === 'reversed' ? (
+                              <>
+                                <RotateCcw className='size-3' /> ملغاة
+                              </>
+                            ) : (
+                              <>
+                                <Clock className='size-3' /> مسودة
+                              </>
+                            )}
+                          </Badge>
+                        </td>
+                        <td className='px-4 py-3 text-center'>
+                          <div className='flex items-center justify-center gap-1.5'>
+                            {item.status === 'draft' && (
+                              <Button
+                                variant='outline'
+                                size='sm'
+                                onClick={() => postMutation.mutate(item.id)}
+                                disabled={postMutation.isPending}
+                                className='gap-1 text-xs text-emerald-600'
+                              >
+                                <Check className='size-3.5' /> ترحيل
+                              </Button>
+                            )}
+                            {item.status === 'posted' && (
+                              <Button
+                                variant='ghost'
+                                size='sm'
+                                onClick={() => {
+                                  setSelectedPurchase(item)
+                                  setIsReverseOpen(true)
+                                }}
+                                className='gap-1 text-xs text-destructive hover:bg-destructive/10'
+                              >
+                                <RotateCcw className='size-3.5' /> إلغاء
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -372,15 +478,23 @@ export function PurchasesView() {
                 <Label>طريقة الشراء والدفع</Label>
                 <Select
                   value={paymentType}
-                  onValueChange={(val) => setPaymentType(val as 'cash' | 'credit' | 'bank')}
+                  onValueChange={(val) =>
+                    setPaymentType(val as 'cash' | 'credit' | 'bank')
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='credit'>شراء آجل (دائن: الموردون 2100)</SelectItem>
-                    <SelectItem value='cash'>شراء نقدي (دائن: الصندوق 1110)</SelectItem>
-                    <SelectItem value='bank'>تحويل بنكي (دائن: البنك 1120)</SelectItem>
+                    <SelectItem value='credit'>
+                      شراء آجل (دائن: الموردون 2100)
+                    </SelectItem>
+                    <SelectItem value='cash'>
+                      شراء نقدي (دائن: الصندوق 1110)
+                    </SelectItem>
+                    <SelectItem value='bank'>
+                      تحويل بنكي (دائن: البنك 1120)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -397,7 +511,7 @@ export function PurchasesView() {
 
             <div className='grid grid-cols-3 gap-2.5'>
               <div className='space-y-1.5'>
-                <Label>قيمة البضاعة</Label>
+                <Label>قيمة البضاعة ({currency || '—'})</Label>
                 <Input
                   type='number'
                   step='any'
@@ -409,7 +523,7 @@ export function PurchasesView() {
               </div>
 
               <div className='space-y-1.5'>
-                <Label>ضريبة المدخلات</Label>
+                <Label>ضريبة المدخلات ({currency || '—'})</Label>
                 <Input
                   type='number'
                   step='any'
@@ -420,7 +534,7 @@ export function PurchasesView() {
               </div>
 
               <div className='space-y-1.5'>
-                <Label>الخصم المكتسب</Label>
+                <Label>الخصم المكتسب ({currency || '—'})</Label>
                 <Input
                   type='number'
                   step='any'
@@ -431,12 +545,24 @@ export function PurchasesView() {
               </div>
             </div>
 
-            <DialogFooter className='gap-2 sm:gap-0 pt-2'>
-              <Button type='button' variant='outline' onClick={() => setIsCreateOpen(false)}>
+            <DialogFooter className='gap-2 pt-2 sm:gap-0'>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => setIsCreateOpen(false)}
+              >
                 إلغاء
               </Button>
-              <Button type='submit' disabled={createMutation.isPending} className='bg-blue-600 hover:bg-blue-700'>
-                {createMutation.isPending ? 'جاري الحفظ...' : 'حفظ وترحيل الفاتورة'}
+              <Button
+                type='submit'
+                disabled={
+                  createMutation.isPending || !currency || settingsQuery.isError
+                }
+                className='bg-blue-600 hover:bg-blue-700'
+              >
+                {createMutation.isPending
+                  ? 'جاري الحفظ...'
+                  : 'حفظ وترحيل الفاتورة'}
               </Button>
             </DialogFooter>
           </form>
@@ -449,7 +575,8 @@ export function PurchasesView() {
           <DialogHeader>
             <DialogTitle>إلغاء وعكس فاتورة المشتريات</DialogTitle>
             <DialogDescription>
-              سيتم إنشاء قيد عكسي يلغي أثر الفاتورة رقم {selectedPurchase?.bill_number} من المخزون وحساب المورد.
+              سيتم إنشاء قيد عكسي يلغي أثر الفاتورة رقم{' '}
+              {selectedPurchase?.bill_number} من المخزون وحساب المورد.
             </DialogDescription>
           </DialogHeader>
 
@@ -479,7 +606,9 @@ export function PurchasesView() {
                 }
               }}
             >
-              {reverseMutation.isPending ? 'جاري الإلغاء...' : 'تأكيد عكس الفاتورة'}
+              {reverseMutation.isPending
+                ? 'جاري الإلغاء...'
+                : 'تأكيد عكس الفاتورة'}
             </Button>
           </DialogFooter>
         </DialogContent>
